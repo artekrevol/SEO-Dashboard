@@ -1,0 +1,624 @@
+Below is a **ready-to-paste Replit Product Manager Agent prompt** for your *Live SEO Dashboard v1*, fully aligned with **DataForSEO v3** and the platform you already built.
+
+You don’t need to edit this – just paste it into Replit as the product spec / instructions.
+I’ll structure it as if I’m talking directly to Replit.
+
+---
+
+## 🔧 PROMPT FOR REPLIT — “TekRevol Live SEO Command Center (DataForSEO-Only)”
+
+You are building a **production-ready Live SEO Dashboard** for TekRevol.
+
+This is **v1** of an internal SEO Command Center, built **entirely on DataForSEO v3 APIs**, and integrated with the existing **Rank Tracking & Competitor Analysis Platform** whose scope is:
+
+* Node.js + TypeScript backend (Express)
+* React + TypeScript frontend (Vite, Tailwind, Radix UI, TanStack Query, Recharts)
+* PostgreSQL (Neon) + Drizzle ORM
+* Existing modules already implemented:
+
+  * Keyword management
+  * Rank tracking (DataForSEO SERP API)
+  * Competitor discovery + OnPage insights
+  * Batch processing & cron scheduling
+  * Basic dashboard + reporting
+
+You must **extend and refactor** this platform into a **Live SEO Dashboard / Command Center** with the modules described below.
+
+### 0. High-Level Goals
+
+Build a **modular dashboard** that:
+
+1. Uses **DataForSEO v3 APIs only** for external SEO data.
+2. Adds an **intelligence layer** on top of raw data:
+
+   * SEO Health Score
+   * Opportunity scoring
+   * Competitive pressure
+   * Technical risk and authority momentum
+3. Produces **actionable recommendations** per URL / keyword, not just charts.
+4. Is structured, testable, and ready to evolve.
+
+Assume we **already have** clean integrations with:
+
+* DataForSEO SERP API `v3/serp/google/organic/live/advanced`
+* DataForSEO OnPage API (tasks, pages, summary)
+* Existing DB tables as per the provided PROJECT_SCOPE.md (keywords, rankings, competitors, competitorInsights, keywordBatches, schedules, etc.)
+
+You will:
+
+* Add new tables and endpoints for **SEO health, opportunities, competitor pressure, link data, technical issues, and recommendations**.
+* Build a **React dashboard UI** with separate, composable panels/modules.
+* Wire everything with **cron jobs** for scheduled refreshes.
+
+---
+
+## 1. DataForSEO APIs TO USE
+
+Design the system assuming we’ll integrate with these **DataForSEO v3** APIs:
+
+1. **SERP API (Google Organic Advanced / Live)**
+
+   * Use for: current rankings, SERP features, competitor URLs.
+
+2. **Labs APIs – Google**
+
+   * Keyword Research & Overview:
+
+     * `keywords_for_site`
+     * `keywords_for_keywords`
+     * `related_keywords`
+     * `keyword_difficulty`
+     * `keyword_overview`
+     * `search_intent`
+   * Competitor / Domain Research:
+
+     * `rank_overview`
+     * `serp_competitors`
+     * `ranked_keywords`
+     * `domain_intersection`
+     * `relevant_pages`
+     * `historical_rank_overview` (if needed later)
+
+3. **Backlinks APIs**
+
+   * `backlinks/summary`
+   * `backlinks/backlinks`
+   * `backlinks/history`
+   * `backlinks/new_lost_timeseries`
+   * `backlinks/referring_domains`
+
+4. **OnPage APIs**
+
+   * `on_page/summary`
+   * `on_page/pages`
+   * `on_page/duplicate_tags`
+   * `on_page/duplicate_content`
+   * `on_page/non_indexable`
+   * `on_page/links`
+   * `on_page/microdata`
+
+5. **(Optional / future) Content Generation**
+
+   * For later: meta tag generation, subtopic suggestions, grammar checks.
+
+For now: focus on **reading data**, not generating text.
+
+---
+
+## 2. NEW DATABASE SCHEMA (PostgreSQL + Drizzle)
+
+Extend the existing schema with the following tables. Use Drizzle ORM migrations.
+
+### 2.1 `seo_health_snapshots`
+
+Stores **daily SEO health aggregates** (per project / domain):
+
+```ts
+seo_health_snapshots {
+  id                serial primary key
+  project_id        uuid references projects(id)  // or domain_id if projects not present
+  date              date not null
+
+  avg_position      numeric(5,2)    // weighted avg
+  top3_keywords     integer
+  top10_keywords    integer
+  total_keywords    integer
+
+  authority_score   numeric(5,2)    // derived from backlinks summary
+  tech_score        numeric(5,2)    // derived from OnPage summary: indexability, duplicates, etc.
+  content_score     numeric(5,2)    // derived from coverage vs difficulty/intent
+
+  seo_health_score  numeric(5,2)    // final aggregated score 0–100
+
+  created_at        timestamptz default now()
+}
+```
+
+### 2.2 `keyword_metrics`
+
+Pre-aggregated metrics for each keyword over time:
+
+```ts
+keyword_metrics {
+  id               serial primary key
+  keyword_id       integer references keywords(id)
+  date             date not null
+
+  position         integer
+  previous_position integer
+  position_delta   integer
+  search_volume    integer          // from Labs/Keywords Data
+  difficulty       numeric(5,2)
+  intent           text             // informational, commercial, transactional, etc.
+  serp_features    jsonb            // list of detected features
+  opportunity_score numeric(5,2)    // computed
+
+  created_at       timestamptz default now()
+}
+```
+
+### 2.3 `page_metrics`
+
+Aggregate metrics per URL/page:
+
+```ts
+page_metrics {
+  id                  serial primary key
+  project_id          uuid
+  url                 text not null
+  date                date not null
+
+  avg_position        numeric(5,2)
+  best_position       integer
+  keywords_in_top10   integer
+  total_keywords      integer
+
+  backlinks_count     integer
+  referring_domains   integer
+  new_links_7d        integer
+  lost_links_7d       integer
+
+  word_count          integer
+  has_schema          boolean
+  is_indexable        boolean
+  duplicate_content   boolean
+  core_web_vitals_ok  boolean       // simple pass/fail from Lighthouse/OnPage
+
+  content_gap_score   numeric(5,2)  // higher = more gap vs competitors
+  tech_risk_score     numeric(5,2)
+  authority_gap_score numeric(5,2)
+
+  created_at          timestamptz default now()
+}
+```
+
+### 2.4 `seo_recommendations`
+
+Stores **task-like recommendations** per URL/keyword:
+
+```ts
+seo_recommendations {
+  id                serial primary key
+  project_id        uuid
+  url               text
+  keyword_id        integer references keywords(id) null
+  type              text    // "content_refresh" | "add_schema" | "build_links" | "fix_indexability" | etc.
+  severity          text    // "low" | "medium" | "high"
+  title             text
+  description       text
+  status            text    // "open" | "in_progress" | "done" | "dismissed"
+  source_signals    jsonb   // snapshot of metrics that caused this rec
+  created_at        timestamptz default now()
+  updated_at        timestamptz default now()
+}
+```
+
+### 2.5 `competitor_metrics`
+
+Competitor-level summary per project/cluster (for pressure index):
+
+```ts
+competitor_metrics {
+  id                  serial primary key
+  project_id          uuid
+  competitor_domain   text
+  date                date not null
+
+  shared_keywords     integer
+  above_us_keywords   integer
+  authority_score     numeric(5,2)
+  avg_position        numeric(5,2)
+  pressure_index      numeric(6,2)   // (#keywords above us × authority)
+
+  created_at          timestamptz default now()
+}
+```
+
+---
+
+## 3. BACKEND MODULES & CRON JOBS
+
+### 3.1 Cron: Daily SEO Snapshot Job
+
+**Purpose:** Create `seo_health_snapshots` and update `keyword_metrics`, `page_metrics`.
+
+**Steps (per project / domain):**
+
+1. Fetch all **tracked keywords** for the project.
+
+2. For each keyword:
+
+   * Use **SERP API** (Google Organic Advanced / Live) to fetch latest results (if not already captured by your existing batch system).
+   * Use **Labs APIs** (`keyword_overview`, `keyword_difficulty`, `search_intent`, `keywords_data`) to enrich:
+
+     * search_volume
+     * difficulty
+     * intent
+
+3. Compute and store **keyword_metrics** rows.
+
+4. Aggregate into **page_metrics** by URL:
+
+   * avg_position, top positions, keyword counts.
+
+5. Call **Backlinks Summary / Referring Domains / New & Lost** for the root domain and key URLs, store into `page_metrics` and factor into `authority_gap_score`.
+
+6. Call **OnPage Summary / Non-Indexable / Duplicate Content / Microdata** for top pages; populate:
+
+   * is_indexable
+   * duplicate_content
+   * has_schema
+   * tech_risk_score
+
+7. Compute **seo_health_score**:
+
+   * Example formula (implement as config, not hard-coded literals):
+
+     ```text
+     seo_health_score =
+       0.4 * rank_component
+     + 0.2 * authority_component
+     + 0.2 * tech_component
+     + 0.2 * content_component
+     ```
+   * `rank_component` based on % keywords in top 3 / top 10, weighted by volume.
+   * `authority_component` based on referring domains and net new links.
+   * `tech_component` based on indexability, duplicates, CWV pass rate.
+   * `content_component` based on content_gap_score (reversed scale).
+
+8. Insert row into `seo_health_snapshots`.
+
+Make the job **idempotent per date**: if snapshot exists, update instead of duplicate.
+
+---
+
+### 3.2 Cron: Weekly Opportunity & Gap Analysis
+
+**Purpose:** generate **opportunity scores** and **recommendations**.
+
+Steps:
+
+1. For each `keyword_metrics` (last 7–14 days):
+
+   * Identify candidates:
+
+     * Position between 4–20
+     * Decent search volume
+     * Medium difficulty
+   * Compute `opportunity_score` e.g.:
+
+     ```text
+     opportunity_score =
+       (normalized_search_volume)
+     * (1 / (position + 1))
+     * (1 - normalized_difficulty)
+     ```
+   * Store in `keyword_metrics.opportunity_score`.
+2. For top opportunity keywords:
+
+   * Use **Labs SERP Competitors** and **Relevant Pages**:
+
+     * Compare competitor content vs our content.
+   * Use **OnPage Pages + Keyword Density + Duplicate Content** for our URL.
+   * Derive `content_gap_score` for associated `page_metrics`:
+
+     * Missing headings/topics vs top 5
+     * Lower word count
+     * Lack of schema
+3. Create `seo_recommendations` entries for:
+
+   * Content refresh / expansion
+   * Title/meta optimization
+   * Supporting content creation
+   * Link building focus (if authority_gap_score high)
+   * Tech fixes (non-indexable, duplicates, missing schema)
+
+---
+
+### 3.3 Cron: Authority & Technical Risk Monitoring
+
+**Purpose:** highlight link-based and technical issues.
+
+Steps:
+
+1. Use Backlinks **New & Lost Timeseries** for domain and key URLs in last 7 days:
+
+   * If significant link loss on pages with ranking drops:
+
+     * Create **“fix link-related issue”** recommendation.
+2. Use OnPage **Non-Indexable**, **Duplicate Tags**, **Redirect Chains**:
+
+   * For each critical issue affecting tracked URLs:
+
+     * Add/update **tech_risk_score** and recommendations.
+
+---
+
+## 4. BACKEND API ENDPOINTS
+
+Expose REST endpoints (with TypeScript typings) for the frontend.
+
+### 4.1 `/api/dashboard/overview`
+
+**GET** → Returns executive overview.
+
+Response:
+
+```ts
+{
+  projectId: string
+  dateRange: { from: string; to: string }
+  latestSnapshot: {
+    date: string
+    seoHealthScore: number
+    avgPosition: number
+    top3Keywords: number
+    top10Keywords: number
+    totalKeywords: number
+    authorityScore: number
+    techScore: number
+    contentScore: number
+    status: "healthy" | "at_risk" | "declining"
+  }
+  trend: Array<{
+    date: string
+    seoHealthScore: number
+  }>
+}
+```
+
+### 4.2 `/api/dashboard/keywords`
+
+**GET** with filters:
+
+* `cluster?`
+* `intent?`
+* `minOpportunityScore?`
+* `limit?`
+
+Returns list of keywords with metrics:
+
+```ts
+{
+  items: Array<{
+    keywordId: number
+    keyword: string
+    cluster?: string
+    currentPosition: number
+    positionDelta: number
+    searchVolume: number
+    difficulty: number
+    intent: string
+    opportunityScore: number
+    serpFeatures: string[]
+    url: string
+  }>
+}
+```
+
+### 4.3 `/api/dashboard/pages`
+
+**GET** → Returns `page_metrics` rows for latest date (with filters):
+
+```ts
+{
+  items: Array<{
+    url: string
+    avgPosition: number
+    bestPosition: number
+    keywordsInTop10: number
+    backlinksCount: number
+    referringDomains: number
+    newLinks7d: number
+    lostLinks7d: number
+    hasSchema: boolean
+    isIndexable: boolean
+    duplicateContent: boolean
+    coreWebVitalsOk: boolean
+    contentGapScore: number
+    techRiskScore: number
+    authorityGapScore: number
+  }>
+}
+```
+
+### 4.4 `/api/dashboard/recommendations`
+
+**GET** with filters for `status`, `type`, `severity`, `url`, `keywordId`.
+
+```ts
+{
+  items: Array<{
+    id: number
+    url: string
+    keywordId?: number
+    type: string
+    severity: string
+    title: string
+    description: string
+    status: string
+    createdAt: string
+  }>
+}
+```
+
+Also **PATCH** endpoint to update status (`/api/dashboard/recommendations/:id`).
+
+### 4.5 `/api/dashboard/competitors`
+
+**GET** → per project, optional cluster/keyword filter:
+
+```ts
+{
+  items: Array<{
+    competitorDomain: string
+    sharedKeywords: number
+    aboveUsKeywords: number
+    authorityScore: number
+    avgPosition: number
+    pressureIndex: number
+  }>
+}
+```
+
+---
+
+## 5. FRONTEND (REACT) UI STRUCTURE
+
+Use:
+
+* React + TS
+* Radix UI for layout
+* Tailwind CSS
+* TanStack Query (data fetching)
+* Recharts for visualizations
+
+### Top-Level Layout
+
+```tsx
+<AppLayout>
+  <Sidebar />        // navigation: Overview, Keywords, Pages, Links, Tech, Competitors, Recommendations
+  <MainContent>
+    <Header />       // project selector, date range
+    <Routes>
+      <OverviewPage />
+      <KeywordsPage />
+      <PagesPage />
+      <RecommendationsPage />
+      <CompetitorsPage />
+      <TechPage />
+    </Routes>
+  </MainContent>
+</AppLayout>
+```
+
+### 5.1 `OverviewPage`
+
+Panels:
+
+1. **SEO Health Summary Card**
+
+   * Big `seoHealthScore` with color state
+   * Sparkline for last 30 days.
+
+2. **KPI Strip**
+
+   * Avg position
+   * Top3 / Top10 coverage
+   * Authority score
+   * Tech health score
+   * Content score
+
+3. **Trend Chart**
+
+   * `seo_health_snapshots` over time.
+
+4. **Quick Insights**
+
+   * List of 3–5 top `seo_recommendations` (high severity) as callouts.
+
+### 5.2 `KeywordsPage`
+
+* Filters: cluster, intent, min volume, opportunityScore >= X.
+* Table with sort:
+
+  * keyword, url, position, delta, volume, difficulty, intent, opportunityScore.
+* Per-row: link to keyword details (modal or route).
+
+### 5.3 `PagesPage`
+
+* Table:
+
+  * url, avgPosition, top10 count, backlinks/ref domains, contentGapScore, techRiskScore, authorityGapScore.
+* Conditional highlighting:
+
+  * high gap = red
+  * high tech risk = amber
+* Row click → Page detail view:
+
+  * Chart: position over time (from rankings/keyword_metrics)
+  * Link graph: new/lost links over time
+  * Tech issues list (from OnPage)
+  * Open recommendations related to that URL.
+
+### 5.4 `RecommendationsPage`
+
+* Filter by type, severity, status.
+* Table of recommendations.
+* Ability to change status from dropdown.
+* Sorting by severity and createdAt.
+
+### 5.5 `CompetitorsPage`
+
+* Table:
+
+  * competitorDomain, sharedKeywords, aboveUsKeywords, pressureIndex.
+* Card for “Top 5 threatening competitors”.
+* Optional chart: pressureIndex over time.
+
+### 5.6 `TechPage`
+
+* At-a-glance widgets:
+
+  * Non-indexable pages count.
+  * Duplicate titles.
+  * Duplicate content issues.
+  * CWV pass rate.
+* Table: issues grouped by type.
+
+---
+
+## 6. NON-FUNCTIONAL REQUIREMENTS
+
+* Type-safe end-to-end (TS, Drizzle, typed API responses).
+* Proper error handling and loading states.
+* Paginated endpoints where necessary.
+* API calls should be batched and rate-limited to comply with DataForSEO rate limits.
+* Env variables for DataForSEO credentials, project/domain identifiers.
+
+---
+
+## 7. DELIVERY PRIORITIES (MVP STACKED BY VALUE)
+
+**MVP 1 (2–3 weeks):**
+
+* `seo_health_snapshots` + daily cron.
+* `keyword_metrics` updates + `/api/dashboard/overview` & `/api/dashboard/keywords`.
+* `OverviewPage` + `KeywordsPage` basic version.
+
+**MVP 2:**
+
+* `page_metrics` + `seo_recommendations`.
+* Cron for weekly gap/opportunity analysis.
+* `PagesPage` + `RecommendationsPage`.
+
+**MVP 3:**
+
+* `competitor_metrics` + `CompetitorsPage`.
+* `TechPage` with basic OnPage integration.
+* More advanced health formulas.
+
+---
+
+Use this spec as the **single source of truth**.
+Build clean modules, keep logic in services (not controllers), and make the UI fast, minimal, and operator-friendly.
