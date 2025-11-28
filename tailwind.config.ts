@@ -83,9 +83,9 @@ export default {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)"],
-        serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
+        sans: ["Inter", "system-ui", "sans-serif"],
+        serif: ["Georgia", "serif"],
+        mono: ["JetBrains Mono", "Menlo", "monospace"],
       },
       keyframes: {
         "accordion-down": {
