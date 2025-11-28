@@ -15,6 +15,8 @@ import {
   type InsertSeoRecommendation,
   type CompetitorMetrics,
   type InsertCompetitorMetrics,
+  type Location,
+  type SettingsPriorityRules,
   users,
   projects,
   keywords,
@@ -23,6 +25,8 @@ import {
   pageMetrics,
   seoRecommendations,
   competitorMetrics,
+  locations,
+  settingsPriorityRules,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -61,6 +65,9 @@ export interface IStorage {
 
   getCompetitorMetrics(projectId: string): Promise<CompetitorMetrics[]>;
   createCompetitorMetrics(metrics: InsertCompetitorMetrics): Promise<CompetitorMetrics>;
+
+  getLocations(): Promise<Location[]>;
+  getPriorityRules(): Promise<SettingsPriorityRules[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -290,6 +297,14 @@ export class DatabaseStorage implements IStorage {
   async createCompetitorMetrics(insertMetrics: InsertCompetitorMetrics): Promise<CompetitorMetrics> {
     const [metrics] = await db.insert(competitorMetrics).values(insertMetrics).returning();
     return metrics;
+  }
+
+  async getLocations(): Promise<Location[]> {
+    return await db.select().from(locations).orderBy(locations.name);
+  }
+
+  async getPriorityRules(): Promise<SettingsPriorityRules[]> {
+    return await db.select().from(settingsPriorityRules).orderBy(settingsPriorityRules.priority);
   }
 }
 

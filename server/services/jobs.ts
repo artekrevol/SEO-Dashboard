@@ -15,6 +15,7 @@ import {
   prioritizeRecommendations,
 } from "./recommendations";
 import type { Project, InsertSeoHealthSnapshot, InsertKeywordMetrics, InsertCompetitorMetrics, Keyword } from "@shared/schema";
+import * as cron from "node-cron";
 
 interface JobResult {
   success: boolean;
@@ -380,19 +381,64 @@ export async function runRecommendationGeneration(projectId: string): Promise<Jo
   }
 }
 
+const cronJobs: Map<string, cron.ScheduledTask> = new Map();
+
 export function startScheduledJobs(): void {
-  jobScheduler.schedule(
-    "daily-seo-snapshot",
-    24 * 60 * 60 * 1000,
+  const dailySnapshotJob = cron.schedule(
+    "0 17 * * *",
     async () => {
-      await runDailySEOSnapshot();
+      console.log("[Job] Running daily-seo-snapshot (5 PM CST)...");
+      try {
+        const result = await runDailySEOSnapshot();
+        console.log(`[Job] daily-seo-snapshot completed: ${result.message}`);
+      } catch (error) {
+        console.error("[Job] daily-seo-snapshot failed:", error);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: "America/Chicago",
     }
   );
+  cronJobs.set("daily-seo-snapshot", dailySnapshotJob);
+  console.log("[Jobs] Scheduled daily-seo-snapshot to run at 5 PM CST");
+
+  const weekendHeavyJob = cron.schedule(
+    "0 3 * * 0",
+    async () => {
+      console.log("[Job] Running weekend-heavy-jobs (Sunday 3 AM CST)...");
+      try {
+        const projects = await storage.getProjects();
+        for (const project of projects) {
+          if (project.isActive) {
+            console.log(`[Job] Processing heavy jobs for ${project.name}...`);
+            await runKeywordMetricsUpdate(project.id);
+            await runCompetitorAnalysis(project.id);
+            await runRecommendationGeneration(project.id);
+          }
+        }
+        console.log("[Job] weekend-heavy-jobs completed");
+      } catch (error) {
+        console.error("[Job] weekend-heavy-jobs failed:", error);
+      }
+    },
+    {
+      scheduled: true,
+      timezone: "America/Chicago",
+    }
+  );
+  cronJobs.set("weekend-heavy-jobs", weekendHeavyJob);
+  console.log("[Jobs] Scheduled weekend-heavy-jobs to run Sunday 3 AM CST");
 
   console.log("[Jobs] Scheduled jobs started");
 }
 
 export function stopScheduledJobs(): void {
+  cronJobs.forEach((job, name) => {
+    job.stop();
+    console.log(`[Job] Stopped ${name}`);
+  });
+  cronJobs.clear();
   jobScheduler.stopAll();
   console.log("[Jobs] All scheduled jobs stopped");
 }

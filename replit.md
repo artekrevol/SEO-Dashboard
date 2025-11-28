@@ -4,7 +4,7 @@
 A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Command Center. The application provides comprehensive SEO analytics, keyword tracking, competitor analysis, and actionable recommendations.
 
 ## Current State
-- **Status**: MVP Complete
+- **Status**: MVP Complete + Data Feed Layer
 - **Last Updated**: November 28, 2025
 
 ## Tech Stack
@@ -12,19 +12,26 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - **Backend**: Node.js + Express + TypeScript
 - **Database**: PostgreSQL (Neon) + Drizzle ORM
 - **UI Components**: shadcn/ui component library
+- **Scheduling**: node-cron with CST timezone support
 
 ## Project Architecture
 
 ### Database Schema
-- `projects` - SEO projects/domains being tracked
-- `keywords` - Keywords tracked for each project
+- `projects` - SEO projects/domains being tracked (with isActive flag)
+- `keywords` - Keywords tracked for each project (with location_id, language_code, priority, trackDaily, isActive, isCorePage)
+- `locations` - Geographic locations with DataForSEO location codes
+- `rankings_history` - Historical ranking data per keyword per day
 - `seo_health_snapshots` - Daily SEO health aggregates per project
 - `keyword_metrics` - Per-keyword metrics over time (position, volume, difficulty, intent, opportunity score)
 - `page_metrics` - Per-URL metrics (backlinks, technical health, content gaps)
 - `seo_recommendations` - Actionable SEO tasks with severity and status
 - `competitor_metrics` - Competitor analysis with pressure index
+- `settings_priority_rules` - P1/P2/P3 priority classification rules
+- `import_logs` - Data import audit trail
 
 ### API Endpoints
+
+#### Dashboard
 - `GET /api/projects` - List all projects
 - `POST /api/projects` - Create new project (seeds demo data)
 - `GET /api/dashboard/overview` - Executive dashboard overview
@@ -34,12 +41,50 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `PATCH /api/dashboard/recommendations/:id` - Update recommendation status
 - `GET /api/dashboard/competitors` - Competitor analysis
 
+#### Data Management
+- `GET /api/data/locations` - List all locations
+- `GET /api/data/priority-rules` - List priority classification rules
+- `POST /api/data/priority-rules/init` - Initialize default P1/P2/P3 rules
+- `POST /api/data/import/locations` - Import locations from CSV
+- `POST /api/data/import/keywords` - Import keywords from CSV
+- `POST /api/data/import/rankings` - Import rankings from XLSX
+- `POST /api/data/import/projects` - Import projects from XLSX
+- `POST /api/data/import/full` - Run full import (locations + keywords + optional rankings)
+- `PATCH /api/data/keywords/bulk` - Bulk update keywords (priority, cluster, isActive, etc.)
+
+#### Jobs
+- `GET /api/system/status` - Check DataForSEO configuration status
+- `POST /api/jobs/snapshot` - Manually trigger daily SEO snapshot
+- `POST /api/jobs/keywords` - Manually trigger keyword metrics update
+- `POST /api/jobs/competitors` - Manually trigger competitor analysis
+- `POST /api/jobs/recommendations` - Manually trigger recommendation generation
+
 ### Frontend Pages
 - `/` - Main dashboard with KPI cards, health chart, top opportunities
 - `/keywords` - Keyword analytics with position distribution and intent charts
 - `/pages` - Page-level metrics with risk analysis
 - `/recommendations` - Actionable SEO tasks with filtering
 - `/competitors` - Competitive pressure analysis with visualization
+
+## Data Feed & Control Layer
+
+### Import System
+The ingestion service (`server/services/ingestion.ts`) handles bulk data imports:
+- **Locations**: CSV import with DataForSEO location codes
+- **Keywords**: CSV import with automatic priority assignment (P1/P2/P3)
+- **Rankings**: XLSX import for historical ranking data
+- **Projects**: XLSX import for project metadata
+
+### Priority Classification
+Keywords are automatically classified into priority tiers:
+- **P1 (High)**: Commercial/transactional intent + Position ≤ 10
+- **P2 (Medium)**: Any intent + Position ≤ 20
+- **P3 (Low)**: All other keywords
+
+### Scheduling
+Jobs are scheduled via node-cron with CST timezone (America/Chicago):
+- **Daily 5PM CST**: SEO snapshot aggregation
+- **Weekend Heavy Jobs**: Reserved for intensive data collection
 
 ## Key Features
 1. **SEO Health Score** - Aggregated 0-100 score based on rankings, authority, technical health, and content
@@ -54,6 +99,8 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
    - 3-day moving average smoothing line
    - Trend badge with percentage change indicator
 7. **Advanced Keyword Filtering** - Position brackets, opportunity ranges, SERP features, clusters, active filter chips, and preset buttons
+8. **Data Import Pipeline** - Bulk CSV/XLSX import for locations, keywords, and rankings
+9. **Priority-Based Scheduling** - P1/P2/P3 keyword classification for scheduled job prioritization
 
 ## Development
 
@@ -68,14 +115,27 @@ This starts both the Express backend and Vite frontend on port 5000.
 npm run db:push   # Push schema changes to database
 ```
 
+### Import Data Files
+The following files are available for import in `attached_assets/`:
+- `locations_1764365369944.csv` - 23 geographic locations
+- `Keywords_1764365369944.csv` - 436 keywords
+- `projects_1764365369944.xlsx` - Project definitions
+- `ranking_1764365369944.xlsx` - Historical ranking data
+
 ## Design System
 - **Fonts**: Inter (UI), JetBrains Mono (code/URLs)
 - **Color Scheme**: Professional dashboard with blue primary accent
 - **Dark Mode**: Supported via theme toggle
 - **Components**: shadcn/ui with custom elevation system
 
-## Future Enhancements (Next Phase)
-- DataForSEO API integration for live data
-- Weekly opportunity/gap analysis cron job
-- Authority and technical risk monitoring
+## Environment Variables
+- `DATABASE_URL` - PostgreSQL connection string (auto-configured)
+- `SESSION_SECRET` - Session encryption key
+- `DATAFORSEO_LOGIN` - DataForSEO API login (required for live data)
+- `DATAFORSEO_PASSWORD` - DataForSEO API password (required for live data)
+
+## Next Steps
+- DataForSEO API integration for live ranking data
+- Timezone-aware 5PM CST scheduling for daily jobs
+- Weekend heavy job slots for intensive data collection
 - Custom report generation

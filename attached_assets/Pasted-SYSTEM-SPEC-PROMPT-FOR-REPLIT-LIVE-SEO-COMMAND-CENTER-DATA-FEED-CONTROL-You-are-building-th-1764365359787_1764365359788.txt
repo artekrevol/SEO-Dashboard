@@ -1,0 +1,219 @@
+SYSTEM / SPEC PROMPT FOR REPLIT (LIVE SEO COMMAND CENTER – DATA FEED & CONTROL)
+
+You are building the data ingestion and scheduling layer for TekRevol’s Live SEO Command Center.
+
+Data Sources (files already available)
+
+projects.xlsx
+
+locations.csv
+
+Keywords.csv
+
+ranking.xlsx (ranking history; column H contains URLs)
+
+Goal
+
+Normalize these into Postgres tables using Drizzle.
+
+Enrich keywords with intent, cluster, priority, trackDaily.
+
+Wire daily and weekend schedules to DataForSEO.
+
+Support bulk upload / bulk update / bulk deactivate in the UI.
+
+Tables to create
+
+projects
+
+id, name, domain, is_active, timestamps
+
+locations
+
+id, name, dataforseo_location_code, language_code, is_active, timestamps
+
+keywords
+
+id
+
+project_id (FK: projects.id)
+
+keyword (text)
+
+location_id (FK: locations.id)
+
+language_code
+
+target_url (nullable)
+
+intent_hint (enum: transactional, commercial, informational, navigational, mixed)
+
+cluster (text; ex: "Transactional · United States")
+
+track_daily (boolean, default true)
+
+priority (enum: P1, P2, P3)
+
+is_core_page (boolean, default false)
+
+is_active (boolean, default true)
+
+created_at, updated_at
+
+rankings_history
+
+id
+
+keyword_id (FK: keywords.id)
+
+date
+
+position
+
+url
+
+device (optional)
+
+location_id (optional)
+
+created_at
+
+settings_priority_rules (or store as JSON config)
+
+defines thresholds for P1, P2, P3 using:
+
+intents
+
+max_position
+
+min_clicks
+
+Later tables (competitors, pages, snapshots) can be added, but start with these.
+
+Ingestion Logic
+
+Import projects.xlsx → populate projects.
+
+Import locations.csv → populate locations (ensure dataforseo_location_code is correct).
+
+Import Keywords.csv:
+
+Join with locations by location_name or code.
+
+Join with projects by domain or name.
+
+Join with ranking.xlsx on keyword (and location if present):
+
+For each keyword, find latest row in ranking.xlsx and use URL from column H as initial target_url.
+
+For each row:
+
+Compute intent_hint via heuristics:
+
+transactional / commercial / informational / navigational / mixed.
+
+Compute cluster = <Intent> · <LocationLabel>.
+
+Set track_daily = true by default.
+
+Compute is_core_page based on target_url patterns (core service URLs; can be refined).
+
+Temporarily set priority = P1/P2/P3 based on:
+
+P1: intent in (commercial, transactional) + position <= 10 + clicks > 0 (if clicks data exists; otherwise position alone).
+
+P2: position <= 20 with intent in (commercial, transactional, informational, mixed).
+
+P3: everything else.
+
+Insert or update keywords.
+
+Import ranking.xlsx fully into rankings_history:
+
+Map each row’s keyword to keywords.id.
+
+Store date, position, url, etc.
+
+Scheduling Requirements
+
+Daily scheduled job at 5pm CST:
+
+For all keywords where track_daily = true and is_active = true:
+
+Call DataForSEO SERP (Google organic, advanced) using keyword, location.dataforseo_location_code, language_code.
+
+Save results into rankings_history and update a current_rank snapshot table or materialized view for faster dashboard queries.
+
+Extract competitor domains from SERP results for future use.
+
+Weekend job (e.g. Saturday night CST):
+
+For all keywords with priority in (P1, P2):
+
+Run heavier DataForSEO jobs (Labs, OnPage, Backlinks) in batches (respect rate limits).
+
+Store results in appropriate metrics tables (to be implemented later).
+
+Dynamic Rules & Overrides
+
+Implement a priority rule engine:
+
+Rules stored in settings_priority_rules or JSON config.
+
+Default:
+
+P1: commercial/transactional + top 10 + clicks > 0.
+
+P2: top 20 + relevant intents.
+
+P3: everything else.
+
+Allow:
+
+Manual override of priority for any keyword from the UI.
+
+Manual tagging of specific keywords as P1/P2/P3 regardless of rules.
+
+Implement similar override capability for:
+
+cluster
+
+track_daily
+
+is_core_page
+
+Bulk Operations (Frontend + API)
+
+In the keyword grid:
+
+Selection via checkboxes + “bulk actions” dropdown.
+
+Bulk actions:
+
+Set track_daily = true/false for selected.
+
+Set priority = P1/P2/P3 for selected.
+
+Set cluster to a chosen label for selected.
+
+Deactivate selected → is_active = false (soft delete).
+
+Bulk upload:
+
+CSV upload endpoint for keywords.
+
+For existing keyword (matched by keyword + location + project), update fields.
+
+For new keywords, insert with default rules.
+
+General Requirements
+
+Everything must be idempotent:
+
+Running imports again shouldn’t create duplicates.
+
+All rules (intent mapping, clustering, priority thresholds) must be easy to adjust in config, not hard-coded.
+
+Use Drizzle ORM for schema and migrations; keep models clean and typed.
+
+Use environment variables for DataForSEO credentials; do not log secrets.

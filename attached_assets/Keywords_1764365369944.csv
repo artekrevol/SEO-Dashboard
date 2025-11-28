@@ -1,0 +1,435 @@
+keyword_id,keyword,Country,difficulty,search_volume,intent,project_id,loc_id
+keyword_1,app developers in houston,United States,9,100,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_2,houston app developers,United States,6,100,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_3,mobile app developers houston,United States,24,150,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_4,mobile apps development houston,United States,28,100,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_5,mobile app developer houston,United States,23,150,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_6,app developer houston,United States,16,200,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_7,android app development houston,United States,22,100,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_8,mobile app development houston,United States,23,250,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_9,houston mobile app development,United States,24,60,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_10,mobile app developer houston,United States,23,150,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_11,mobile app development company houston,United States,23,350,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_12,houston app development,United States,14,150,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_13,app development houston,United States,9,100,"Informational,Commercial,Non-branded,Local",1,loc_10
+keyword_14,app developers in dc,United States,1,60,"Informational,Commercial,Non-branded,Local",1,loc_11
+keyword_15,mobile app developers in dc,United States,0,10,,1,loc_11
+keyword_16,android app developers in dc,United States,0,10,,1,loc_11
+keyword_17,app developer in dc,United States,0,10,,1,loc_11
+keyword_18,healthcare app development company,United States,12,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_19,healthcare mobile app development company,United States,15,1300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_20,mobile app development washington dc,United States,0,70,"Informational,Commercial,Non-branded,Local",1,loc_11
+keyword_21,healthcare app development services,United States,23,1300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_22,healthcare mobile app development,United States,10,900,"Informational,Non-branded,Non-local",1,loc_19
+keyword_23,healthcare application development services,United States,16,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_24,healthcare app developers,United States,12,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_25,healthcare mobile app development companies,United States,15,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_26,medical app development companies,United States,12,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_27,healthcare application development,United States,15,800,"Informational,Non-branded,Non-local",1,loc_19
+keyword_28,healthcare app development,United States,11,1300,"Informational,Non-branded,Non-local",1,loc_19
+keyword_29,medical app development,United States,7,350,"Informational,Non-branded,Non-local",1,loc_19
+keyword_30,healthcare mobile application development,United States,19,400,"Informational,Non-branded,Non-local",1,loc_19
+keyword_31,medical app developers,United States,13,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_32,mobile health app developers,United States,14,40,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_33,mobile game development company,United States,72,500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_34,game app development company,United States,24,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_35,mobile game development companies,United States,14,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_36,Game Development Services,United States,75,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_37,game app developers,United States,72,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_38,mobile game development services,United States,27,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_39,mobile game developer,United States,57,200,"Informational,Non-branded,Non-local",1,loc_19
+keyword_40,mobile game app development company,United States,28,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_41,mobile game development agency,United States,47,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_42,mobile game app developer,United States,51,30,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_43,android app development company,United States,23,3400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_44,android apps development services,United States,28,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_45,android app development services,United States,24,3400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_46,android development services,United States,14,800,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_47,android application development company,United States,24,1500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_48,android application development services,United States,22,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_49,android app development agency,United States,29,3400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_50,android mobile app development company,United States,25,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_51,custom android app development company,United States,11,500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_52,android application development agency,United States,37,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_53,custom android app development,United States,19,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_54,ecommerce app development,United States,12,700,"Informational,Non-branded,Non-local",1,loc_19
+keyword_55,ecommerce application development,United States,7,450,"Informational,Non-branded,Non-local",1,loc_19
+keyword_56,ecommerce app development services,United States,22,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_57,ecommerce mobile app development,United States,9,500,"Informational,Non-branded,Non-local",1,loc_19
+keyword_58,mobile ecommerce app development,United States,10,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_59,ecommerce application development company,United States,17,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_60,ecommerce app development company,United States,26,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_61,e commerce mobile app development company,United States,12,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_62,ecommerce application development services,United States,10,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_63,ecommerce app developer,United States,15,200,"Informational,Non-branded,Non-local",1,loc_19
+keyword_64,e-commerce application development,United States,6,50,"Informational,Non-branded,Non-local",1,loc_19
+keyword_65,mobile app development company miami,United States,5,150,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_66,mobile app development miami,United States,16,150,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_67,iphone apps development miami,United States,0,40,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_68,ios app developer in miami,United States,0,20,,1,loc_12
+keyword_69,mobile app developer in miami,United States,0,20,,1,loc_12
+keyword_70,mobile app developer miami,United States,2,100,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_71,mobile app developers miami,United States,2,20,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_72,app developer miami,United States,3,90,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_73,app developers miami,United States,2,100,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_74,Miami app developers,United States,4,80,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_75,miami app developer,United States,0,200,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_76,iphone app development miami,United States,10,100,"Informational,Commercial,Non-branded,Local",1,loc_12
+keyword_77,Mobile App Development Company in San Francisco,United States,3,200,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_78,app development companies San Francisco,United States,1,80,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_79,mobile app development San Francisco,United States,2,300,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_80,Mobile App Development In San Francisco,United States,0,70,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_81,San Francisco Mobile App Development,United States,0,200,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_82,android app development San francisco,United States,0,50,,1,loc_13
+keyword_83,app developers San Francisco,United States,0,200,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_84,app developers in San Francisco,United States,2,90,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_85,mobile app development companies in san francisco,United States,4,150,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_86,mobile app development company san francisco,United States,1,100,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_87,mobile app development companies san francisco,United States,1,100,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_88,app development company san francisco,United States,3,100,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_89,app development san francisco,United States,6,150,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_90,mobile app developers san francisco,United States,1,70,"Informational,Commercial,Non-branded,Local",1,loc_13
+keyword_91,website design companies nj,United States,21,100,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_92,web development company new jersey,United States,1,80,"Informational,Commercial,Non-branded,Local",1,loc_2
+keyword_93,web design company nj,United States,23,350,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_94,web development nj,United States,17,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_95,website design new jersey,United States,29,150,"Informational,Commercial,Non-branded,Local",1,loc_2
+keyword_96,web development new jersey,United States,7,150,"Informational,Commercial,Non-branded,Local",1,loc_2
+keyword_97,website development nj,United States,16,150,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_98,website design company New Jersey,United States,27,200,"Informational,Commercial,Non-branded,Local",1,loc_2
+keyword_99,chicago mobile app development,United States,20,200,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_100,mobile app development company chicago,United States,12,350,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_101,app development chicago,United States,19,250,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_102,app developers chicago,United States,12,200,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_103,chicago app development,United States,20,30,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_104,chicago app developers,United States,12,150,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_105,app development companies in chicago,United States,14,150,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_106,chicago app development company,United States,22,150,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_107,app developers in chicago,United States,23,100,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_108,mobile app development company in chicago,United States,21,200,"Informational,Commercial,Non-branded,Local",1,loc_9
+keyword_109,mobile app development company in austin,United States,14,200,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_110,mobile app development company austin,United States,26,150,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_111,mobile app development austin,United States,26,90,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_112,austin mobile app development,United States,24,60,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_113,app development services austin,United States,13,50,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_114,austin app developers,United States,7,100,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_115,app development company austin,United States,13,150,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_116,app developers in austin,United States,8,100,"Informational,Commercial,Non-branded,Local",1,loc_3
+keyword_117,ios app development company,United States,41,5900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_118,iphone app development company,United States,38,2100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_119,ios app development services,United States,42,2400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_120,iphone app development services,United States,45,1000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_121,iphone application development services,United States,38,500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_122,ios application development company,United States,33,600,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_123,iphone applications development company,United States,32,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_124,iphone app development company usa,United States,37,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_125,ios app development agency,United States,30,1100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_126,ios mobile app development company,United States,37,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_127,custom ios app development services,United States,31,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_128,custom ios app development company,United States,31,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_129,custom iphone app development,United States,20,500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_130,Website Development Services in USA,United States,27,250,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_131,web development services usa,United States,22,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_132,web development services in usa,United States,14,300,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_133,Web Development Services,United States,67,6500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_134,professional website development services,United States,55,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_135,professional web development services,United States,12,1400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_136,web development service,United States,35,2400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_137,website development solutions,United States,24,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_138,website designing and development services,United States,44,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_139,web development services company,United States,23,1600,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_140,website development service,United States,40,1500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_141,website development company,United States,63,9700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_142,website development company in usa,United States,16,400,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_143,website development companies in usa,United States,44,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_144,Website Development Services,United States,69,7000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_145,Website Development Company USA,United States,26,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_146,web development company,United States,26,16000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_147,mobile app development dallas,United States,11,600,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_148,app development dallas,United States,20,350,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_149,app developers in dallas,United States,20,200,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_150,mobile app development company in dallas,United States,24,250,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_151,dallas mobile app development,United States,10,150,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_152,app development companies in dallas,United States,11,100,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_153,mobile app development company dallas,United States,14,200,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_154,mobile app development companies dallas,United States,11,80,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_155,"mobile app development dallas, tx",United States,,,,1,loc_5
+keyword_156,mobile app developers dallas,United States,21,90,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_157,app developers dallas,United States,16,150,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_158,mobile app developer dallas,United States,12,150,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_159,android app development services in dallas,United States,22,80,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_160,dallas mobile app development company,United States,16,200,"Informational,Commercial,Non-branded,Local",1,loc_5
+keyword_161,app developers near me,United States,22,1900,"Informational,Commercial,Transactional,Non-branded,Local",1,loc_19
+keyword_162,mobile app development near me,United States,48,400,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_163,mobile app development company near me,United States,12,300,"Informational,Commercial,Transactional,Non-branded,Local",1,loc_19
+keyword_164,app development near me,United States,22,250,"Informational,Commercial,Transactional,Non-branded,Local",1,loc_19
+keyword_165,app development company near me,United States,52,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_166,music app development company,United States,5,400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_167,music app development services,United States,1,60,,1,loc_19
+keyword_168,music app developers,United States,5,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_169,music app developer,United States,72,50,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_170,music streaming app development company,United States,12,500,,1,loc_19
+keyword_171,mobile app development company,United States,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_172,app development company,United States,66,7600,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_173,mobile application development company,United States,39,3400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_174,application development company,United States,26,1400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_175,apps development company,United States,47,250,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_176,mobile apps development company,United States,46,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_177,mobile app development agency,United States,62,5200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_178,mobile application development agency,United States,30,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_179,mobile app development company usa,United States,70,600,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_180,mobile app development company in usa,United States,53,1300,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_181,app development company in usa,United States,51,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_182,mobile app development dubai,United Arab Emirates,59,500,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_183,mobile app development in dubai,United Arab Emirates,51,150,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_184,mobile app development company dubai,United Arab Emirates,64,300,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_185,mobile app development company in dubai,United Arab Emirates,60,450,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_186,app development company in dubai,United Arab Emirates,51,100,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_187,app development dubai,United Arab Emirates,63,250,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_188,app development companies in dubai,United Arab Emirates,57,90,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_189,dubai mobile app development,United Arab Emirates,0,70,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_190,mobile app development company,United Arab Emirates,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_191,app development uk,United Kingdom,52,200,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_192,app development company,United Kingdom,66,7600,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_193,mobile app development company,United Kingdom,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_194,mobile app development companies,United Kingdom,20,1900,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_195,app development company,United Kingdom,66,7600,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_196,app development company uk,United Kingdom,51,150,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_197,mobile app development uk,United Kingdom,56,150,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_198,app development companies uk,United Kingdom,55,350,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_199,app developer uk,United Kingdom,55,200,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_200,app developers uk,United Kingdom,55,900,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_201,mobile app developers uk,United Kingdom,51,100,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_202,uk app developers,United Kingdom,56,200,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_203,mobile app development company uk,United Kingdom,56,200,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_204,mobile app development bahrain,Bahrain,0,60,"Informational,Commercial,Non-branded,Local",1,loc_22
+keyword_205,mobile app development company Bahrain,Bahrain,,60,"Informational,Commercial,Non-branded,Local",1,loc_22
+keyword_206,mobile app development company in Bahrain,Bahrain,3,40,"Informational,Commercial,Non-branded,Local",1,loc_22
+keyword_207,app developers in Bahrain,Bahrain,,30,"Informational,Commercial,Non-branded,Local",1,loc_22
+keyword_208,mobile app development company,Bahrain,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_209,app development company,Bahrain,66,7600,"Informational,Commercial,Non-branded,Non-local",1,loc_22
+keyword_210,mobile app development company saudi,Saudi Arabia,0,20,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_211,mobile app development company in saudi,Saudi Arabia,0,100,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_212,app development agency in saudi arabia,Saudi Arabia,0,70,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_213,app developers in saudi arabia,Saudi Arabia,0,70,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_214,mobile app development in KSA,Saudi Arabia,0,0,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_215,mobile app development companies in saudi arabia,Saudi Arabia,0,100,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_216,KSA mobile app development,Saudi Arabia,0,0,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_217,app developers in KSA,Saudi Arabia,0,0,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_218,mobile app development company,Saudi Arabia,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_23
+keyword_219,mobile app development company in riyadh,Saudi Arabia,0,80,"Informational,Commercial,Non-branded,Non-local",1,loc_6
+keyword_220,app development company,United Arab Emirates,66,7600,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_221,mobile app development company,United Arab Emirates,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_222,app development company,United Arab Emirates,66,7600,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_223,website development uae,United Arab Emirates,64,150,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_224,website development company,United Arab Emirates,63,9700,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_225,web design company dubai,United Arab Emirates,66,1100,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_226,website development dubai,United Arab Emirates,62,200,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_227,web development company dubai,United Arab Emirates,62,400,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_228,website development company dubai,United Arab Emirates,53,400,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_229,web development companies in dubai,United Arab Emirates,54,400,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_230,website development company in dubai,United Arab Emirates,50,400,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_231,web development dubai,United Arab Emirates,57,400,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_232,web design dubai,United Arab Emirates,68,1200,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_233,web design agency dubai,United Arab Emirates,62,350,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_234,website development,United Arab Emirates,80,20000,"Informational,Non-branded,Non-local",1,loc_1
+keyword_235,website design dubai,United Arab Emirates,67,600,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_236,web design company,United Arab Emirates,81,25000,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_237,web design company in dubai,United Arab Emirates,68,700,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_238,website design company dubai,United Arab Emirates,67,350,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_239,web design in dubai,United Arab Emirates,67,250,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_240,website design in dubai,United Arab Emirates,65,250,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_241,dubai website design,United Arab Emirates,72,200,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_242,web development services in dubai,United Arab Emirates,45,300,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_243,web development services,United Arab Emirates,67,6500,"Informational,Commercial,Non-branded,Non-local",1,loc_1
+keyword_244,web development service dubai,United Arab Emirates,0,40,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_245,web development company in dubai,United Arab Emirates,51,400,"Informational,Commercial,Non-branded,Local",1,loc_1
+keyword_246,app developer NYC,United States,18,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_247,NYC app developers,United States,7,100,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_248,mobile app development company NYC,United States,31,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_249,app development company NYC,United States,15,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_250,app developers NYC,United States,19,200,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_251,mobile app developer New York,United States,31,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_252,mobile app development NYC,United States,35,200,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_253,app developers New York,United States,15,200,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_254,mobile app developers NYC,United States,23,200,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_255,New York app developers,United States,24,100,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_256,app development NYC,United States,24,100,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_257,mobile app developers New York,United States,13,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_258,app development New York,United States,18,200,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_259,mobile app development company New York,United States,17,500,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_260,android app development New York,United States,28,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_261,mobile app development company in New York,United States,35,150,"Informational,Commercial,Non-branded,Local",1,loc_4
+keyword_262,on demand app development,United States,14,450,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_263,on demand app development company,United States,19,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_264,on demand app development services,United States,36,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_265,on demand mobile app development,United States,23,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_266,on demand service app development,United States,23,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_267,crm software development company,United States,11,1100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_268,crm software development,United States,8,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_269,custom crm development,United States,2,1100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_270,crm development services,United States,6,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_271,crm development company,United States,84,1300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_272,custom crm software development company,United States,9,400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_273,custom crm development company,United States,8,450,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_274,custom crm development services,United States,12,800,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_275,staff augmentation services,United States,14,2600,"Informational,Non-branded,Non-local",1,loc_19
+keyword_276,it staff augmentation services,United States,12,900,"Informational,Non-branded,Non-local",1,loc_19
+keyword_277,staff augmentation company,United States,5,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_278,it staff augmentation,United States,3,2800,"Informational,Non-branded,Non-local",1,loc_19
+keyword_279,it staff augmentation company,United States,12,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_280,cloud application development services,United States,7,1400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_281,cloud application development company,United States,16,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_282,cloud application services,United States,70,450,"Informational,Non-branded,Non-local",1,loc_19
+keyword_283,cloud app development,United States,7,600,"Informational,Non-branded,Non-local",1,loc_19
+keyword_284,cloud app development services,United States,18,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_285,custom software development company,United States,5,2000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_286,custom software development,United States,22,10000,"Informational,Non-branded,Non-local",1,loc_19
+keyword_287,custom software development services,United States,8,6100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_288,custom software development firm,United States,70,1100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_289,custom software development solutions,United States,23,1500,"Informational,Non-branded,Non-local",1,loc_19
+keyword_290,flutter app development company,United States,34,1900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_291,flutter app development company in usa,United States,14,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_292,flutter mobile application development company,United States,43,200,"Informational,Commercial,Branded,Non-local",1,loc_19
+keyword_293,flutter application development services,United States,31,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_294,flutter app development agency,United States,26,400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_295,mobile app development company toronto,Canada,30,150,"Informational,Commercial,Non-branded,Local",1,loc_16
+keyword_296,app development company toronto,Canada,38,100,"Informational,Commercial,Non-branded,Local",1,loc_16
+keyword_297,mobile app development company in toronto,Canada,27,100,"Informational,Commercial,Non-branded,Local",1,loc_16
+keyword_298,mobile app development companies in toronto,Canada,24,40,"Informational,Commercial,Non-branded,Local",1,loc_16
+keyword_299,mobile app development toronto,Canada,,10,"Informational,Commercial,Non-branded,Local",1,loc_16
+keyword_300,mobile app development company,United States,46,11000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_301,ai development services,United States,57,4800,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_302,ai development company,United States,56,2600,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_303,artificial intelligence development company,United States,72,1900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_304,artificial intelligence development services,United States,55,2000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_305,ai application development services,United States,55,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_306,ai software development services,United States,57,1800,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_307,ai app development company,United States,91,1600,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_308,3d game development,United States,91,1000,"Informational,Non-branded,Non-local",1,loc_19
+keyword_309,3d game development services,United States,36,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_310,3d game development company,United States,77,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_311,3d game developers,United States,81,70,"Informational,Non-branded,Non-local",1,loc_19
+keyword_312,digital marketing agency,United States,83,75000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_313,digital marketing services,United States,77,29000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_314,digital marketing company,United States,75,28000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_315,digital marketing firms in usa,United States,68,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_316,digital marketing services usa,United States,82,450,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_317,mobile app development denver,United States,16,80,"Informational,Commercial,Non-branded,Local",1,loc_17
+keyword_318,app developer denver,United States,29,150,"Informational,Commercial,Non-branded,Local",1,loc_17
+keyword_319,mobile app development company denver,United States,9,90,,1,loc_17
+keyword_320,denver mobile app development services,United States,23,70,"Informational,Commercial,Non-branded,Local",1,loc_17
+keyword_321,mobile application development denver,United States,23,150,"Informational,Commercial,Non-branded,Local",1,loc_17
+keyword_322,mobile app development company in colorado,United States,0,40,,1,loc_19
+keyword_323,web development company in uk,United Kingdom,43,40,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_324,website development company,United Kingdom,63,9700,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_325,web development service,United Kingdom,35,2400,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_326,web development company,United Kingdom,26,16000,"Informational,Commercial,Non-branded,Non-local",1,loc_8
+keyword_327,web development company uk,United Kingdom,13,400,"Informational,Commercial,Non-branded,Local",1,loc_8
+keyword_328,web development agency,United Kingdom,84,5300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_329,2D Game Development Company,United States,79,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_330,2d game development services,United States,47,80,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_331,2d game development,United States,48,100,"Informational,Non-branded,Non-local",1,loc_19
+keyword_332,2d game studios,United States,64,40,"Informational,Non-branded,Non-local",1,loc_19
+keyword_333,2d game developer,United States,76,30,"Informational,Non-branded,Non-local",1,loc_19
+keyword_334,cms development company,United States,8,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_335,cms development service,United States,7,100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_336,custom cms development company,United States,6,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_337,cms web development services,United States,90,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_338,cms website development companies,United States,8,30,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_339,cms website development company,United States,8,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_340,custom cms development services,United States,9,400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_341,cms development companies,United States,3,80,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_342,cms development services,United States,7,800,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_343,cms website development services,United States,9,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_344,cms development,United States,46,500,"Informational,Non-branded,Non-local",1,loc_19
+keyword_345,cms website design company,United States,67,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_346,cms website development company,United States,8,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_347,cms website development services,United States,9,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_348,custom cms development,United States,2,250,"Informational,Non-branded,Non-local",1,loc_19
+keyword_349,ecommerce website development,United States,43,10000,"Informational,Non-branded,Non-local",1,loc_19
+keyword_350,ecommerce web development,United States,37,4500,"Informational,Non-branded,Non-local",1,loc_19
+keyword_351,ecommerce website development company,United States,25,1300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_352,ecommerce web design company,United States,51,3300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_353,ecommerce web design agency,United States,44,2400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_354,ecommerce web development services,United States,33,2200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_355,ecommerce website design company,United States,65,3300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_356,ecommerce website developer,United States,64,1400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_357,iphone app development los angeles,United States,5,90,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_358,app developers los angeles,United States,13,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_359,ios app development los angeles,United States,22,100,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_360,app developers in los angeles,United States,10,100,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_361,app development los angeles,United States,21,100,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_362,app developer los angeles,United States,11,150,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_363,mobile app development los angeles,United States,22,100,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_364,iphone app developers los angeles,United States,12,70,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_365,los angeles mobile app development,United States,12,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_366,mobile app development company los angeles,United States,20,250,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_367,mobile app development company in los angeles,United States,4,150,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_368,app development company los angeles,United States,22,70,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_369,mobile app developers los angeles,United States,5,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_370,app development companies los angeles,United States,10,80,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_371,los angeles app developers,United States,15,80,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_372,mobile app development company in boston,United States,2,150,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_373,mobile app development company boston,United States,20,100,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_374,mobile app development companies in boston,United States,4,40,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_375,mobile app developers boston,United States,4,150,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_376,boston app developers,United States,5,70,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_377,mobile app development boston,United States,19,150,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_378,app developers boston,United States,5,80,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_379,app development company in boston,United States,19,70,"Informational,Commercial,Non-branded,Local",1,loc_18
+keyword_380,app development san diego,United States,2,150,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_381,mobile app development san diego,United States,5,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_382,mobile app development san diego,United States,5,200,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_383,mobile app development company san diego,United States,2,70,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_384,mobile app developers san diego,United States,1,80,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_385,san diego app developers,United States,2,40,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_386,mobile application development san diego,United States,2,90,"Informational,Commercial,Non-branded,Local",1,loc_19
+keyword_387,api integration services,United States,12,1100,"Informational,Non-branded,Non-local",1,loc_19
+keyword_388,api development and integration services,United States,2,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_389,api development services,United States,2,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_390,api integration company,United States,56,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_391,custom api integration services,United States,4,30,"Informational,Non-branded,Non-local",1,loc_19
+keyword_392,custom api development services,United States,0,250,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_393,api integration developer,United States,0,100,"Informational,Non-branded,Non-local",1,loc_19
+keyword_394,web application development company,United States,21,6300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_395,custom web application development services,United States,10,1000,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_396,custom web application development,United States,5,1300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_397,custom web application development company,United States,11,1700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_398,web app development services,United States,20,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_399,web app development company,United States,40,3100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_400,website application development,United States,81,600,"Informational,Non-branded,Non-local",1,loc_19
+keyword_401,Mobile Application Maintenance Services,United States,1,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_402,mobile app maintenance services,United States,2,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_403,app maintenance services,United States,5,200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_404,mobile app maintenance,United States,0,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_405,app maintenance company,United States,5,60,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_406,application support and maintenance services,United States,0,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_407,application maintenance services,United States,3,600,"Informational,Non-branded,Non-local",1,loc_19
+keyword_408,application support services,United States,4,400,"Informational,Non-branded,Non-local",1,loc_19
+keyword_409,magento development services,United States,12,1200,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_410,magento development company,United States,12,1400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_411,magento development agency,United States,33,1100,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_412,magento ecommerce development company,United States,29,1100,"Informational,Commercial,Branded,Non-local",1,loc_19
+keyword_413,magento ecommerce development services,United States,9,450,"Informational,Commercial,Branded,Non-local",1,loc_19
+keyword_414,custom magento development services,United States,12,350,"Informational,Commercial,Branded,Non-local",1,loc_19
+keyword_415,app store optimization services,United States,7,1700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_416,app store optimization company,United States,65,500,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_417,app store optimization agency,United States,8,350,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_418,app store optimisation service,United States,7,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_419,app store optimization expert,United States,2,150,"Informational,Non-branded,Non-local",1,loc_19
+keyword_420,enterprise app development company,United States,7,900,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_421,enterprise mobile app development company,United States,3,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_422,enterprise app development services,United States,18,800,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_423,enterprise mobile application development company,United States,2,150,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_424,enterprise mobile application development,United States,2,500,"Informational,Non-branded,Non-local",1,loc_19
+keyword_425,enterprise app developers,United States,18,200,"Informational,Non-branded,Non-local",1,loc_19
+keyword_426,lms developers,United States,60,250,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_427,lms development company,United States,12,400,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_428,lms development services,United States,8,300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_429,custom learning management system development,United States,2,400,"Informational,Non-branded,Non-local",1,loc_19
+keyword_430,lms services,United States,71,250,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_431,custom lms development,United States,1,700,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_432,lms company,United States,87,350,"Informational,Non-branded,Non-local",1,loc_19
+keyword_433,ai chatbot development services,United States,1,1300,"Informational,Commercial,Non-branded,Non-local",1,loc_19
+keyword_434,ai chatbot development company,United States,19,1100,"Informational,Commercial,Non-branded,Non-local",1,loc_19

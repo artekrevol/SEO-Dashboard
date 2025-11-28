@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, numeric, date, timestamp, jsonb, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, numeric, date, timestamp, jsonb, boolean, index, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -21,6 +21,7 @@ export const projects = pgTable("projects", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   domain: text("domain").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -42,15 +43,57 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
 
+export const locations = pgTable("locations", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  name: text("name").notNull(),
+  dataforseoLocationCode: integer("dataforseo_location_code").notNull(),
+  languageCode: text("language_code").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const locationsRelations = relations(locations, ({ many }) => ({
+  keywords: many(keywords),
+  rankingsHistory: many(rankingsHistory),
+}));
+
+export const insertLocationSchema = createInsertSchema(locations).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
+export type Location = typeof locations.$inferSelect;
+
+export const priorityEnum = z.enum(["P1", "P2", "P3"]);
+export type Priority = z.infer<typeof priorityEnum>;
+
+export const intentHintEnum = z.enum(["transactional", "commercial", "informational", "navigational", "mixed"]);
+export type IntentHint = z.infer<typeof intentHintEnum>;
+
 export const keywords = pgTable("keywords", {
   id: serial("id").primaryKey(),
   projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
   keyword: text("keyword").notNull(),
-  cluster: text("cluster"),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id, { onDelete: "set null" }),
+  languageCode: text("language_code"),
   targetUrl: text("target_url"),
+  intentHint: text("intent_hint"),
+  cluster: text("cluster"),
+  trackDaily: boolean("track_daily").default(true).notNull(),
+  priority: text("priority").default("P3"),
+  isCorePage: boolean("is_core_page").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  difficulty: numeric("difficulty", { precision: 5, scale: 2 }),
+  searchVolume: integer("search_volume"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdIdx: index("keywords_project_id_idx").on(table.projectId),
+  locationIdIdx: index("keywords_location_id_idx").on(table.locationId),
+  isActiveIdx: index("keywords_is_active_idx").on(table.isActive),
+  priorityIdx: index("keywords_priority_idx").on(table.priority),
 }));
 
 export const keywordsRelations = relations(keywords, ({ one, many }) => ({
@@ -58,17 +101,78 @@ export const keywordsRelations = relations(keywords, ({ one, many }) => ({
     fields: [keywords.projectId],
     references: [projects.id],
   }),
+  location: one(locations, {
+    fields: [keywords.locationId],
+    references: [locations.id],
+  }),
   keywordMetrics: many(keywordMetrics),
   seoRecommendations: many(seoRecommendations),
+  rankingsHistory: many(rankingsHistory),
 }));
 
 export const insertKeywordSchema = createInsertSchema(keywords).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export type InsertKeyword = z.infer<typeof insertKeywordSchema>;
 export type Keyword = typeof keywords.$inferSelect;
+
+export const rankingsHistory = pgTable("rankings_history", {
+  id: serial("id").primaryKey(),
+  keywordId: integer("keyword_id").notNull().references(() => keywords.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  position: integer("position"),
+  url: text("url"),
+  device: text("device"),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  keywordIdIdx: index("rankings_history_keyword_id_idx").on(table.keywordId),
+  dateIdx: index("rankings_history_date_idx").on(table.date),
+}));
+
+export const rankingsHistoryRelations = relations(rankingsHistory, ({ one }) => ({
+  keyword: one(keywords, {
+    fields: [rankingsHistory.keywordId],
+    references: [keywords.id],
+  }),
+  location: one(locations, {
+    fields: [rankingsHistory.locationId],
+    references: [locations.id],
+  }),
+}));
+
+export const insertRankingsHistorySchema = createInsertSchema(rankingsHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertRankingsHistory = z.infer<typeof insertRankingsHistorySchema>;
+export type RankingsHistory = typeof rankingsHistory.$inferSelect;
+
+export const settingsPriorityRules = pgTable("settings_priority_rules", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  priority: text("priority").notNull(),
+  intents: jsonb("intents").$type<string[]>(),
+  maxPosition: integer("max_position"),
+  minClicks: integer("min_clicks"),
+  isDefault: boolean("is_default").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSettingsPriorityRulesSchema = createInsertSchema(settingsPriorityRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSettingsPriorityRules = z.infer<typeof insertSettingsPriorityRulesSchema>;
+export type SettingsPriorityRules = typeof settingsPriorityRules.$inferSelect;
 
 export const seoHealthSnapshots = pgTable("seo_health_snapshots", {
   id: serial("id").primaryKey(),
@@ -246,6 +350,27 @@ export const insertCompetitorMetricsSchema = createInsertSchema(competitorMetric
 
 export type InsertCompetitorMetrics = z.infer<typeof insertCompetitorMetricsSchema>;
 export type CompetitorMetrics = typeof competitorMetrics.$inferSelect;
+
+export const importLogs = pgTable("import_logs", {
+  id: serial("id").primaryKey(),
+  importType: text("import_type").notNull(),
+  fileName: text("file_name"),
+  recordsProcessed: integer("records_processed").default(0),
+  recordsInserted: integer("records_inserted").default(0),
+  recordsUpdated: integer("records_updated").default(0),
+  recordsSkipped: integer("records_skipped").default(0),
+  errors: jsonb("errors").$type<string[]>(),
+  status: text("status").default("pending").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertImportLogSchema = createInsertSchema(importLogs).omit({
+  id: true,
+});
+
+export type InsertImportLog = z.infer<typeof insertImportLogSchema>;
+export type ImportLog = typeof importLogs.$inferSelect;
 
 export const recommendationStatusEnum = z.enum(["open", "in_progress", "done", "dismissed"]);
 export type RecommendationStatus = z.infer<typeof recommendationStatusEnum>;

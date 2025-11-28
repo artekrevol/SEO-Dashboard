@@ -11,6 +11,15 @@ import {
   runRecommendationGeneration,
   startScheduledJobs 
 } from "./services/jobs";
+import {
+  importLocations,
+  importKeywords,
+  importRankingsFromXlsx,
+  importProjectsFromXlsx,
+  runFullImport,
+  bulkUpdateKeywords,
+  initializeDefaultPriorityRules
+} from "./services/ingestion";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -341,6 +350,121 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error running recommendation generation job:", error);
       res.status(500).json({ error: "Failed to run recommendation generation job" });
+    }
+  });
+
+  app.get("/api/data/locations", async (req, res) => {
+    try {
+      const allLocations = await storage.getLocations();
+      res.json({ locations: allLocations });
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+      res.status(500).json({ error: "Failed to fetch locations" });
+    }
+  });
+
+  app.get("/api/data/priority-rules", async (req, res) => {
+    try {
+      const rules = await storage.getPriorityRules();
+      res.json({ rules });
+    } catch (error) {
+      console.error("Error fetching priority rules:", error);
+      res.status(500).json({ error: "Failed to fetch priority rules" });
+    }
+  });
+
+  app.post("/api/data/priority-rules/init", async (req, res) => {
+    try {
+      await initializeDefaultPriorityRules();
+      const rules = await storage.getPriorityRules();
+      res.json({ success: true, rules });
+    } catch (error) {
+      console.error("Error initializing priority rules:", error);
+      res.status(500).json({ error: "Failed to initialize priority rules" });
+    }
+  });
+
+  app.post("/api/data/import/locations", async (req, res) => {
+    try {
+      const { filePath } = req.body;
+      if (!filePath) {
+        return res.status(400).json({ error: "filePath is required" });
+      }
+      const result = await importLocations(filePath);
+      res.json(result);
+    } catch (error) {
+      console.error("Error importing locations:", error);
+      res.status(500).json({ error: "Failed to import locations" });
+    }
+  });
+
+  app.post("/api/data/import/keywords", async (req, res) => {
+    try {
+      const { filePath, projectId } = req.body;
+      if (!filePath || !projectId) {
+        return res.status(400).json({ error: "filePath and projectId are required" });
+      }
+      const result = await importKeywords(filePath, projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error importing keywords:", error);
+      res.status(500).json({ error: "Failed to import keywords" });
+    }
+  });
+
+  app.post("/api/data/import/rankings", async (req, res) => {
+    try {
+      const { filePath } = req.body;
+      if (!filePath) {
+        return res.status(400).json({ error: "filePath is required" });
+      }
+      const result = await importRankingsFromXlsx(filePath);
+      res.json(result);
+    } catch (error) {
+      console.error("Error importing rankings:", error);
+      res.status(500).json({ error: "Failed to import rankings" });
+    }
+  });
+
+  app.post("/api/data/import/projects", async (req, res) => {
+    try {
+      const { filePath } = req.body;
+      if (!filePath) {
+        return res.status(400).json({ error: "filePath is required" });
+      }
+      const result = await importProjectsFromXlsx(filePath);
+      res.json(result);
+    } catch (error) {
+      console.error("Error importing projects:", error);
+      res.status(500).json({ error: "Failed to import projects" });
+    }
+  });
+
+  app.post("/api/data/import/full", async (req, res) => {
+    try {
+      const { locationsPath, keywordsPath, projectId, rankingsPath } = req.body;
+      if (!locationsPath || !keywordsPath || !projectId) {
+        return res.status(400).json({ error: "locationsPath, keywordsPath, and projectId are required" });
+      }
+      const result = await runFullImport(locationsPath, keywordsPath, projectId, rankingsPath);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running full import:", error);
+      res.status(500).json({ error: "Failed to run full import" });
+    }
+  });
+
+  app.patch("/api/data/keywords/bulk", async (req, res) => {
+    try {
+      const { keywordIds, updates } = req.body;
+      if (!keywordIds || !Array.isArray(keywordIds) || keywordIds.length === 0) {
+        return res.status(400).json({ error: "keywordIds array is required" });
+      }
+      const count = await bulkUpdateKeywords(keywordIds, updates);
+      res.json({ success: true, updatedCount: count });
+    } catch (error) {
+      console.error("Error bulk updating keywords:", error);
+      res.status(500).json({ error: "Failed to bulk update keywords" });
     }
   });
 
