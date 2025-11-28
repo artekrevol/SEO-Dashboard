@@ -131,15 +131,28 @@ The following files are available for import in `attached_assets/`:
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string (auto-configured)
 - `SESSION_SECRET` - Session encryption key
-- `DATAFORSEO_LOGIN` - DataForSEO API login (required for live data)
-- `DATAFORSEO_PASSWORD` - DataForSEO API password (required for live data)
+- `DATAFORSEO_API_LOGIN` - DataForSEO API login (required for live data) ✓ Configured
+- `DATAFORSEO_API_PASSWORD` - DataForSEO API password (required for live data) ✓ Configured
 
 ## Security Features
 - **File Path Validation**: Import endpoints use containment checks (path.relative) and symlink resolution (fs.realpathSync) to prevent directory traversal attacks
 - **Allowed Import Directories**: attached_assets, imports, data
 - **Input Validation**: All API endpoints validate request bodies using Zod schemas
 
+## DataForSEO Integration Status
+- **API Connectivity**: ✓ Configured and connected
+- **Keyword Metrics Job**: ✓ Updates difficulty (1-93), intent (commercial/navigational/informational/transactional), SERP rankings
+- **Competitor Analysis Job**: ✓ Analyzes top 10 competitors with avg positions
+- **SEO Health Snapshot**: ✓ Calculates aggregated health scores (0-100)
+- **Scheduled Jobs**: ✓ Daily 5PM CST snapshot, weekend heavy jobs
+
+### API Endpoints Used
+- `/serp/google/organic/live/advanced` - SERP rankings
+- `/keywords_data/google_ads/search_volume/live` - Search volume
+- `/dataforseo_labs/google/bulk_keyword_difficulty/live` - Keyword difficulty
+- `/dataforseo_labs/google/search_intent/live` - Search intent classification
+
 ## Next Steps
-- DataForSEO API integration for live ranking data (requires DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets)
 - Data management UI with bulk actions and keyword grid
 - Custom report generation and export
+- Search volume data investigation (currently returning 0 for some keywords)
