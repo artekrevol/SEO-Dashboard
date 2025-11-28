@@ -3,6 +3,14 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema } from "@shared/schema";
 import { z } from "zod";
+import { DataForSEOService } from "./services/dataforseo";
+import { 
+  runDailySEOSnapshot, 
+  runKeywordMetricsUpdate, 
+  runCompetitorAnalysis, 
+  runRecommendationGeneration,
+  startScheduledJobs 
+} from "./services/jobs";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -275,6 +283,68 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to delete keyword" });
     }
   });
+
+  app.get("/api/system/status", async (req, res) => {
+    res.json({
+      dataForSEOConfigured: DataForSEOService.isConfigured(),
+      scheduledJobsActive: true,
+    });
+  });
+
+  app.post("/api/jobs/snapshot", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string | undefined;
+      const result = await runDailySEOSnapshot(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running snapshot job:", error);
+      res.status(500).json({ error: "Failed to run snapshot job" });
+    }
+  });
+
+  app.post("/api/jobs/keywords", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const result = await runKeywordMetricsUpdate(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running keyword update job:", error);
+      res.status(500).json({ error: "Failed to run keyword update job" });
+    }
+  });
+
+  app.post("/api/jobs/competitors", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const result = await runCompetitorAnalysis(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running competitor analysis job:", error);
+      res.status(500).json({ error: "Failed to run competitor analysis job" });
+    }
+  });
+
+  app.post("/api/jobs/recommendations", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const result = await runRecommendationGeneration(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running recommendation generation job:", error);
+      res.status(500).json({ error: "Failed to run recommendation generation job" });
+    }
+  });
+
+  startScheduledJobs();
 
   return httpServer;
 }
