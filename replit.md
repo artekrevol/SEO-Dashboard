@@ -47,6 +47,13 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 3. **Technical Risk Analysis** - Monitors indexability, schema, CWV, and duplicate content
 4. **Competitor Pressure Index** - Tracks competitive threat level per domain
 5. **Actionable Recommendations** - Task-like items with severity levels and status tracking
+6. **Historical Trend Analysis** - SEO health chart with:
+   - Date range selector (7D, 14D, 30D, 90D, All) anchored to latest data point
+   - Linear regression forecasting with toggle control
+   - Period comparison (first half vs second half of selected range)
+   - 3-day moving average smoothing line
+   - Trend badge with percentage change indicator
+7. **Advanced Keyword Filtering** - Position brackets, opportunity ranges, SERP features, clusters, active filter chips, and preset buttons
 
 ## Development
 
@@ -71,5 +78,4 @@ npm run db:push   # Push schema changes to database
 - DataForSEO API integration for live data
 - Weekly opportunity/gap analysis cron job
 - Authority and technical risk monitoring
-- Historical trend analysis and forecasting
 - Custom report generation
