@@ -195,7 +195,7 @@ export async function runKeywordMetricsUpdate(projectId: string): Promise<JobRes
   if (!dataForSEO) {
     return {
       success: false,
-      message: "DataForSEO not configured. Set DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets.",
+      message: "DataForSEO not configured. Set DATAFORSEO_API_LOGIN and DATAFORSEO_API_PASSWORD secrets.",
     };
   }
 
@@ -396,7 +396,6 @@ export function startScheduledJobs(): void {
       }
     },
     {
-      scheduled: true,
       timezone: "America/Chicago",
     }
   );
@@ -423,7 +422,6 @@ export function startScheduledJobs(): void {
       }
     },
     {
-      scheduled: true,
       timezone: "America/Chicago",
     }
   );

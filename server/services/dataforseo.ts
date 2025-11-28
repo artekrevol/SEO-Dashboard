@@ -88,25 +88,57 @@ export class DataForSEOService {
       language_code: "en",
       device: "desktop",
       os: "windows",
+      depth: 100,
     }));
 
     const response = await this.makeRequest<{
       tasks: Array<{
+        data?: { keyword: string };
         result: Array<{
           keyword: string;
-          items: SerpResultItem[];
+          items: Array<{
+            type: string;
+            rank_group: number;
+            rank_absolute: number;
+            domain?: string;
+            url?: string;
+            title?: string;
+            description?: string;
+            breadcrumb?: string;
+          }>;
         }>;
       }>;
-    }>("/serp/google/organic/live/regular", "POST", tasks);
+    }>("/serp/google/organic/live/advanced", "POST", tasks);
 
     const results = new Map<string, SerpResultItem | null>();
     
     for (const task of response.tasks || []) {
+      const keyword = task.data?.keyword || '';
       for (const result of task.result || []) {
-        const domainResult = result.items?.find(item => 
-          item.domain === domain || item.url.includes(domain)
+        const organicItems = (result.items || []).filter(item => item.type === 'organic');
+        const domainResult = organicItems.find(item => 
+          item.domain === domain || 
+          item.domain?.includes(domain) ||
+          item.url?.includes(domain)
         );
-        results.set(result.keyword, domainResult || null);
+        
+        if (domainResult) {
+          results.set(keyword, {
+            keyword,
+            rank_group: domainResult.rank_group,
+            rank_absolute: domainResult.rank_absolute,
+            domain: domainResult.domain || '',
+            url: domainResult.url || '',
+            title: domainResult.title || '',
+            description: domainResult.description || '',
+            breadcrumb: domainResult.breadcrumb || '',
+            is_featured_snippet: false,
+            is_image: false,
+            is_video: false,
+          });
+        } else {
+          results.set(keyword, null);
+        }
       }
     }
 
@@ -151,11 +183,13 @@ export class DataForSEOService {
     const response = await this.makeRequest<{
       tasks: Array<{
         result: Array<{
-          keyword: string;
-          keyword_difficulty: number;
+          items: Array<{
+            keyword: string;
+            keyword_difficulty: number;
+          }>;
         }>;
       }>;
-    }>("/dataforseo_labs/google/keyword_difficulty/live", "POST", [{
+    }>("/dataforseo_labs/google/bulk_keyword_difficulty/live", "POST", [{
       keywords,
       location_code: locationCode,
       language_code: "en",
@@ -165,7 +199,9 @@ export class DataForSEOService {
     
     for (const task of response.tasks || []) {
       for (const result of task.result || []) {
-        results.set(result.keyword, result.keyword_difficulty || 0);
+        for (const item of result.items || []) {
+          results.set(item.keyword, item.keyword_difficulty || 0);
+        }
       }
     }
 
@@ -176,25 +212,28 @@ export class DataForSEOService {
     const response = await this.makeRequest<{
       tasks: Array<{
         result: Array<{
-          keyword: string;
-          keyword_info: {
-            search_intent_info: {
-              main_intent: string;
+          items: Array<{
+            keyword: string;
+            keyword_intent: {
+              label: string;
+              probability: number;
             };
-          };
+          }>;
         }>;
       }>;
-    }>("/dataforseo_labs/google/keyword_info/live", "POST", [{
+    }>("/dataforseo_labs/google/search_intent/live", "POST", [{
       keywords,
-      include_serp_info: false,
+      language_code: "en",
     }]);
 
     const results = new Map<string, string>();
     
     for (const task of response.tasks || []) {
       for (const result of task.result || []) {
-        const intent = result.keyword_info?.search_intent_info?.main_intent || "informational";
-        results.set(result.keyword, intent.toLowerCase());
+        for (const item of result.items || []) {
+          const intent = item.keyword_intent?.label || "informational";
+          results.set(item.keyword, intent.toLowerCase());
+        }
       }
     }
 
@@ -396,7 +435,7 @@ export class DataForSEOService {
   }
 
   static isConfigured(): boolean {
-    return !!(process.env.DATAFORSEO_LOGIN && process.env.DATAFORSEO_PASSWORD);
+    return !!(process.env.DATAFORSEO_API_LOGIN && process.env.DATAFORSEO_API_PASSWORD);
   }
 
   static fromEnv(): DataForSEOService | null {
@@ -404,8 +443,8 @@ export class DataForSEOService {
       return null;
     }
     return new DataForSEOService({
-      login: process.env.DATAFORSEO_LOGIN!,
-      password: process.env.DATAFORSEO_PASSWORD!,
+      login: process.env.DATAFORSEO_API_LOGIN!,
+      password: process.env.DATAFORSEO_API_PASSWORD!,
     });
   }
 }
