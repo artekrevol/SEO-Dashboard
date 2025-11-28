@@ -134,8 +134,12 @@ The following files are available for import in `attached_assets/`:
 - `DATAFORSEO_LOGIN` - DataForSEO API login (required for live data)
 - `DATAFORSEO_PASSWORD` - DataForSEO API password (required for live data)
 
+## Security Features
+- **File Path Validation**: Import endpoints use containment checks (path.relative) and symlink resolution (fs.realpathSync) to prevent directory traversal attacks
+- **Allowed Import Directories**: attached_assets, imports, data
+- **Input Validation**: All API endpoints validate request bodies using Zod schemas
+
 ## Next Steps
-- DataForSEO API integration for live ranking data
-- Timezone-aware 5PM CST scheduling for daily jobs
-- Weekend heavy job slots for intensive data collection
-- Custom report generation
+- DataForSEO API integration for live ranking data (requires DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD secrets)
+- Data management UI with bulk actions and keyword grid
+- Custom report generation and export
