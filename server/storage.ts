@@ -194,8 +194,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createKeywordMetrics(insertMetrics: InsertKeywordMetrics): Promise<KeywordMetrics> {
-    const [metrics] = await db.insert(keywordMetrics).values(insertMetrics).returning();
-    return metrics;
+    const result = await db.insert(keywordMetrics).values([insertMetrics]).returning();
+    return result[0];
   }
 
   async getPageMetrics(projectId: string, limit: number = 100): Promise<PageMetrics[]> {

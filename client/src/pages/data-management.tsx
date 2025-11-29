@@ -165,7 +165,7 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
               </SelectContent>
             </Select>
           </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Bulk Actions */}
