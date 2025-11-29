@@ -159,33 +159,32 @@ export class DatabaseStorage implements IStorage {
     const projectKeywords = await this.getKeywords(projectId);
     if (projectKeywords.length === 0) return [];
 
-    const keywordIds = projectKeywords.map((k) => k.id);
-    
-    const latestMetrics = await db
+    // Get latest metrics for all keywords (including those without metrics)
+    const allKeywordsWithMetrics = await db
       .select({
         keywordMetrics: keywordMetrics,
         keyword: keywords,
       })
-      .from(keywordMetrics)
-      .innerJoin(keywords, eq(keywordMetrics.keywordId, keywords.id))
+      .from(keywords)
+      .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
       .where(eq(keywords.projectId, projectId))
       .orderBy(desc(keywordMetrics.date));
 
     const metricsMap = new Map<number, any>();
-    for (const row of latestMetrics) {
+    for (const row of allKeywordsWithMetrics) {
       if (!metricsMap.has(row.keyword.id)) {
         metricsMap.set(row.keyword.id, {
           keywordId: row.keyword.id,
           keyword: row.keyword.keyword,
           cluster: row.keyword.cluster,
           url: row.keyword.targetUrl || "",
-          currentPosition: row.keywordMetrics.position || 0,
-          positionDelta: row.keywordMetrics.positionDelta || 0,
-          searchVolume: row.keywordMetrics.searchVolume || 0,
-          difficulty: Number(row.keywordMetrics.difficulty) || 0,
-          intent: row.keywordMetrics.intent || "informational",
-          serpFeatures: row.keywordMetrics.serpFeatures || [],
-          opportunityScore: Number(row.keywordMetrics.opportunityScore) || 0,
+          currentPosition: row.keywordMetrics?.position || 0,
+          positionDelta: row.keywordMetrics?.positionDelta || 0,
+          searchVolume: row.keywordMetrics?.searchVolume || 0,
+          difficulty: row.keywordMetrics ? Number(row.keywordMetrics.difficulty) || 0 : 0,
+          intent: row.keywordMetrics?.intent || "informational",
+          serpFeatures: row.keywordMetrics?.serpFeatures || [],
+          opportunityScore: row.keywordMetrics ? Number(row.keywordMetrics.opportunityScore) || 0 : 0,
         });
       }
     }
