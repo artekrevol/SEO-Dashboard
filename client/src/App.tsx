@@ -15,6 +15,7 @@ import { KeywordsPage } from "@/pages/keywords";
 import { PagesPage } from "@/pages/pages";
 import { RecommendationsPage } from "@/pages/recommendations";
 import { CompetitorsPage } from "@/pages/competitors";
+import { DataManagementPage } from "@/pages/data-management";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -112,6 +113,9 @@ function AppContent() {
               </Route>
               <Route path="/competitors">
                 <CompetitorsPage projectId={selectedProjectId} />
+              </Route>
+              <Route path="/data-management">
+                <DataManagementPage projectId={selectedProjectId} />
               </Route>
               <Route path="/rankings">
                 <div className="flex h-full items-center justify-center">

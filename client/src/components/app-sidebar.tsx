@@ -8,6 +8,7 @@ import {
   Settings,
   BarChart3,
   TrendingUp,
+  Database,
 } from "lucide-react";
 import {
   Sidebar,
@@ -47,6 +48,11 @@ const mainNavItems = [
     title: "Competitors",
     url: "/competitors",
     icon: Users,
+  },
+  {
+    title: "Data Management",
+    url: "/data-management",
+    icon: Database,
   },
 ];
 
