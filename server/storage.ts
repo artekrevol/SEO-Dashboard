@@ -62,6 +62,7 @@ export interface IStorage {
   getKeywords(projectId: string): Promise<Keyword[]>;
   getKeyword(id: number): Promise<Keyword | undefined>;
   createKeyword(keyword: InsertKeyword): Promise<Keyword>;
+  updateKeyword(id: number, updates: Partial<InsertKeyword>): Promise<Keyword | undefined>;
   deleteKeyword(id: number): Promise<void>;
 
   getSeoHealthSnapshots(projectId: string, limit?: number): Promise<SeoHealthSnapshot[]>;
@@ -74,6 +75,7 @@ export interface IStorage {
 
   getPageMetrics(projectId: string, limit?: number): Promise<PageMetrics[]>;
   getLatestPageMetrics(projectId: string): Promise<PageMetrics[]>;
+  getPageMetricsWithKeywordAnalytics(projectId: string): Promise<any[]>;
   createPageMetrics(metrics: InsertPageMetrics): Promise<PageMetrics>;
   deletePageMetrics(id: number): Promise<void>;
   getPageMetricsById(id: number): Promise<PageMetrics | undefined>;
@@ -169,6 +171,11 @@ export class DatabaseStorage implements IStorage {
   async createKeyword(insertKeyword: InsertKeyword): Promise<Keyword> {
     const [keyword] = await db.insert(keywords).values(insertKeyword).returning();
     return keyword;
+  }
+
+  async updateKeyword(id: number, updates: Partial<InsertKeyword>): Promise<Keyword | undefined> {
+    const [keyword] = await db.update(keywords).set(updates).where(eq(keywords.id, id)).returning();
+    return keyword || undefined;
   }
 
   async deleteKeyword(id: number): Promise<void> {
@@ -326,6 +333,65 @@ export class DatabaseStorage implements IStorage {
     }
 
     return Array.from(urlMap.values());
+  }
+
+  async getPageMetricsWithKeywordAnalytics(projectId: string): Promise<any[]> {
+    const pages = await this.getLatestPageMetrics(projectId);
+    const allKeywords = await this.getKeywords(projectId);
+    
+    const allRankings = await db
+      .select()
+      .from(rankingsHistory)
+      .where(eq(rankingsHistory.projectId, projectId))
+      .orderBy(desc(rankingsHistory.date));
+    
+    const rankingsByKeywordId = new Map<number, RankingsHistory>();
+    for (const r of allRankings) {
+      if (!rankingsByKeywordId.has(r.keywordId)) {
+        rankingsByKeywordId.set(r.keywordId, r);
+      }
+    }
+    
+    const normalizeUrl = (url: string) => url.toLowerCase().replace(/\/+$/, '');
+    
+    const keywordsByUrl = new Map<string, Array<{ keyword: Keyword; position: number }>>();
+    for (const kw of allKeywords) {
+      if (kw.targetUrl) {
+        const url = normalizeUrl(kw.targetUrl);
+        if (!keywordsByUrl.has(url)) {
+          keywordsByUrl.set(url, []);
+        }
+        const ranking = rankingsByKeywordId.get(kw.id);
+        const position = ranking?.position || 0;
+        keywordsByUrl.get(url)!.push({ keyword: kw, position });
+      }
+    }
+    
+    return pages.map(page => {
+      const pageUrl = normalizeUrl(page.url);
+      const pageKeywords = keywordsByUrl.get(pageUrl) || [];
+      const rankedKeywords = pageKeywords.filter(k => k.position > 0);
+      
+      const avgPosition = rankedKeywords.length > 0
+        ? rankedKeywords.reduce((sum, k) => sum + k.position, 0) / rankedKeywords.length
+        : 0;
+      const bestPosition = rankedKeywords.length > 0
+        ? Math.min(...rankedKeywords.map(k => k.position))
+        : 0;
+      const keywordsInTop10 = rankedKeywords.filter(k => k.position <= 10).length;
+      const keywordsInTop3 = rankedKeywords.filter(k => k.position <= 3).length;
+      const totalKeywords = pageKeywords.length;
+      
+      return {
+        ...page,
+        avgPosition: Math.round(avgPosition * 10) / 10,
+        bestPosition,
+        keywordsInTop10,
+        keywordsInTop3,
+        totalKeywords,
+        rankedKeywords: rankedKeywords.length,
+      };
+    });
   }
 
   async createPageMetrics(insertMetrics: InsertPageMetrics): Promise<PageMetrics> {

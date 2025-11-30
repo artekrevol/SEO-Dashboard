@@ -492,11 +492,12 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
                             />
                           </TableHead>
                           <TableHead>URL</TableHead>
+                          <TableHead>Total Keywords</TableHead>
+                          <TableHead>Ranked</TableHead>
                           <TableHead>Avg Position</TableHead>
-                          <TableHead>Keywords in Top 10</TableHead>
+                          <TableHead>Top 3</TableHead>
+                          <TableHead>Top 10</TableHead>
                           <TableHead>Indexable</TableHead>
-                          <TableHead>Schema</TableHead>
-                          <TableHead>Core Web Vitals</TableHead>
                           <TableHead className="w-20 text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -525,8 +526,17 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
                                 </a>
                               </div>
                             </TableCell>
+                            <TableCell data-testid={`text-total-keywords-${page.id}`}>
+                              {page.totalKeywords || 0}
+                            </TableCell>
+                            <TableCell data-testid={`text-ranked-${page.id}`}>
+                              {page.rankedKeywords || 0}
+                            </TableCell>
                             <TableCell data-testid={`text-avg-position-${page.id}`}>
                               {page.avgPosition > 0 ? page.avgPosition.toFixed(1) : "-"}
+                            </TableCell>
+                            <TableCell data-testid={`text-top3-${page.id}`}>
+                              {page.keywordsInTop3 || 0}
                             </TableCell>
                             <TableCell data-testid={`text-top10-${page.id}`}>
                               {page.keywordsInTop10 || 0}
@@ -537,22 +547,6 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
                                 className="text-xs"
                               >
                                 {page.isIndexable ? "Yes" : "No"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={page.hasSchema ? "default" : "secondary"}
-                                className="text-xs"
-                              >
-                                {page.hasSchema ? "Yes" : "No"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={page.coreWebVitalsOk ? "default" : "secondary"}
-                                className="text-xs"
-                              >
-                                {page.coreWebVitalsOk ? "Pass" : "Unknown"}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">

@@ -179,15 +179,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const pages = await storage.getLatestPageMetrics(projectId);
+      const pages = await storage.getPageMetricsWithKeywordAnalytics(projectId);
 
-      const items = pages.map((p) => ({
+      const items = pages.map((p: any) => ({
         id: p.id,
         url: p.url,
         date: p.date,
         avgPosition: Number(p.avgPosition) || 0,
         bestPosition: p.bestPosition || 0,
         keywordsInTop10: p.keywordsInTop10 || 0,
+        keywordsInTop3: p.keywordsInTop3 || 0,
+        totalKeywords: p.totalKeywords || 0,
+        rankedKeywords: p.rankedKeywords || 0,
         backlinksCount: p.backlinksCount || 0,
         referringDomains: p.referringDomains || 0,
         newLinks7d: p.newLinks7d || 0,
