@@ -4,8 +4,9 @@
 A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Command Center. The application provides comprehensive SEO analytics, keyword tracking, competitor analysis, and actionable recommendations.
 
 ## Current State
-- **Status**: MVP Complete + Data Feed Layer
-- **Last Updated**: November 28, 2025
+- **Status**: MVP Complete + Data Feed Layer + Scheduled Crawls
+- **Last Updated**: November 30, 2025
+- **Live Data**: 445 keywords, 12 pages, 20 competitors, 14 recommendations, 32 health snapshots
 
 ## Tech Stack
 - **Frontend**: React + TypeScript, Vite, Tailwind CSS, Radix UI, TanStack Query, Recharts
@@ -28,6 +29,7 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `competitor_metrics` - Competitor analysis with pressure index
 - `settings_priority_rules` - P1/P2/P3 priority classification rules
 - `import_logs` - Data import audit trail
+- `crawl_schedules` - Page crawl schedules with time, days of week, and active status for batch processing
 
 ### API Endpoints
 
@@ -59,12 +61,20 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `POST /api/jobs/competitors` - Manually trigger competitor analysis
 - `POST /api/jobs/recommendations` - Manually trigger recommendation generation
 
+#### Scheduled Crawls
+- `GET /api/crawl-schedules` - List all crawl schedules for a project
+- `POST /api/crawl-schedules` - Create new crawl schedule (URL, time, days of week)
+- `PATCH /api/crawl-schedules/:id` - Update existing crawl schedule
+- `DELETE /api/crawl-schedules/:id` - Delete crawl schedule
+
 ### Frontend Pages
 - `/` - Main dashboard with KPI cards, health chart, top opportunities
 - `/keywords` - Keyword analytics with position distribution and intent charts
 - `/pages` - Page-level metrics with risk analysis
 - `/recommendations` - Actionable SEO tasks with filtering
 - `/competitors` - Competitive pressure analysis with visualization
+- `/data-management` - Bulk keyword operations (delete, activate/deactivate, filter by intent)
+- `/scheduled-crawls` - Page crawl schedule management with time and day selectors
 
 ## Data Feed & Control Layer
 
@@ -152,7 +162,16 @@ The following files are available for import in `attached_assets/`:
 - `/dataforseo_labs/google/bulk_keyword_difficulty/live` - Keyword difficulty
 - `/dataforseo_labs/google/search_intent/live` - Search intent classification
 
-## Next Steps
-- Data management UI with bulk actions and keyword grid
+## Completed Features Since MVP
+- ✅ Data Management page with bulk keyword operations
+- ✅ Scheduled Crawls system for batch page processing at specific times
+- ✅ All 445 keywords now visible in Data Management (left join query)
+- ✅ Full CRUD operations for crawl schedules
+- ✅ Sidebar navigation with all 7 main pages
+
+## Next Steps (Future Enhancements)
 - Custom report generation and export
+- Crawl execution and result logging
+- Advanced filtering in crawl schedules
+- Automated daily keyword tracking via scheduled crawls
 - Search volume data investigation (currently returning 0 for some keywords)
