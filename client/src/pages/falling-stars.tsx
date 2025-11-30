@@ -4,8 +4,22 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingDown, AlertTriangle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+interface FallingStarKeyword {
+  keywordId: number;
+  keyword: string;
+  cluster: string | null;
+  location: string;
+  currentPosition: number;
+  positionDelta: number;
+  searchVolume: number;
+  difficulty: number;
+  intent: string;
+  targetUrl: string;
+  isCoreKeyword: boolean;
+}
+
 export function FallingStarsPage({ projectId }: { projectId: string }) {
-  const { data: fallingStars = [], isLoading } = useQuery({
+  const { data: fallingStars = [], isLoading } = useQuery<FallingStarKeyword[]>({
     queryKey: ["/api/falling-stars", projectId],
   });
 
@@ -53,7 +67,7 @@ export function FallingStarsPage({ projectId }: { projectId: string }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {fallingStars.map((star: any) => (
+                  {fallingStars.map((star) => (
                     <TableRow key={star.keywordId} data-testid={`row-falling-star-${star.keywordId}`}>
                       <TableCell className="font-medium" data-testid={`text-keyword-${star.keywordId}`}>
                         {star.keyword}

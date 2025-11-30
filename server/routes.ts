@@ -534,6 +534,57 @@ export async function registerRoutes(
     }
   });
 
+  // Quick Wins API - high-opportunity keywords close to top positions
+  app.get("/api/quick-wins", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const filters = {
+        location: req.query.location as string | undefined,
+        cluster: req.query.cluster as string | undefined,
+        intent: req.query.intent as string | undefined,
+      };
+      const quickWins = await storage.getQuickWins(projectId, filters);
+      res.json(quickWins);
+    } catch (error) {
+      console.error("Error fetching quick wins:", error);
+      res.status(500).json({ error: "Failed to fetch quick wins" });
+    }
+  });
+
+  // Falling Stars API - keywords with dropping rankings
+  app.get("/api/falling-stars", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const filters = {
+        location: req.query.location as string | undefined,
+      };
+      const fallingStars = await storage.getFallingStars(projectId, filters);
+      res.json(fallingStars);
+    } catch (error) {
+      console.error("Error fetching falling stars:", error);
+      res.status(500).json({ error: "Failed to fetch falling stars" });
+    }
+  });
+
+  // Rankings History API
+  app.get("/api/rankings-history/:keywordId", async (req, res) => {
+    try {
+      const keywordId = parseInt(req.params.keywordId);
+      const limit = parseInt(req.query.limit as string) || 100;
+      const history = await storage.getRankingsHistory(keywordId, limit);
+      res.json(history);
+    } catch (error) {
+      console.error("Error fetching rankings history:", error);
+      res.status(500).json({ error: "Failed to fetch rankings history" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;

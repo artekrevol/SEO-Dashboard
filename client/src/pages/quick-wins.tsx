@@ -4,8 +4,21 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+interface QuickWinKeyword {
+  keywordId: number;
+  keyword: string;
+  cluster: string | null;
+  location: string;
+  currentPosition: number;
+  searchVolume: number;
+  difficulty: number;
+  intent: string;
+  opportunityScore: number;
+  targetUrl: string;
+}
+
 export function QuickWinsPage({ projectId }: { projectId: string }) {
-  const { data: quickWins = [], isLoading } = useQuery({
+  const { data: quickWins = [], isLoading } = useQuery<QuickWinKeyword[]>({
     queryKey: ["/api/quick-wins", projectId],
   });
 
@@ -49,7 +62,7 @@ export function QuickWinsPage({ projectId }: { projectId: string }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {quickWins.map((win: any) => (
+                  {quickWins.map((win) => (
                     <TableRow key={win.keywordId} data-testid={`row-quick-win-${win.keywordId}`}>
                       <TableCell className="font-medium" data-testid={`text-keyword-${win.keywordId}`}>
                         {win.keyword}

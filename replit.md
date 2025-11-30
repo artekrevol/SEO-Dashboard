@@ -4,7 +4,7 @@
 A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Command Center. The application provides comprehensive SEO analytics, keyword tracking, competitor analysis, and actionable recommendations.
 
 ## Current State
-- **Status**: MVP Complete + Data Feed Layer + Scheduled Crawls
+- **Status**: MVP Complete + Data Feed Layer + Scheduled Crawls + Phase 2 (Quick Wins/Falling Stars)
 - **Last Updated**: November 30, 2025
 - **Live Data**: 445 keywords, 12 pages, 20 competitors, 14 recommendations, 32 health snapshots
 
@@ -30,6 +30,8 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `settings_priority_rules` - P1/P2/P3 priority classification rules
 - `import_logs` - Data import audit trail
 - `crawl_schedules` - Page crawl schedules with time, days of week, and active status for batch processing
+- `settings_quick_wins` - Configurable thresholds for Quick Wins board (min/max position, volume, difficulty, intents)
+- `settings_falling_stars` - Configurable thresholds for Falling Stars board (window days, min drop, min previous position)
 
 ### API Endpoints
 
@@ -72,7 +74,12 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `https://{domain}/pages/metrics` - 10:00 AM (Sun, Tue, Thu, Sat)
 - `https://{domain}/competitors/analysis` - 2:00 PM (Wed, Fri)
 
-### Frontend Pages (7 Pages)
+#### Operational Boards (Phase 2)
+- `GET /api/quick-wins?projectId=...` - Keywords positioned 6-20 with high opportunity scores
+- `GET /api/falling-stars?projectId=...` - Keywords with ranking drops ≥5 positions
+- `GET /api/rankings-history/:keywordId` - Historical position data per keyword
+
+### Frontend Pages (9 Pages)
 - `/` - Main dashboard with KPI cards, health chart, top opportunities
 - `/keywords` - Keyword analytics with position distribution and intent charts
 - `/pages` - Page-level metrics with risk analysis
@@ -80,6 +87,8 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `/competitors` - Competitive pressure analysis with visualization
 - `/data-management` - Bulk keyword operations (delete, activate/deactivate, filter by intent)
 - `/scheduled-crawls` - Page crawl schedule management with time and day selectors (includes 3 predefined crawls)
+- `/quick-wins` - **Operational Board**: High-opportunity keywords positioned 6-20, sorted by opportunity score
+- `/falling-stars` - **Operational Board**: Keywords with ranking drops ≥5 positions, for defensive SEO
 
 ## Data Feed & Control Layer
 
@@ -120,6 +129,14 @@ Jobs are scheduled via node-cron with CST timezone (America/Chicago):
     - Keyword rankings tracking (3x weekly)
     - Page metrics collection (4x weekly)
     - Competitor analysis updates (2x weekly)
+11. **Quick Wins Board** (Phase 2) - Proactive SEO growth opportunities:
+    - Keywords in positions 6-20 with commercial/transactional intent
+    - Sorted by opportunity score (volume × position proximity × low difficulty)
+    - Filters: location, cluster, intent
+12. **Falling Stars Board** (Phase 2) - Defensive SEO alerts:
+    - Keywords that dropped ≥5 positions from top 10
+    - Highlights core page keywords for immediate action
+    - Tracks position delta over 7-day window
 
 ## Development
 
@@ -176,11 +193,15 @@ The following files are available for import in `attached_assets/`:
 - ✅ Scheduled Crawls system for batch page processing at specific times
 - ✅ All 445 keywords now visible in Data Management (left join query)
 - ✅ Full CRUD operations for crawl schedules
-- ✅ Sidebar navigation with all 7 main pages
+- ✅ Sidebar navigation with all 9 main pages
 - ✅ Predefined crawl schedules (3 auto-created per project):
   - Keyword Rankings Update (Mon/Wed/Fri 9:00 AM)
   - Pages Metrics (Sun/Tue/Thu/Sat 10:00 AM)
   - Competitors Analysis (Wed/Fri 2:00 PM)
+- ✅ **Phase 2: Quick Wins Board** - Operational workboard for proactive growth
+- ✅ **Phase 2: Falling Stars Board** - Operational workboard for defensive SEO
+- ✅ **Phase 2: Rankings History API** - Historical position tracking per keyword
+- ✅ **Phase 2: Configurable Settings Tables** - Thresholds for both boards
 
 ## Next Steps (Future Enhancements)
 - Custom report generation and export

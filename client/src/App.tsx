@@ -17,6 +17,8 @@ import { RecommendationsPage } from "@/pages/recommendations";
 import { CompetitorsPage } from "@/pages/competitors";
 import { DataManagementPage } from "@/pages/data-management";
 import { ScheduledCrawlsPage } from "@/pages/scheduled-crawls";
+import { QuickWinsPage } from "@/pages/quick-wins";
+import { FallingStarsPage } from "@/pages/falling-stars";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -120,6 +122,12 @@ function AppContent() {
               </Route>
               <Route path="/scheduled-crawls">
                 <ScheduledCrawlsPage projectId={selectedProjectId || ""} />
+              </Route>
+              <Route path="/quick-wins">
+                <QuickWinsPage projectId={selectedProjectId || ""} />
+              </Route>
+              <Route path="/falling-stars">
+                <FallingStarsPage projectId={selectedProjectId || ""} />
               </Route>
               <Route path="/rankings">
                 <div className="flex h-full items-center justify-center">

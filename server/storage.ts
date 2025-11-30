@@ -213,7 +213,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createKeywordMetrics(insertMetrics: InsertKeywordMetrics): Promise<KeywordMetrics> {
-    const result = await db.insert(keywordMetrics).values([insertMetrics]).returning();
+    const dataToInsert = {
+      ...insertMetrics,
+      serpFeatures: insertMetrics.serpFeatures ? [...insertMetrics.serpFeatures] : null,
+    };
+    const result = await db.insert(keywordMetrics).values([dataToInsert]).returning();
     return result[0];
   }
 
