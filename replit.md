@@ -33,6 +33,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - **Falling Stars Board**: Alerts for keywords with ranking drops ≥5 positions for defensive SEO.
 - **Executive Narrative Generator**: AI-powered summaries of project performance.
 - **Per-Project Settings**: Configurable thresholds for Quick Wins and Falling Stars boards.
+- **Page Analytics**: Aggregated keyword performance metrics per tracked page, including average position, best position, keywords in Top 3/Top 10, and total keywords targeting each URL. Uses the latest available ranking data for each keyword with normalized URL matching.
 
 ### System Design Choices
 - **Database Schema**:
