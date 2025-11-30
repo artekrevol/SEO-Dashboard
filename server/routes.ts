@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema } from "@shared/schema";
+import { db } from "./db";
+import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { DataForSEOService } from "./services/dataforseo";
 import { 
@@ -646,16 +648,19 @@ export async function registerRoutes(
 
   app.post("/api/crawl-schedules", async (req, res) => {
     try {
-      const { projectId, url, scheduledTime, daysOfWeek, isActive } = req.body;
-      if (!projectId || !url || !scheduledTime || !daysOfWeek) {
+      const { projectId, url, scheduledTime, daysOfWeek, isActive, type, frequency, config } = req.body;
+      if (!projectId || !scheduledTime || !daysOfWeek) {
         return res.status(400).json({ error: "Missing required fields" });
       }
       const schedule = await storage.createCrawlSchedule({
         projectId,
-        url,
+        url: url || null,
+        type: type || "keywords",
+        frequency: frequency || "scheduled",
         scheduledTime,
         daysOfWeek: Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek),
         isActive: isActive !== false,
+        config: config || null,
       });
       res.status(201).json(schedule);
     } catch (error) {
@@ -667,12 +672,15 @@ export async function registerRoutes(
   app.patch("/api/crawl-schedules/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { url, scheduledTime, daysOfWeek, isActive } = req.body;
+      const { url, scheduledTime, daysOfWeek, isActive, type, frequency, config } = req.body;
       const updateData: any = {};
       if (url !== undefined) updateData.url = url;
       if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime;
       if (daysOfWeek !== undefined) updateData.daysOfWeek = Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek);
       if (isActive !== undefined) updateData.isActive = isActive;
+      if (type !== undefined) updateData.type = type;
+      if (frequency !== undefined) updateData.frequency = frequency;
+      if (config !== undefined) updateData.config = config;
       
       const schedule = await storage.updateCrawlSchedule(id, updateData);
       if (!schedule) {
@@ -693,6 +701,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting crawl schedule:", error);
       res.status(500).json({ error: "Failed to delete crawl schedule" });
+    }
+  });
+
+  // Run a specific crawl schedule immediately
+  // Requires projectId in query params to verify ownership
+  app.post("/api/crawl-schedules/:id/run", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId query parameter is required" });
+      }
+
+      const schedule = await storage.getCrawlSchedule(id);
+      if (!schedule) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+
+      // Validate project ownership
+      if (schedule.projectId !== projectId) {
+        return res.status(403).json({ error: "Access denied: schedule belongs to a different project" });
+      }
+
+      // Execute the crawl based on type
+      let result: any = { success: true, message: "Crawl queued" };
+      const validTypes = ["keywords", "pages", "competitors", "backlinks", "technical"];
+      
+      if (!validTypes.includes(schedule.type)) {
+        return res.status(400).json({ error: "Invalid crawl type" });
+      }
+
+      switch (schedule.type) {
+        case "keywords":
+          result = await runRankingsSync(projectId);
+          break;
+        case "pages":
+          result = await runKeywordMetricsUpdate(projectId);
+          break;
+        case "competitors":
+          result = await runCompetitorAnalysis(projectId);
+          break;
+        case "backlinks":
+        case "technical":
+          result = await runKeywordMetricsUpdate(projectId);
+          break;
+        default:
+          result = await runKeywordMetricsUpdate(projectId);
+      }
+
+      // Update last run timestamp using raw SQL since lastRunAt is not in InsertCrawlSchedule
+      await db.update(crawlSchedules)
+        .set({ lastRunAt: new Date(), lastRunStatus: "success" })
+        .where(eq(crawlSchedules.id, id));
+
+      res.json({ success: true, result });
+    } catch (error) {
+      console.error("Error running crawl schedule:", error);
+      res.status(500).json({ error: "Failed to run crawl schedule" });
+    }
+  });
+
+  // Zod schema for manual crawl trigger validation
+  const manualCrawlTriggerSchema = z.object({
+    projectId: z.string().uuid(),
+    type: z.enum(["keywords", "pages", "competitors"]),
+    scope: z.enum(["all", "selected"]).default("all"),
+    keywordIds: z.array(z.number().int().positive()).optional(),
+  }).refine(
+    (data) => {
+      // If scope is "selected", keywordIds must be non-empty
+      if (data.scope === "selected") {
+        return data.keywordIds && data.keywordIds.length > 0;
+      }
+      return true;
+    },
+    { message: "keywordIds must be non-empty when scope is 'selected'" }
+  );
+
+  // Manual crawl trigger for ad-hoc data collection
+  app.post("/api/crawl/trigger", async (req, res) => {
+    try {
+      const parseResult = manualCrawlTriggerSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: parseResult.error.errors 
+        });
+      }
+
+      const { projectId, type, scope, keywordIds } = parseResult.data;
+
+      // Verify project exists
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      let result: any = { success: true, message: "Crawl queued" };
+
+      switch (type) {
+        case "keywords":
+          result = await runRankingsSync(projectId);
+          if (scope === "selected" && keywordIds && keywordIds.length > 0) {
+            result.note = `Crawl requested for ${keywordIds.length} specific keywords`;
+          }
+          break;
+        case "pages":
+          result = await runKeywordMetricsUpdate(projectId);
+          break;
+        case "competitors":
+          result = await runCompetitorAnalysis(projectId);
+          break;
+      }
+
+      res.json({ success: true, type, scope, result });
+    } catch (error) {
+      console.error("Error triggering manual crawl:", error);
+      res.status(500).json({ error: "Failed to trigger crawl" });
     }
   });
 

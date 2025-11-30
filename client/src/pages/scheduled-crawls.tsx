@@ -2,27 +2,125 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Edit2, Clock } from "lucide-react";
-import type { CrawlSchedule } from "@shared/schema";
+import { 
+  Plus, 
+  Trash2, 
+  Edit2, 
+  Clock, 
+  Play, 
+  Search, 
+  FileText, 
+  Users, 
+  Link2, 
+  Settings2,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Calendar
+} from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { CrawlSchedule, Keyword } from "@shared/schema";
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const CRAWL_TYPE_CONFIG: Record<string, { 
+  icon: typeof Search; 
+  label: string; 
+  description: string;
+  color: string;
+}> = {
+  keywords: { 
+    icon: Search, 
+    label: "Keyword Rankings", 
+    description: "Fetch SERP positions and search volume for tracked keywords",
+    color: "text-blue-600 dark:text-blue-400"
+  },
+  pages: { 
+    icon: FileText, 
+    label: "Page Metrics", 
+    description: "Crawl pages for Core Web Vitals, indexability, and content analysis",
+    color: "text-green-600 dark:text-green-400"
+  },
+  competitors: { 
+    icon: Users, 
+    label: "Competitor Analysis", 
+    description: "Track competitor rankings and domain metrics",
+    color: "text-purple-600 dark:text-purple-400"
+  },
+  backlinks: { 
+    icon: Link2, 
+    label: "Backlink Check", 
+    description: "Monitor referring domains and new/lost backlinks",
+    color: "text-orange-600 dark:text-orange-400"
+  },
+  technical: { 
+    icon: Settings2, 
+    label: "Technical Audit", 
+    description: "Full site crawl for technical SEO issues",
+    color: "text-red-600 dark:text-red-400"
+  },
+};
+
+type ManualCrawlType = "all_keywords" | "selected_keywords" | "all_pages" | "all_competitors";
 
 export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
+  const [showManualCrawlDialog, setShowManualCrawlDialog] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [manualCrawlType, setManualCrawlType] = useState<ManualCrawlType>("all_keywords");
+  const [selectedKeywords, setSelectedKeywords] = useState<number[]>([]);
+  const [runningCrawl, setRunningCrawl] = useState<number | null>(null);
+  
   const [formData, setFormData] = useState({
-    url: "https://example.com/keywords/rankings",
+    url: "",
+    type: "keywords" as string,
+    frequency: "scheduled" as string,
     scheduledTime: "09:00",
     daysOfWeek: [1, 3, 5] as number[],
     isActive: true,
+    config: {} as Record<string, unknown>,
   });
 
   const { data: schedules = [], isLoading } = useQuery<CrawlSchedule[]>({
     queryKey: ["/api/crawl-schedules", projectId],
+    queryFn: async () => {
+      const response = await fetch(`/api/crawl-schedules?projectId=${projectId}`);
+      if (!response.ok) throw new Error("Failed to fetch schedules");
+      return response.json();
+    },
+  });
+
+  const { data: keywords = [] } = useQuery<Keyword[]>({
+    queryKey: ["/api/keywords", projectId],
+    queryFn: async () => {
+      const response = await fetch(`/api/keywords?projectId=${projectId}`);
+      if (!response.ok) throw new Error("Failed to fetch keywords");
+      const data = await response.json();
+      return data.keywords || [];
+    },
   });
 
   const createMutation = useMutation({
@@ -35,8 +133,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-schedules", projectId] });
-      setFormData({ url: "", scheduledTime: "14:00", daysOfWeek: [1, 3, 5], isActive: true });
-      setShowForm(false);
+      resetForm();
       toast({ title: "Schedule created successfully" });
     },
     onError: () => {
@@ -45,15 +142,14 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      const response = await apiRequest("PATCH", `/api/crawl-schedules/${editingId}`, data);
+    mutationFn: async (data: Partial<typeof formData> & { id: number }) => {
+      const { id, ...updateData } = data;
+      const response = await apiRequest("PATCH", `/api/crawl-schedules/${id}`, updateData);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-schedules", projectId] });
-      setFormData({ url: "", scheduledTime: "14:00", daysOfWeek: [1, 3, 5], isActive: true });
-      setEditingId(null);
-      setShowForm(false);
+      resetForm();
       toast({ title: "Schedule updated successfully" });
     },
   });
@@ -68,13 +164,69 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
     },
   });
 
+  const runCrawlMutation = useMutation({
+    mutationFn: async (params: { type: string; scope: string; keywordIds?: number[] }) => {
+      const response = await apiRequest("POST", "/api/crawl/trigger", {
+        projectId,
+        ...params,
+      });
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      toast({ 
+        title: "Crawl Started", 
+        description: `${variables.type} crawl has been queued for execution.` 
+      });
+      setShowManualCrawlDialog(false);
+      setSelectedKeywords([]);
+    },
+    onError: () => {
+      toast({ 
+        title: "Error", 
+        description: "Failed to start crawl", 
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const runScheduledCrawlMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      setRunningCrawl(scheduleId);
+      const response = await apiRequest("POST", `/api/crawl-schedules/${scheduleId}/run?projectId=${projectId}`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crawl-schedules", projectId] });
+      toast({ title: "Crawl executed successfully" });
+      setRunningCrawl(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to run crawl", variant: "destructive" });
+      setRunningCrawl(null);
+    },
+  });
+
+  const resetForm = () => {
+    setFormData({
+      url: "",
+      type: "keywords",
+      frequency: "scheduled",
+      scheduledTime: "09:00",
+      daysOfWeek: [1, 3, 5],
+      isActive: true,
+      config: {},
+    });
+    setEditingId(null);
+    setShowForm(false);
+  };
+
   const handleSubmit = () => {
-    if (!formData.url || !formData.scheduledTime) {
-      toast({ title: "Error", description: "URL and time are required", variant: "destructive" });
+    if (!formData.scheduledTime) {
+      toast({ title: "Error", description: "Time is required", variant: "destructive" });
       return;
     }
     if (editingId) {
-      updateMutation.mutate(formData);
+      updateMutation.mutate({ ...formData, id: editingId });
     } else {
       createMutation.mutate(formData);
     }
@@ -82,85 +234,189 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
 
   const handleEdit = (schedule: CrawlSchedule) => {
     setFormData({
-      url: schedule.url,
+      url: schedule.url || "",
+      type: schedule.type,
+      frequency: schedule.frequency || "scheduled",
       scheduledTime: schedule.scheduledTime,
       daysOfWeek: schedule.daysOfWeek,
       isActive: schedule.isActive,
+      config: (schedule.config as Record<string, unknown>) || {},
     });
     setEditingId(schedule.id);
     setShowForm(true);
   };
 
+  const toggleScheduleActive = (schedule: CrawlSchedule) => {
+    updateMutation.mutate({ 
+      id: schedule.id, 
+      isActive: !schedule.isActive 
+    });
+  };
+
+  const handleManualCrawl = () => {
+    const crawlMap: Record<ManualCrawlType, { type: string; scope: string }> = {
+      all_keywords: { type: "keywords", scope: "all" },
+      selected_keywords: { type: "keywords", scope: "selected" },
+      all_pages: { type: "pages", scope: "all" },
+      all_competitors: { type: "competitors", scope: "all" },
+    };
+    
+    const params = crawlMap[manualCrawlType];
+    runCrawlMutation.mutate({
+      ...params,
+      ...(manualCrawlType === "selected_keywords" && { keywordIds: selectedKeywords }),
+    });
+  };
+
+  const groupedSchedules = schedules.reduce((acc, schedule) => {
+    const type = schedule.type || "other";
+    if (!acc[type]) acc[type] = [];
+    acc[type].push(schedule);
+    return acc;
+  }, {} as Record<string, CrawlSchedule[]>);
+
+  const formatLastRun = (date: Date | null) => {
+    if (!date) return "Never";
+    const d = new Date(date);
+    return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const getStatusBadge = (status: string | null) => {
+    if (!status) return null;
+    if (status === "success") return <Badge variant="default" className="bg-green-600"><CheckCircle2 className="w-3 h-3 mr-1" />Success</Badge>;
+    if (status === "error") return <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Failed</Badge>;
+    return <Badge variant="secondary">{status}</Badge>;
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold" data-testid="heading-scheduled-crawls">
-          Scheduled Page Crawls
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Set up automatic crawls for specific pages at predefined times and days
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="heading-scheduled-crawls">
+            Scheduled Crawls
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage automated data collection for keywords, pages, and competitors
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowManualCrawlDialog(true)}
+            data-testid="button-manual-crawl"
+          >
+            <Play className="w-4 h-4 mr-2" />
+            Run Manual Crawl
+          </Button>
+          <Button onClick={() => setShowForm(true)} data-testid="button-add-schedule">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Schedule
+          </Button>
+        </div>
       </div>
-
-      {!showForm && (
-        <Button onClick={() => setShowForm(true)} data-testid="button-add-schedule">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Schedule
-        </Button>
-      )}
 
       {showForm && (
         <Card>
           <CardHeader>
             <CardTitle>{editingId ? "Edit Schedule" : "Create New Schedule"}</CardTitle>
+            <CardDescription>Configure when and what data to collect</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Page URL</label>
-              <input
-                type="text"
-                placeholder="https://example.com/page"
-                value={formData.url}
-                onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                className="w-full px-3 py-2 border rounded-md"
-                data-testid="input-url"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Crawl Type</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value) => setFormData({ ...formData, type: value })}
+                >
+                  <SelectTrigger data-testid="select-type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CRAWL_TYPE_CONFIG).map(([key, config]) => (
+                      <SelectItem key={key} value={key}>
+                        <div className="flex items-center gap-2">
+                          <config.icon className={`w-4 h-4 ${config.color}`} />
+                          {config.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Frequency</Label>
+                <Select
+                  value={formData.frequency}
+                  onValueChange={(value) => setFormData({ ...formData, frequency: value })}
+                >
+                  <SelectTrigger data-testid="select-frequency">
+                    <SelectValue placeholder="Select frequency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="scheduled">Scheduled Days</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Crawl Time (24h format)</label>
-              <input
+            <div className="space-y-2">
+              <Label>Crawl Time (24h format)</Label>
+              <Input
                 type="time"
                 value={formData.scheduledTime}
                 onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
-                className="px-3 py-2 border rounded-md"
+                className="w-40"
                 data-testid="input-time"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Days of Week</label>
-              <div className="grid grid-cols-7 gap-2">
-                {DAYS.map((day, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      const days = formData.daysOfWeek.includes(idx)
-                        ? formData.daysOfWeek.filter((d) => d !== idx)
-                        : [...formData.daysOfWeek, idx];
-                      setFormData({ ...formData, daysOfWeek: days.sort() });
-                    }}
-                    className={`p-2 text-xs font-medium rounded ${
-                      formData.daysOfWeek.includes(idx)
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                    data-testid={`button-day-${day.toLowerCase()}`}
-                  >
-                    {day.slice(0, 3)}
-                  </button>
-                ))}
+            {formData.frequency === "scheduled" && (
+              <div className="space-y-2">
+                <Label>Days of Week</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {DAYS.map((day, idx) => (
+                    <Button
+                      key={idx}
+                      type="button"
+                      size="sm"
+                      variant={formData.daysOfWeek.includes(idx) ? "default" : "outline"}
+                      onClick={() => {
+                        const days = formData.daysOfWeek.includes(idx)
+                          ? formData.daysOfWeek.filter((d) => d !== idx)
+                          : [...formData.daysOfWeek, idx].sort((a, b) => a - b);
+                        setFormData({ ...formData, daysOfWeek: days });
+                      }}
+                      data-testid={`button-day-${day.toLowerCase()}`}
+                    >
+                      {day}
+                    </Button>
+                  ))}
+                </div>
               </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Custom URL (optional)</Label>
+              <Input
+                type="text"
+                placeholder="Leave empty to use default endpoint"
+                value={formData.url}
+                onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                data-testid="input-url"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={formData.isActive}
+                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                data-testid="switch-active"
+              />
+              <Label>Active</Label>
             </div>
 
             <div className="flex gap-2">
@@ -169,15 +425,14 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                 disabled={createMutation.isPending || updateMutation.isPending}
                 data-testid="button-save-schedule"
               >
+                {createMutation.isPending || updateMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
                 {editingId ? "Update" : "Create"}
               </Button>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingId(null);
-                  setFormData({ url: "", scheduledTime: "14:00", daysOfWeek: [1, 3, 5], isActive: true });
-                }}
+                onClick={resetForm}
                 data-testid="button-cancel"
               >
                 Cancel
@@ -188,64 +443,305 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       )}
 
       {isLoading ? (
-        <p className="text-muted-foreground">Loading schedules...</p>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
       ) : schedules.length === 0 ? (
         <Card>
-          <CardContent className="pt-6 text-center text-muted-foreground">
-            No scheduled crawls yet. Create one to get started.
+          <CardContent className="pt-6 text-center">
+            <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="font-semibold mb-2">No Scheduled Crawls</h3>
+            <p className="text-muted-foreground mb-4">
+              Set up automated crawls to keep your SEO data fresh and up-to-date
+            </p>
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Your First Schedule
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <Tabs defaultValue="all" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="all" data-testid="tab-all">All ({schedules.length})</TabsTrigger>
+            {Object.entries(groupedSchedules).map(([type, items]) => {
+              const config = CRAWL_TYPE_CONFIG[type];
+              return (
+                <TabsTrigger key={type} value={type} data-testid={`tab-${type}`}>
+                  {config?.label || type} ({items.length})
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+
+          <TabsContent value="all" className="space-y-4">
+            {Object.entries(groupedSchedules).map(([type, items]) => (
+              <CrawlTypeSection
+                key={type}
+                type={type}
+                schedules={items}
+                onEdit={handleEdit}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                onToggle={toggleScheduleActive}
+                onRun={(id) => runScheduledCrawlMutation.mutate(id)}
+                runningCrawl={runningCrawl}
+                formatLastRun={formatLastRun}
+                getStatusBadge={getStatusBadge}
+              />
+            ))}
+          </TabsContent>
+
+          {Object.entries(groupedSchedules).map(([type, items]) => (
+            <TabsContent key={type} value={type} className="space-y-4">
+              <CrawlTypeSection
+                type={type}
+                schedules={items}
+                onEdit={handleEdit}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                onToggle={toggleScheduleActive}
+                onRun={(id) => runScheduledCrawlMutation.mutate(id)}
+                runningCrawl={runningCrawl}
+                formatLastRun={formatLastRun}
+                getStatusBadge={getStatusBadge}
+              />
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
+
+      <Dialog open={showManualCrawlDialog} onOpenChange={setShowManualCrawlDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Run Manual Crawl</DialogTitle>
+            <DialogDescription>
+              Execute a one-time crawl to refresh your data immediately
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Crawl Type</Label>
+              <Select
+                value={manualCrawlType}
+                onValueChange={(value) => setManualCrawlType(value as ManualCrawlType)}
+              >
+                <SelectTrigger data-testid="select-manual-crawl-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all_keywords">
+                    <div className="flex items-center gap-2">
+                      <Search className="w-4 h-4 text-blue-600" />
+                      All Keywords
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="selected_keywords">
+                    <div className="flex items-center gap-2">
+                      <Search className="w-4 h-4 text-blue-600" />
+                      Selected Keywords
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="all_pages">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-green-600" />
+                      All Pages
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="all_competitors">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-purple-600" />
+                      All Competitors
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {manualCrawlType === "selected_keywords" && (
+              <div className="space-y-2">
+                <Label>Select Keywords ({selectedKeywords.length} selected)</Label>
+                <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1">
+                  {keywords.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-2">No keywords found</p>
+                  ) : (
+                    keywords.map((kw) => (
+                      <label 
+                        key={kw.id} 
+                        className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedKeywords.includes(kw.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedKeywords([...selectedKeywords, kw.id]);
+                            } else {
+                              setSelectedKeywords(selectedKeywords.filter(id => id !== kw.id));
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm">{kw.keyword}</span>
+                        {kw.cluster && (
+                          <Badge variant="outline" className="text-xs">{kw.cluster}</Badge>
+                        )}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowManualCrawlDialog(false);
+                setSelectedKeywords([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleManualCrawl}
+              disabled={
+                runCrawlMutation.isPending || 
+                (manualCrawlType === "selected_keywords" && selectedKeywords.length === 0)
+              }
+              data-testid="button-run-manual-crawl"
+            >
+              {runCrawlMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4 mr-2" />
+              )}
+              Start Crawl
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function CrawlTypeSection({
+  type,
+  schedules,
+  onEdit,
+  onDelete,
+  onToggle,
+  onRun,
+  runningCrawl,
+  formatLastRun,
+  getStatusBadge,
+}: {
+  type: string;
+  schedules: CrawlSchedule[];
+  onEdit: (schedule: CrawlSchedule) => void;
+  onDelete: (id: number) => void;
+  onToggle: (schedule: CrawlSchedule) => void;
+  onRun: (id: number) => void;
+  runningCrawl: number | null;
+  formatLastRun: (date: Date | null) => string;
+  getStatusBadge: (status: string | null) => React.ReactNode;
+}) {
+  const config = CRAWL_TYPE_CONFIG[type] || {
+    icon: Settings2,
+    label: type,
+    description: "Custom crawl schedule",
+    color: "text-gray-600",
+  };
+  const Icon = config.icon;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg bg-muted ${config.color}`}>
+            <Icon className="w-5 h-5" />
+          </div>
+          <div>
+            <CardTitle className="text-lg">{config.label}</CardTitle>
+            <CardDescription>{config.description}</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
           {schedules.map((schedule) => (
-            <Card key={schedule.id} data-testid={`card-schedule-${schedule.id}`}>
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-sm break-all" data-testid={`text-url-${schedule.id}`}>
-                      {schedule.url}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground" data-testid={`text-time-${schedule.id}`}>
-                        {schedule.scheduledTime}
-                      </span>
-                      <Badge variant={schedule.isActive ? "default" : "secondary"} data-testid={`badge-status-${schedule.id}`}>
-                        {schedule.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                    <div className="flex gap-1 mt-2">
-                      {schedule.daysOfWeek.map((day) => (
-                        <Badge key={day} variant="outline" className="text-xs" data-testid={`badge-day-${schedule.id}-${day}`}>
-                          {DAYS[day].slice(0, 3)}
-                        </Badge>
-                      ))}
-                    </div>
+            <div
+              key={schedule.id}
+              className="flex items-center justify-between p-3 rounded-lg border bg-card"
+              data-testid={`card-schedule-${schedule.id}`}
+            >
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <Switch
+                  checked={schedule.isActive}
+                  onCheckedChange={() => onToggle(schedule)}
+                  data-testid={`switch-schedule-${schedule.id}`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <span className="font-medium" data-testid={`text-time-${schedule.id}`}>
+                      {schedule.scheduledTime}
+                    </span>
+                    <Badge variant={schedule.isActive ? "default" : "secondary"}>
+                      {schedule.isActive ? "Active" : "Paused"}
+                    </Badge>
+                    {schedule.lastRunStatus && getStatusBadge(schedule.lastRunStatus)}
                   </div>
-                  <div className="flex gap-2 ml-4">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleEdit(schedule)}
-                      data-testid={`button-edit-${schedule.id}`}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => deleteMutation.mutate(schedule.id)}
-                      data-testid={`button-delete-${schedule.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-sm text-muted-foreground">
+                      {schedule.frequency === "daily" 
+                        ? "Every day" 
+                        : schedule.frequency === "weekly"
+                          ? "Weekly"
+                          : schedule.daysOfWeek.map(d => DAYS[d]).join(", ")}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Last run: {formatLastRun(schedule.lastRunAt)}
+                    </span>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex items-center gap-1 ml-2">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onRun(schedule.id)}
+                  disabled={runningCrawl === schedule.id}
+                  title="Run now"
+                  data-testid={`button-run-${schedule.id}`}
+                >
+                  {runningCrawl === schedule.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onEdit(schedule)}
+                  data-testid={`button-edit-${schedule.id}`}
+                >
+                  <Edit2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onDelete(schedule.id)}
+                  data-testid={`button-delete-${schedule.id}`}
+                >
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
+            </div>
           ))}
         </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -18,9 +18,13 @@ import { rankingsSyncService } from "./rankings-sync";
 import { impactTracker } from "./impact-tracker";
 import { narrativeGenerator } from "./narrative-generator";
 
-function getCrawlSchedulerService() {
-  const { crawlSchedulerService } = require("./crawl-scheduler");
-  return crawlSchedulerService;
+let crawlSchedulerServiceInstance: any = null;
+async function getCrawlSchedulerService() {
+  if (!crawlSchedulerServiceInstance) {
+    const module = await import("./crawl-scheduler");
+    crawlSchedulerServiceInstance = module.crawlSchedulerService;
+  }
+  return crawlSchedulerServiceInstance;
 }
 import type { Project, InsertSeoHealthSnapshot, InsertKeywordMetrics, InsertCompetitorMetrics, Keyword } from "@shared/schema";
 import * as cron from "node-cron";
@@ -514,7 +518,7 @@ export function startScheduledJobs(): void {
     async () => {
       console.log("[Job] Running crawl-schedule-check (every 15 min)...");
       try {
-        const crawlService = getCrawlSchedulerService();
+        const crawlService = await getCrawlSchedulerService();
         const results = await crawlService.runDueSchedules();
         if (results.length > 0) {
           console.log(`[Job] Executed ${results.length} scheduled crawls`);
