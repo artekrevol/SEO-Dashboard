@@ -16,6 +16,7 @@ import { PagesPage } from "@/pages/pages";
 import { RecommendationsPage } from "@/pages/recommendations";
 import { CompetitorsPage } from "@/pages/competitors";
 import { DataManagementPage } from "@/pages/data-management";
+import { ScheduledCrawlsPage } from "@/pages/scheduled-crawls";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -115,7 +116,10 @@ function AppContent() {
                 <CompetitorsPage projectId={selectedProjectId} />
               </Route>
               <Route path="/data-management">
-                <DataManagementPage projectId={selectedProjectId} />
+                <DataManagementPage projectId={selectedProjectId || ""} />
+              </Route>
+              <Route path="/scheduled-crawls">
+                <ScheduledCrawlsPage projectId={selectedProjectId || ""} />
               </Route>
               <Route path="/rankings">
                 <div className="flex h-full items-center justify-center">

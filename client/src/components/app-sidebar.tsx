@@ -9,6 +9,7 @@ import {
   BarChart3,
   TrendingUp,
   Database,
+  Clock,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,6 +54,11 @@ const mainNavItems = [
     title: "Data Management",
     url: "/data-management",
     icon: Database,
+  },
+  {
+    title: "Scheduled Crawls",
+    url: "/scheduled-crawls",
+    icon: Clock,
   },
 ];
 

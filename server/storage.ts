@@ -325,12 +325,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCrawlSchedule(insertSchedule: InsertCrawlSchedule): Promise<CrawlSchedule> {
-    const [schedule] = await db.insert(crawlSchedules).values(insertSchedule).returning();
+    const data = { ...insertSchedule, daysOfWeek: Array.from(insertSchedule.daysOfWeek) as number[] };
+    const [schedule] = await db.insert(crawlSchedules).values([data]).returning();
     return schedule;
   }
 
   async updateCrawlSchedule(id: number, insertSchedule: Partial<InsertCrawlSchedule>): Promise<CrawlSchedule | undefined> {
-    const [schedule] = await db.update(crawlSchedules).set({ ...insertSchedule, updatedAt: new Date() }).where(eq(crawlSchedules.id, id)).returning();
+    const updateData: any = { updatedAt: new Date() };
+    if (insertSchedule.url !== undefined) updateData.url = insertSchedule.url;
+    if (insertSchedule.scheduledTime !== undefined) updateData.scheduledTime = insertSchedule.scheduledTime;
+    if (insertSchedule.daysOfWeek !== undefined) updateData.daysOfWeek = Array.from(insertSchedule.daysOfWeek) as number[];
+    if (insertSchedule.isActive !== undefined) updateData.isActive = insertSchedule.isActive;
+    const [schedule] = await db.update(crawlSchedules).set(updateData).where(eq(crawlSchedules.id, id)).returning();
     return schedule || undefined;
   }
 
