@@ -1,0 +1,598 @@
+Project Context – Live SEO Command Center (Current State)
+
+You are working on an existing production-grade SEO Rank Tracking & Competitor Intelligence Platform with:
+
+Frontend: React 18 + TypeScript, Radix UI, Tailwind CSS, TanStack Query, Wouter
+
+Backend: Node.js + Express, TypeScript
+
+DB: PostgreSQL (Neon serverless) via Drizzle ORM
+
+External APIs: DataForSEO v3 (SERP, volume, difficulty, intent), OnPage API (optional), cron jobs
+
+Scheduling: node-cron for jobs (daily snapshots etc.)
+
+The platform currently supports:
+
+2 projects, 445+ keywords, 12 pages, 20 competitors
+
+Data-driven dashboards across:
+
+/ Dashboard
+
+/keywords
+
+/pages
+
+/recommendations
+
+/competitors
+
+/data-management
+
+/scheduled-crawls
+
+/quick-wins
+
+/falling-stars
+
+Key tables (non-exhaustive):
+
+projects
+
+keywords
+
+keyword_metrics
+
+page_metrics
+
+seo_recommendations
+
+competitor_metrics
+
+seo_health_snapshots
+
+locations
+
+rankings_history (exists but empty)
+
+crawl_schedules (exists but empty)
+
+settings_priority_rules
+
+settings_quick_wins (defaults only)
+
+settings_falling_stars (defaults only)
+
+import_logs (exists but empty)
+
+Core APIs already implemented (and working):
+
+/api/projects (GET/POST)
+
+/api/dashboard/* (overview, keywords, pages, recommendations, competitors)
+
+/api/data/* (locations, priority rules, imports, bulk ops)
+
+/api/jobs/* (snapshot, keywords, competitors, recommendations)
+
+/api/crawl-schedules/* (CRUD)
+
+/api/quick-wins, /api/falling-stars
+
+/api/system/status
+
+Scheduled Jobs:
+
+Daily SEO Snapshot – 5:00 PM CST ✅
+
+Weekend Heavy Jobs – Sunday 3:00 AM CST (reserved but not used yet)
+
+Goal of This Phase
+
+Turn this from a live SEO dashboard into an SEO Operating System with:
+
+True historical ranking engine
+
+Automated crawl & sync schedules
+
+Configurable strategy rules per project
+
+Proper audit + import logging
+
+Smarter opportunity & risk scoring
+
+Closed feedback loop on recommendations
+
+Competitors mapped and visible per keyword (critical new requirement)
+
+All work should respect the current tech stack and patterns (React + TanStack Query in frontend, Express + Drizzle in backend).
+
+Scope – Backend Changes
+1. Rankings History Engine (Core)
+
+Problem: rankings_history table exists but has 0 records; most logic is snapshot-based.
+
+Task:
+
+Define/confirm schema for rankings_history (Drizzle):
+
+id (PK)
+
+project_id (FK → projects)
+
+keyword_id (FK → keywords)
+
+date (DATE or TIMESTAMP)
+
+position (INT, SERP rank)
+
+url (TEXT – landing page that ranked)
+
+device (ENUM or TEXT – desktop/mobile)
+
+location_id (FK → locations)
+
+Optionally: serp_features JSONB (e.g., Sitelinks, Featured Snippet, etc.)
+
+Daily Job: Extend or add a job that:
+
+For each active project:
+
+Pulls SERP rankings for P1/P2 keywords (based on settings_priority_rules).
+
+Writes entries into rankings_history (one row per keyword per day).
+
+Backfill Support:
+
+Create a script/job to backfill the last 30–90 days using:
+
+Existing CSV/XLSX imports or
+
+Batch DataForSEO jobs for a subset of keywords.
+
+This job can be triggered via an internal endpoint:
+
+POST /api/jobs/rankings-backfill with payload { projectId, days }.
+
+API Exposure:
+
+Implement GET /api/rankings-history/:keywordId:
+
+Returns time-series data for the keyword:
+
+[{ date, position, url, locationId, device }]
+
+Supports query params:
+
+?from=YYYY-MM-DD&to=YYYY-MM-DD
+
+Optional projectId if needed.
+
+2. Keyword-Level Competitor Mapping (New Critical Requirement)
+
+New Requirement: Competitors must be available per keyword, not just globally per project.
+
+2.1. Data Model
+
+Create a new table, e.g. keyword_competitor_metrics:
+
+id (PK)
+
+project_id (FK → projects)
+
+keyword_id (FK → keywords)
+
+competitor_domain (TEXT or CITEXT)
+
+competitor_url (TEXT)
+
+avg_position (FLOAT or NUMERIC)
+
+latest_position (INT)
+
+visibility_score (FLOAT) – optional composite metric
+
+last_seen_at (TIMESTAMP)
+
+Optional:
+
+serp_features JSONB
+
+is_direct_competitor (BOOLEAN)
+
+click_share_estimate (FLOAT)
+
+2.2. Jobs
+
+Extend existing competitor analysis job (/api/jobs/competitors):
+
+For each keyword in a project:
+
+Pull top N SERP results via DataForSEO (e.g., top 10–20).
+
+For each result:
+
+Derive competitor_domain from URL.
+
+Upsert row in keyword_competitor_metrics:
+
+Update latest_position, avg_position (rolling), last_seen_at.
+
+Apply project-level constraints:
+
+Limit to top N competitors per keyword by visibility.
+
+Optionally ignore the project’s own domain.
+
+2.3. APIs
+
+New endpoint:
+GET /api/keywords/:keywordId/competitors
+
+Returns:
+
+type KeywordCompetitor = {
+  competitorDomain: string;
+  competitorUrl: string;
+  latestPosition: number;
+  avgPosition: number | null;
+  visibilityScore: number | null;
+  lastSeenAt: string;
+};
+
+
+Filters:
+
+Optional ?limit=10
+
+Optional ?sort=latestPosition|avgPosition|visibilityScore
+
+Extend existing dashboard endpoint:
+
+/api/dashboard/competitors:
+
+Add aggregated views:
+
+Top competitors per keyword (e.g., group by keyword_id).
+
+Optionally allow query param ?keywordId=... to scope.
+
+Optional helper:
+
+GET /api/projects/:projectId/keywords-with-competitors:
+
+For each keyword: top 3 competitors.
+
+3. Crawl Schedules – Make Them Operative
+
+Problem: crawl_schedules exists, but there are 0 active schedules. Weekend heavy jobs are configured but unused.
+
+Task:
+
+Extend crawl_schedules schema if needed:
+
+id, project_id, type (e.g., keyword_ranks, competitors, pages_health),
+
+frequency (cron expression or enum),
+
+enabled (BOOLEAN),
+
+last_run_at, next_run_at, config JSONB (for advanced options).
+
+Implement scheduler logic:
+
+A single cron runner that:
+
+Reads all enabled crawl_schedules.
+
+Determines which jobs are due.
+
+Invokes corresponding job handlers:
+
+Keyword ranks sync
+
+Competitor SERP sync
+
+Page health crawl
+
+Standard schedule presets (configurable per project):
+
+Suggested defaults:
+
+keyword_ranks: daily
+
+competitors: twice weekly
+
+pages_health: weekly
+
+deep_discovery: monthly
+
+API Enhancements:
+
+/api/crawl-schedules (GET/POST) – ensure:
+
+Accepts payloads to set type, frequency, enabled, config.
+
+/api/crawl-schedules/:id (PATCH/DELETE) – fully functional and validated.
+
+4. Settings – Project-Level Strategy Controls
+
+Problem: settings_quick_wins and settings_falling_stars are using hardcoded defaults; rules aren’t project-specific enough.
+
+Task:
+
+Ensure existence/extend schemas:
+
+settings_quick_wins:
+
+id
+
+project_id
+
+min_position (e.g., 4)
+
+max_position (e.g., 20)
+
+min_search_volume
+
+min_intent_score (if used)
+
+min_cpc (optional)
+
+enabled (BOOLEAN)
+
+settings_falling_stars:
+
+id
+
+project_id
+
+min_drop_delta (e.g., -5 positions)
+
+window_days (e.g., 7, 14, 30)
+
+min_search_volume
+
+enabled (BOOLEAN)
+
+Wire these settings into:
+
+/api/quick-wins
+
+/api/falling-stars
+
+Instead of using hardcoded constants, compute results per project based on these settings.
+
+API:
+
+GET /api/settings/:projectId – returns combined settings.
+
+PATCH /api/settings/:projectId – allows update of thresholds.
+
+5. Import Logs – Governance Layer
+
+Problem: import_logs exists but has 0 records; imports are not audited.
+
+Task:
+
+Confirm/extend schema:
+
+id
+
+project_id
+
+import_type (e.g., keywords, rankings, pages)
+
+file_name
+
+user_identifier (email/ID string; for now can be system or admin)
+
+rows_total
+
+rows_success
+
+rows_failed
+
+created_at
+
+meta JSONB (error messages, etc.)
+
+Integrate logging into all existing import endpoints:
+
+/api/data/import/* POST handlers:
+
+After processing, write a row into import_logs.
+
+Optional API:
+
+GET /api/import-logs?projectId=... – view recent history.
+
+6. Opportunity & Risk Scoring v2
+
+Goal: Move from static snapshot-based opportunity flags to a composite scoring model that uses historical data and competitor context.
+
+Use:
+
+rankings_history (trend)
+
+keyword_metrics (volume, difficulty, intent)
+
+keyword_competitor_metrics (competition pressure)
+
+settings_quick_wins / settings_falling_stars
+
+Implementation Details:
+
+Create helper service (backend module), e.g. seoScoringService:
+
+For each keyword:
+
+Position proximity score – how close it is to top 3/5.
+
+Trend velocity score – current vs 7/14/30-day average.
+
+CPC/intent score – higher commercial intent and CPC = higher score.
+
+Competitor pressure score – number and strength of competitors present.
+
+Page health modifier – if page_metrics shows technical issues, dampen score.
+
+Use composite score for:
+
+/api/quick-wins – sorted by descending opportunity score.
+
+/api/falling-stars – sorted by descending risk score.
+
+/api/dashboard/overview – top opportunities + threats summary.
+
+Return scores as part of API payloads so frontend can display them.
+
+7. Recommendation Feedback Loop
+
+Goal: Each seo_recommendation (task) should have a measurable before vs after impact.
+
+Task:
+
+Extend seo_recommendations schema:
+
+Add optional fields:
+
+baseline_snapshot JSONB (stored at time of creation or first “in-progress”)
+
+result_snapshot JSONB (captured after some delay – e.g., 14–30 days)
+
+impact_score (numeric)
+
+impact_summary (TEXT)
+
+Logic:
+
+When a recommendation moves from open → in-progress or done, capture:
+
+Pre-change metrics: position, traffic estimate, etc.
+
+After X days, a job recalculates metrics and updates:
+
+result_snapshot, compares baseline vs current, sets impact_score.
+
+New endpoint (optional):
+
+GET /api/recommendations/:id/impact – returns before/after stats.
+
+8. Executive Narrative Generator (Backend First)
+
+Goal: Provide a single endpoint that summarizes what happened and why it matters.
+
+Task:
+
+New endpoint: GET /api/dashboard/narrative?projectId=...&window=7|30
+
+Backend will compute and return a structured payload, e.g.:
+
+type DashboardNarrative = {
+  period: { from: string; to: string };
+  keyWins: string[];
+  keyRisks: string[];
+  topMovers: { keyword: string; delta: number }[];
+  biggestOpportunities: { keyword: string; opportunityScore: number }[];
+  competitorHighlights: string[];
+  summary: string; // short paragraph summary
+};
+
+
+It will internally use:
+
+seo_health_snapshots
+
+rankings_history
+
+seo_recommendations
+
+keyword_competitor_metrics
+
+Frontend can later render this as a narrative or convert to a “board report” style card.
+
+Scope – Frontend Changes
+1. Keywords Page (/keywords)
+
+For each keyword row:
+
+Add ability to view keyword-level competitors:
+
+Either as an inline expandable row or side drawer.
+
+Calls /api/keywords/:keywordId/competitors.
+
+Show:
+
+Top 3 competitor domains
+
+Their latest positions
+
+Link to their URLs (optional)
+
+Add visual hints for:
+
+Opportunity score
+
+Risk score
+
+2. Competitors Page (/competitors)
+
+Add new view modes:
+
+Global per project (existing)
+
+Per keyword: select a keyword from dropdown → show competitor stack for that keyword.
+
+Use keyword-level competitor API to populate.
+
+3. Dashboard (/)
+
+Integrate:
+
+Opportunity and risk scores from new backend logic.
+
+Narrative widget from /api/dashboard/narrative.
+
+4. Quick Wins & Falling Stars
+
+Update data models to consume new scoring fields.
+
+Allow filtering by:
+
+Keyword intent
+
+Competitor pressure (e.g., “keywords where 2+ strong competitors are present”).
+
+5. Settings UI
+
+Simple settings/integrations UI for each project:
+
+Quick Wins thresholds
+
+Falling Stars thresholds
+
+Schedule presets (ties into crawl_schedules)
+
+Non-Goals for This Phase (Explicitly Out of Scope)
+
+No major redesign of UX framework (Radix/Tailwind stays).
+
+No multi-tenant billing or auth refactor.
+
+No ML/AI-generated text in this phase (but structures should be friendly to that later).
+
+Use this scope to:
+
+Update DB migrations (Drizzle)
+
+Implement new/updated jobs
+
+Wire up all APIs
+
+Extend frontend views in a minimal but usable way
+
+The keyword-level competitor availability is mandatory:
+Every keyword should be able to show its top competitors and their positions via the new data model + API described above.
