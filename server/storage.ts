@@ -17,6 +17,8 @@ import {
   type InsertCompetitorMetrics,
   type Location,
   type SettingsPriorityRules,
+  type CrawlSchedule,
+  type InsertCrawlSchedule,
   users,
   projects,
   keywords,
@@ -27,6 +29,7 @@ import {
   competitorMetrics,
   locations,
   settingsPriorityRules,
+  crawlSchedules,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -68,6 +71,12 @@ export interface IStorage {
 
   getLocations(): Promise<Location[]>;
   getPriorityRules(): Promise<SettingsPriorityRules[]>;
+
+  getCrawlSchedules(projectId: string): Promise<CrawlSchedule[]>;
+  getCrawlSchedule(id: number): Promise<CrawlSchedule | undefined>;
+  createCrawlSchedule(schedule: InsertCrawlSchedule): Promise<CrawlSchedule>;
+  updateCrawlSchedule(id: number, schedule: Partial<InsertCrawlSchedule>): Promise<CrawlSchedule | undefined>;
+  deleteCrawlSchedule(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -304,6 +313,29 @@ export class DatabaseStorage implements IStorage {
 
   async getPriorityRules(): Promise<SettingsPriorityRules[]> {
     return await db.select().from(settingsPriorityRules).orderBy(settingsPriorityRules.priority);
+  }
+
+  async getCrawlSchedules(projectId: string): Promise<CrawlSchedule[]> {
+    return await db.select().from(crawlSchedules).where(eq(crawlSchedules.projectId, projectId)).orderBy(crawlSchedules.url);
+  }
+
+  async getCrawlSchedule(id: number): Promise<CrawlSchedule | undefined> {
+    const [schedule] = await db.select().from(crawlSchedules).where(eq(crawlSchedules.id, id));
+    return schedule || undefined;
+  }
+
+  async createCrawlSchedule(insertSchedule: InsertCrawlSchedule): Promise<CrawlSchedule> {
+    const [schedule] = await db.insert(crawlSchedules).values(insertSchedule).returning();
+    return schedule;
+  }
+
+  async updateCrawlSchedule(id: number, insertSchedule: Partial<InsertCrawlSchedule>): Promise<CrawlSchedule | undefined> {
+    const [schedule] = await db.update(crawlSchedules).set({ ...insertSchedule, updatedAt: new Date() }).where(eq(crawlSchedules.id, id)).returning();
+    return schedule || undefined;
+  }
+
+  async deleteCrawlSchedule(id: number): Promise<void> {
+    await db.delete(crawlSchedules).where(eq(crawlSchedules.id, id));
   }
 }
 

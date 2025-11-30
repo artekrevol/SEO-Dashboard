@@ -395,3 +395,37 @@ export type Intent = z.infer<typeof intentEnum>;
 
 export const healthStatusEnum = z.enum(["healthy", "at_risk", "declining"]);
 export type HealthStatus = z.infer<typeof healthStatusEnum>;
+
+export const crawlSchedules = pgTable("crawl_schedules", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  scheduledTime: text("scheduled_time").notNull(),
+  daysOfWeek: jsonb("days_of_week").$type<number[]>().notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("crawl_schedules_project_id_idx").on(table.projectId),
+  isActiveIdx: index("crawl_schedules_is_active_idx").on(table.isActive),
+}));
+
+export const crawlSchedulesRelations = relations(crawlSchedules, ({ one }) => ({
+  project: one(projects, {
+    fields: [crawlSchedules.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertCrawlScheduleSchema = createInsertSchema(crawlSchedules).omit({
+  id: true,
+  lastRunAt: true,
+  nextRunAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCrawlSchedule = z.infer<typeof insertCrawlScheduleSchema>;
+export type CrawlSchedule = typeof crawlSchedules.$inferSelect;
