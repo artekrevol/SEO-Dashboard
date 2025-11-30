@@ -759,18 +759,18 @@ export class DatabaseStorage implements IStorage {
         .select()
         .from(importLogs)
         .where(eq(importLogs.projectId, projectId))
-        .orderBy(desc(importLogs.createdAt))
+        .orderBy(desc(importLogs.startedAt))
         .limit(limit);
     }
     return await db
       .select()
       .from(importLogs)
-      .orderBy(desc(importLogs.createdAt))
+      .orderBy(desc(importLogs.startedAt))
       .limit(limit);
   }
 
   async createImportLog(log: InsertImportLog): Promise<ImportLog> {
-    const [created] = await db.insert(importLogs).values(log).returning();
+    const [created] = await db.insert(importLogs).values(log as typeof importLogs.$inferInsert).returning();
     return created;
   }
 }
