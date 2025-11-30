@@ -75,6 +75,8 @@ export interface IStorage {
   getPageMetrics(projectId: string, limit?: number): Promise<PageMetrics[]>;
   getLatestPageMetrics(projectId: string): Promise<PageMetrics[]>;
   createPageMetrics(metrics: InsertPageMetrics): Promise<PageMetrics>;
+  deletePageMetrics(id: number): Promise<void>;
+  getPageMetricsById(id: number): Promise<PageMetrics | undefined>;
 
   getSeoRecommendations(projectId: string, filters?: { status?: string; type?: string; severity?: string }): Promise<SeoRecommendation[]>;
   getSeoRecommendation(id: number): Promise<SeoRecommendation | undefined>;
@@ -329,6 +331,18 @@ export class DatabaseStorage implements IStorage {
   async createPageMetrics(insertMetrics: InsertPageMetrics): Promise<PageMetrics> {
     const [metrics] = await db.insert(pageMetrics).values(insertMetrics).returning();
     return metrics;
+  }
+
+  async deletePageMetrics(id: number): Promise<void> {
+    await db.delete(pageMetrics).where(eq(pageMetrics.id, id));
+  }
+
+  async getPageMetricsById(id: number): Promise<PageMetrics | undefined> {
+    const [page] = await db
+      .select()
+      .from(pageMetrics)
+      .where(eq(pageMetrics.id, id));
+    return page || undefined;
   }
 
   async getSeoRecommendations(

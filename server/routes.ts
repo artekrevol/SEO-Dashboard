@@ -182,7 +182,9 @@ export async function registerRoutes(
       const pages = await storage.getLatestPageMetrics(projectId);
 
       const items = pages.map((p) => ({
+        id: p.id,
         url: p.url,
+        date: p.date,
         avgPosition: Number(p.avgPosition) || 0,
         bestPosition: p.bestPosition || 0,
         keywordsInTop10: p.keywordsInTop10 || 0,
@@ -203,6 +205,125 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching page metrics:", error);
       res.status(500).json({ error: "Failed to fetch page metrics" });
+    }
+  });
+
+  app.post("/api/pages", async (req, res) => {
+    try {
+      const pageSchema = z.object({
+        projectId: z.string(),
+        url: z.string().url(),
+      });
+      
+      const parsed = pageSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid page data", details: parsed.error.errors });
+      }
+      
+      const page = await storage.createPageMetrics({
+        projectId: parsed.data.projectId,
+        url: parsed.data.url,
+        date: new Date().toISOString().split('T')[0],
+        isIndexable: true,
+        hasSchema: false,
+      });
+      
+      res.status(201).json(page);
+    } catch (error) {
+      console.error("Error creating page:", error);
+      res.status(500).json({ error: "Failed to create page" });
+    }
+  });
+
+  app.delete("/api/pages/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid page ID" });
+      }
+      
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      const page = await storage.getPageMetricsById(id);
+      if (!page) {
+        return res.status(404).json({ error: "Page not found" });
+      }
+      
+      if (page.projectId !== projectId) {
+        return res.status(403).json({ error: "Page does not belong to this project" });
+      }
+      
+      await storage.deletePageMetrics(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting page:", error);
+      res.status(500).json({ error: "Failed to delete page" });
+    }
+  });
+
+  app.post("/api/pages/bulk", async (req, res) => {
+    try {
+      const bulkSchema = z.object({
+        projectId: z.string(),
+        urls: z.array(z.string().url()),
+      });
+      
+      const parsed = bulkSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid bulk page data", details: parsed.error.errors });
+      }
+      
+      const today = new Date().toISOString().split('T')[0];
+      const pages = [];
+      
+      for (const url of parsed.data.urls) {
+        const page = await storage.createPageMetrics({
+          projectId: parsed.data.projectId,
+          url,
+          date: today,
+          isIndexable: true,
+          hasSchema: false,
+        });
+        pages.push(page);
+      }
+      
+      res.status(201).json({ pages, count: pages.length });
+    } catch (error) {
+      console.error("Error bulk creating pages:", error);
+      res.status(500).json({ error: "Failed to bulk create pages" });
+    }
+  });
+
+  app.delete("/api/pages/bulk", async (req, res) => {
+    try {
+      const bulkDeleteSchema = z.object({
+        projectId: z.string(),
+        pageIds: z.array(z.number()),
+      });
+      
+      const parsed = bulkDeleteSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid bulk delete data", details: parsed.error.errors });
+      }
+      
+      const { projectId, pageIds } = parsed.data;
+      let deletedCount = 0;
+      
+      for (const id of pageIds) {
+        const page = await storage.getPageMetricsById(id);
+        if (page && page.projectId === projectId) {
+          await storage.deletePageMetrics(id);
+          deletedCount++;
+        }
+      }
+      
+      res.json({ deletedCount });
+    } catch (error) {
+      console.error("Error bulk deleting pages:", error);
+      res.status(500).json({ error: "Failed to bulk delete pages" });
     }
   });
 
