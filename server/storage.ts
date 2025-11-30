@@ -210,37 +210,85 @@ export class DatabaseStorage implements IStorage {
     const projectKeywords = await this.getKeywords(projectId);
     if (projectKeywords.length === 0) return [];
 
-    // Get latest metrics for all keywords (including those without metrics)
-    const allKeywordsWithMetrics = await db
+    // Get latest rankings for each keyword from rankings_history
+    const allKeywordsWithRankings = await db
       .select({
-        keywordMetrics: keywordMetrics,
         keyword: keywords,
+        ranking: rankingsHistory,
       })
       .from(keywords)
-      .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
+      .leftJoin(rankingsHistory, eq(rankingsHistory.keywordId, keywords.id))
       .where(eq(keywords.projectId, projectId))
-      .orderBy(desc(keywordMetrics.date));
+      .orderBy(desc(rankingsHistory.date));
 
-    const metricsMap = new Map<number, any>();
-    for (const row of allKeywordsWithMetrics) {
-      if (!metricsMap.has(row.keyword.id)) {
-        metricsMap.set(row.keyword.id, {
-          keywordId: row.keyword.id,
-          keyword: row.keyword.keyword,
-          cluster: row.keyword.cluster,
-          url: row.keyword.targetUrl || "",
-          currentPosition: row.keywordMetrics?.position || 0,
-          positionDelta: row.keywordMetrics?.positionDelta || 0,
-          searchVolume: row.keywordMetrics?.searchVolume || 0,
-          difficulty: row.keywordMetrics ? Number(row.keywordMetrics.difficulty) || 0 : 0,
-          intent: row.keywordMetrics?.intent || "informational",
-          serpFeatures: row.keywordMetrics?.serpFeatures || [],
-          opportunityScore: row.keywordMetrics ? Number(row.keywordMetrics.opportunityScore) || 0 : 0,
-        });
+    // Build a map: keywordId -> latest ranking
+    const rankingMap = new Map<number, typeof rankingsHistory.$inferSelect>();
+    for (const row of allKeywordsWithRankings) {
+      if (row.ranking && !rankingMap.has(row.keyword.id)) {
+        rankingMap.set(row.keyword.id, row.ranking);
       }
     }
 
-    return Array.from(metricsMap.values());
+    // Get previous day rankings for position delta calculation
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const previousRankings = await db
+      .select()
+      .from(rankingsHistory)
+      .where(
+        and(
+          eq(rankingsHistory.projectId, projectId),
+          eq(rankingsHistory.date, yesterday)
+        )
+      );
+    const previousRankingMap = new Map<number, number>();
+    for (const r of previousRankings) {
+      previousRankingMap.set(r.keywordId, r.position || 0);
+    }
+
+    // Build results with data from keywords table and rankings_history
+    const results: any[] = [];
+    for (const kw of projectKeywords) {
+      const latestRanking = rankingMap.get(kw.id);
+      const previousPosition = previousRankingMap.get(kw.id) || 0;
+      const currentPosition = latestRanking?.position || 0;
+      const positionDelta = previousPosition > 0 && currentPosition > 0 
+        ? previousPosition - currentPosition 
+        : 0;
+
+      // Calculate opportunity score based on position, volume, and difficulty
+      let opportunityScore = 0;
+      if (kw.searchVolume && kw.difficulty !== undefined) {
+        const volume = kw.searchVolume || 0;
+        const difficulty = kw.difficulty || 0;
+        const position = currentPosition || 100;
+        
+        // Higher volume = higher opportunity
+        const volumeScore = Math.min(50, volume / 100);
+        // Lower difficulty = higher opportunity  
+        const difficultyScore = Math.max(0, 50 - difficulty);
+        // Better position = higher opportunity (positions 6-20 are "quick wins")
+        const positionScore = position > 0 && position <= 20 ? (21 - position) * 2 : 10;
+        
+        opportunityScore = Math.round((volumeScore + difficultyScore + positionScore) / 3);
+      }
+
+      results.push({
+        keywordId: kw.id,
+        keyword: kw.keyword,
+        cluster: kw.cluster,
+        url: kw.targetUrl || "",
+        currentPosition: currentPosition,
+        positionDelta: positionDelta,
+        searchVolume: kw.searchVolume || 0,
+        difficulty: kw.difficulty || 0,
+        intent: kw.intentHint || "informational",
+        serpFeatures: latestRanking?.serpFeatures || [],
+        opportunityScore: opportunityScore,
+      });
+    }
+
+    return results;
   }
 
   async createKeywordMetrics(insertMetrics: InsertKeywordMetrics): Promise<KeywordMetrics> {
@@ -332,20 +380,106 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCompetitorMetrics(projectId: string): Promise<CompetitorMetrics[]> {
+    // First try to get from competitor_metrics table
     const allMetrics = await db
       .select()
       .from(competitorMetrics)
       .where(eq(competitorMetrics.projectId, projectId))
       .orderBy(desc(competitorMetrics.date));
 
-    const domainMap = new Map<string, CompetitorMetrics>();
-    for (const metric of allMetrics) {
-      if (!domainMap.has(metric.competitorDomain)) {
-        domainMap.set(metric.competitorDomain, metric);
+    if (allMetrics.length > 0) {
+      const domainMap = new Map<string, CompetitorMetrics>();
+      for (const metric of allMetrics) {
+        if (!domainMap.has(metric.competitorDomain)) {
+          domainMap.set(metric.competitorDomain, metric);
+        }
+      }
+      return Array.from(domainMap.values());
+    }
+
+    // Fallback: Aggregate from keyword_competitor_metrics
+    const keywordCompetitors = await db
+      .select()
+      .from(keywordCompetitorMetrics)
+      .where(eq(keywordCompetitorMetrics.projectId, projectId));
+
+    if (keywordCompetitors.length === 0) return [];
+
+    // Aggregate by domain
+    const domainStats = new Map<string, {
+      sharedKeywords: number;
+      totalPosition: number;
+      minPosition: number;
+    }>();
+
+    for (const kc of keywordCompetitors) {
+      const domain = kc.competitorDomain;
+      const existing = domainStats.get(domain) || {
+        sharedKeywords: 0,
+        totalPosition: 0,
+        minPosition: 100,
+      };
+      existing.sharedKeywords += 1;
+      existing.totalPosition += kc.latestPosition || 0;
+      existing.minPosition = Math.min(existing.minPosition, kc.latestPosition || 100);
+      domainStats.set(domain, existing);
+    }
+
+    // Get our rankings to calculate "above us" count
+    const ourRankings = await db
+      .select()
+      .from(rankingsHistory)
+      .where(eq(rankingsHistory.projectId, projectId));
+    
+    const ourPositionMap = new Map<number, number>();
+    for (const r of ourRankings) {
+      if (!ourPositionMap.has(r.keywordId) || (ourPositionMap.get(r.keywordId)! > (r.position || 100))) {
+        ourPositionMap.set(r.keywordId, r.position || 100);
       }
     }
 
-    return Array.from(domainMap.values());
+    // Calculate above us for each competitor
+    const domainAboveUs = new Map<string, number>();
+    for (const kc of keywordCompetitors) {
+      const ourPosition = ourPositionMap.get(kc.keywordId) || 100;
+      const theirPosition = kc.latestPosition || 100;
+      if (theirPosition < ourPosition) {
+        const domain = kc.competitorDomain;
+        domainAboveUs.set(domain, (domainAboveUs.get(domain) || 0) + 1);
+      }
+    }
+
+    // Convert to CompetitorMetrics format
+    const result: CompetitorMetrics[] = [];
+    const today = new Date().toISOString().split('T')[0];
+    let idCounter = 1;
+
+    for (const [domain, stats] of domainStats.entries()) {
+      const avgPosition = stats.sharedKeywords > 0 
+        ? stats.totalPosition / stats.sharedKeywords 
+        : 0;
+      const aboveUs = domainAboveUs.get(domain) || 0;
+      const pressureIndex = Math.round((aboveUs / Math.max(stats.sharedKeywords, 1)) * 100);
+
+      result.push({
+        id: idCounter++,
+        projectId: projectId,
+        competitorDomain: domain,
+        date: today,
+        avgPosition: String(avgPosition.toFixed(1)),
+        sharedKeywords: stats.sharedKeywords,
+        aboveUsKeywords: aboveUs,
+        authorityScore: null,
+        pressureIndex: String(pressureIndex),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    // Sort by shared keywords descending
+    result.sort((a, b) => (b.sharedKeywords || 0) - (a.sharedKeywords || 0));
+
+    return result.slice(0, 20); // Return top 20
   }
 
   async createCompetitorMetrics(insertMetrics: InsertCompetitorMetrics): Promise<CompetitorMetrics> {

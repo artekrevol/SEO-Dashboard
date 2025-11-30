@@ -519,7 +519,7 @@ export function startScheduledJobs(): void {
       console.log("[Job] Running crawl-schedule-check (every 15 min)...");
       try {
         const crawlService = await getCrawlSchedulerService();
-        const results = await crawlService.runDueSchedules();
+        const results = await crawlService.checkAndRunDueSchedules();
         if (results.length > 0) {
           console.log(`[Job] Executed ${results.length} scheduled crawls`);
         }

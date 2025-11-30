@@ -823,6 +823,42 @@ export async function registerRoutes(
     }
   });
 
+  // Full crawl endpoint - comprehensive SEO data refresh
+  app.post("/api/crawl/full", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const { runFullCrawl } = await import("./services/full-crawl");
+      
+      console.log(`[API] Starting full crawl for project: ${project.name}`);
+      
+      const result = await runFullCrawl(projectId, (progress) => {
+        console.log(`[FullCrawl] ${progress.phase}: ${progress.message}`);
+      });
+
+      res.json({
+        success: result.success,
+        keywordsProcessed: result.keywordsProcessed,
+        competitorsFound: result.competitorsFound,
+        pagesAnalyzed: result.pagesAnalyzed,
+        errors: result.errors.slice(0, 10),
+        totalErrors: result.errors.length,
+      });
+    } catch (error) {
+      console.error("Error running full crawl:", error);
+      res.status(500).json({ error: "Failed to run full crawl" });
+    }
+  });
+
   // Quick Wins API - high-opportunity keywords close to top positions
   app.get("/api/quick-wins", async (req, res) => {
     try {
