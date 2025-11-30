@@ -687,4 +687,36 @@ async function seedDemoData(projectId: string, domain: string) {
       seoHealthScore: String(baseScore + variation),
     });
   }
+
+  // Create predefined crawl schedules
+  const predefinedCrawls = [
+    {
+      url: `https://${domain}/keywords/rankings`,
+      name: "Keyword Rankings Update",
+      time: "09:00",
+      days: [1, 3, 5], // Mon, Wed, Fri
+    },
+    {
+      url: `https://${domain}/pages/metrics`,
+      name: "Pages Metrics",
+      time: "10:00",
+      days: [0, 2, 4, 6], // Sun, Tue, Thu, Sat
+    },
+    {
+      url: `https://${domain}/competitors/analysis`,
+      name: "Competitors Analysis",
+      time: "14:00",
+      days: [1, 4], // Wed, Fri
+    },
+  ];
+
+  for (const crawl of predefinedCrawls) {
+    await storage.createCrawlSchedule({
+      projectId,
+      url: crawl.url,
+      scheduledTime: crawl.time,
+      daysOfWeek: crawl.days,
+      isActive: true,
+    });
+  }
 }

@@ -15,8 +15,8 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
-    url: "",
-    scheduledTime: "14:00",
+    url: "https://example.com/keywords/rankings",
+    scheduledTime: "09:00",
     daysOfWeek: [1, 3, 5] as number[],
     isActive: true,
   });
