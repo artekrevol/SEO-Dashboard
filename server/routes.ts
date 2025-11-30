@@ -468,6 +468,72 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/crawl-schedules", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const schedules = await storage.getCrawlSchedules(projectId);
+      res.json(schedules);
+    } catch (error) {
+      console.error("Error fetching crawl schedules:", error);
+      res.status(500).json({ error: "Failed to fetch crawl schedules" });
+    }
+  });
+
+  app.post("/api/crawl-schedules", async (req, res) => {
+    try {
+      const { projectId, url, scheduledTime, daysOfWeek, isActive } = req.body;
+      if (!projectId || !url || !scheduledTime || !daysOfWeek) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const schedule = await storage.createCrawlSchedule({
+        projectId,
+        url,
+        scheduledTime,
+        daysOfWeek: Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek),
+        isActive: isActive !== false,
+      });
+      res.status(201).json(schedule);
+    } catch (error) {
+      console.error("Error creating crawl schedule:", error);
+      res.status(500).json({ error: "Failed to create crawl schedule" });
+    }
+  });
+
+  app.patch("/api/crawl-schedules/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { url, scheduledTime, daysOfWeek, isActive } = req.body;
+      const updateData: any = {};
+      if (url !== undefined) updateData.url = url;
+      if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime;
+      if (daysOfWeek !== undefined) updateData.daysOfWeek = Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek);
+      if (isActive !== undefined) updateData.isActive = isActive;
+      
+      const schedule = await storage.updateCrawlSchedule(id, updateData);
+      if (!schedule) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+      res.json(schedule);
+    } catch (error) {
+      console.error("Error updating crawl schedule:", error);
+      res.status(500).json({ error: "Failed to update crawl schedule" });
+    }
+  });
+
+  app.delete("/api/crawl-schedules/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteCrawlSchedule(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting crawl schedule:", error);
+      res.status(500).json({ error: "Failed to delete crawl schedule" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;
@@ -621,73 +687,4 @@ async function seedDemoData(projectId: string, domain: string) {
       seoHealthScore: String(baseScore + variation),
     });
   }
-}
-
-  app.get("/api/crawl-schedules", async (req, res) => {
-    try {
-      const projectId = req.query.projectId as string;
-      if (!projectId) {
-        return res.status(400).json({ error: "projectId is required" });
-      }
-      const schedules = await storage.getCrawlSchedules(projectId);
-      res.json(schedules);
-    } catch (error) {
-      console.error("Error fetching crawl schedules:", error);
-      res.status(500).json({ error: "Failed to fetch crawl schedules" });
-    }
-  });
-
-  app.post("/api/crawl-schedules", async (req, res) => {
-    try {
-      const { projectId, url, scheduledTime, daysOfWeek, isActive } = req.body;
-      if (!projectId || !url || !scheduledTime || !daysOfWeek) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
-      const schedule = await storage.createCrawlSchedule({
-        projectId,
-        url,
-        scheduledTime,
-        daysOfWeek: Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek),
-        isActive: isActive !== false,
-      });
-      res.status(201).json(schedule);
-    } catch (error) {
-      console.error("Error creating crawl schedule:", error);
-      res.status(500).json({ error: "Failed to create crawl schedule" });
-    }
-  });
-
-  app.patch("/api/crawl-schedules/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { url, scheduledTime, daysOfWeek, isActive } = req.body;
-      const updateData: any = {};
-      if (url !== undefined) updateData.url = url;
-      if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime;
-      if (daysOfWeek !== undefined) updateData.daysOfWeek = Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek);
-      if (isActive !== undefined) updateData.isActive = isActive;
-      
-      const schedule = await storage.updateCrawlSchedule(id, updateData);
-      if (!schedule) {
-        return res.status(404).json({ error: "Schedule not found" });
-      }
-      res.json(schedule);
-    } catch (error) {
-      console.error("Error updating crawl schedule:", error);
-      res.status(500).json({ error: "Failed to update crawl schedule" });
-    }
-  });
-
-  app.delete("/api/crawl-schedules/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      await storage.deleteCrawlSchedule(id);
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting crawl schedule:", error);
-      res.status(500).json({ error: "Failed to delete crawl schedule" });
-    }
-  });
-
-  return httpServer;
 }
