@@ -4,9 +4,10 @@
 A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Command Center. The application provides comprehensive SEO analytics, keyword tracking, competitor analysis, and actionable recommendations.
 
 ## Current State
-- **Status**: MVP Complete + Data Feed Layer + Scheduled Crawls + Phase 2 (Quick Wins/Falling Stars)
+- **Status**: Phase 3A Complete (Schema & Storage for SEO Operating System)
 - **Last Updated**: November 30, 2025
 - **Live Data**: 445 keywords, 12 pages, 20 competitors, 14 recommendations, 32 health snapshots
+- **Phase 3 Goal**: Transform into full "SEO Operating System" with true historical ranking engine, automated crawl schedules, per-project strategy rules, audit logging, advanced scoring, and keyword-level competitor mapping
 
 ## Tech Stack
 - **Frontend**: React + TypeScript, Vite, Tailwind CSS, Radix UI, TanStack Query, Recharts
@@ -21,17 +22,18 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `projects` - SEO projects/domains being tracked (with isActive flag)
 - `keywords` - Keywords tracked for each project (with location_id, language_code, priority, trackDaily, isActive, isCorePage)
 - `locations` - Geographic locations with DataForSEO location codes
-- `rankings_history` - Historical ranking data per keyword per day
+- `rankings_history` - Historical ranking data per keyword per day (with projectId, serpFeatures JSONB for SERP intelligence)
 - `seo_health_snapshots` - Daily SEO health aggregates per project
 - `keyword_metrics` - Per-keyword metrics over time (position, volume, difficulty, intent, opportunity score)
 - `page_metrics` - Per-URL metrics (backlinks, technical health, content gaps)
-- `seo_recommendations` - Actionable SEO tasks with severity and status
-- `competitor_metrics` - Competitor analysis with pressure index
+- `seo_recommendations` - Actionable SEO tasks with severity, status, and impact tracking (baseline_snapshot, result_snapshot, impact_score, impact_summary)
+- `competitor_metrics` - Competitor analysis with pressure index (domain-level)
+- `keyword_competitor_metrics` - **NEW** Per-keyword competitor data (competitor_domain, latest_position, avg_position, visibility_score, serp_features, is_direct_competitor, click_share_estimate)
 - `settings_priority_rules` - P1/P2/P3 priority classification rules
-- `import_logs` - Data import audit trail
-- `crawl_schedules` - Page crawl schedules with time, days of week, and active status for batch processing
-- `settings_quick_wins` - Configurable thresholds for Quick Wins board (min/max position, volume, difficulty, intents)
-- `settings_falling_stars` - Configurable thresholds for Falling Stars board (window days, min drop, min previous position)
+- `import_logs` - Data import audit trail (with projectId, userIdentifier, meta JSONB for enhanced tracking)
+- `crawl_schedules` - Page crawl schedules with type, frequency, config, last_run_status for executable batch processing
+- `settings_quick_wins` - Per-project configurable thresholds for Quick Wins board (enabled, min_intent_score, min_cpc)
+- `settings_falling_stars` - Per-project configurable thresholds for Falling Stars board (enabled flag)
 
 ### API Endpoints
 
@@ -202,10 +204,15 @@ The following files are available for import in `attached_assets/`:
 - ✅ **Phase 2: Falling Stars Board** - Operational workboard for defensive SEO
 - ✅ **Phase 2: Rankings History API** - Historical position tracking per keyword
 - ✅ **Phase 2: Configurable Settings Tables** - Thresholds for both boards
+- ✅ **Phase 3A: Schema & Storage** - SEO Operating System foundation:
+  - `keyword_competitor_metrics` table for per-keyword competitor tracking
+  - Enhanced `rankings_history` with projectId and serpFeatures JSONB
+  - Extended `crawl_schedules` with type, frequency, config, last_run_status
+  - Per-project settings for Quick Wins and Falling Stars boards
+  - Enhanced `import_logs` with projectId, userIdentifier, meta JSONB
+  - Recommendation impact tracking with baseline/result snapshots
 
-## Next Steps (Future Enhancements)
-- Custom report generation and export
-- Crawl execution and result logging
-- Advanced filtering in crawl schedules
-- Automated daily keyword tracking via scheduled crawls
-- Search volume data investigation (currently returning 0 for some keywords)
+## Next Steps (Phase 3B-D)
+- **Phase 3B: Jobs & Services** - Daily rankings sync, keyword competitor mapping job, crawl scheduler runner, SEO scoring v2, recommendation impact tracker, executive narrative generator
+- **Phase 3C: API Layer** - Keyword competitor endpoints, per-project settings CRUD, recommendation impact API, enhanced crawl schedule endpoints
+- **Phase 3D: Frontend** - Keyword/competitor views, settings pages, impact visualization, crawl dashboard enhancements
