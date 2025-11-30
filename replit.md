@@ -67,14 +67,19 @@ A production-ready Live SEO Dashboard for TekRevol, built as an internal SEO Com
 - `PATCH /api/crawl-schedules/:id` - Update existing crawl schedule
 - `DELETE /api/crawl-schedules/:id` - Delete crawl schedule
 
-### Frontend Pages
+**Predefined Schedules (auto-created per project):**
+- `https://{domain}/keywords/rankings` - 9:00 AM (Mon, Wed, Fri)
+- `https://{domain}/pages/metrics` - 10:00 AM (Sun, Tue, Thu, Sat)
+- `https://{domain}/competitors/analysis` - 2:00 PM (Wed, Fri)
+
+### Frontend Pages (7 Pages)
 - `/` - Main dashboard with KPI cards, health chart, top opportunities
 - `/keywords` - Keyword analytics with position distribution and intent charts
 - `/pages` - Page-level metrics with risk analysis
 - `/recommendations` - Actionable SEO tasks with filtering
 - `/competitors` - Competitive pressure analysis with visualization
 - `/data-management` - Bulk keyword operations (delete, activate/deactivate, filter by intent)
-- `/scheduled-crawls` - Page crawl schedule management with time and day selectors
+- `/scheduled-crawls` - Page crawl schedule management with time and day selectors (includes 3 predefined crawls)
 
 ## Data Feed & Control Layer
 
@@ -111,6 +116,10 @@ Jobs are scheduled via node-cron with CST timezone (America/Chicago):
 7. **Advanced Keyword Filtering** - Position brackets, opportunity ranges, SERP features, clusters, active filter chips, and preset buttons
 8. **Data Import Pipeline** - Bulk CSV/XLSX import for locations, keywords, and rankings
 9. **Priority-Based Scheduling** - P1/P2/P3 keyword classification for scheduled job prioritization
+10. **Automated Crawl Schedules** - 3 predefined batch processing crawls per project:
+    - Keyword rankings tracking (3x weekly)
+    - Page metrics collection (4x weekly)
+    - Competitor analysis updates (2x weekly)
 
 ## Development
 
@@ -168,6 +177,10 @@ The following files are available for import in `attached_assets/`:
 - ✅ All 445 keywords now visible in Data Management (left join query)
 - ✅ Full CRUD operations for crawl schedules
 - ✅ Sidebar navigation with all 7 main pages
+- ✅ Predefined crawl schedules (3 auto-created per project):
+  - Keyword Rankings Update (Mon/Wed/Fri 9:00 AM)
+  - Pages Metrics (Sun/Tue/Thu/Sat 10:00 AM)
+  - Competitors Analysis (Wed/Fri 2:00 PM)
 
 ## Next Steps (Future Enhancements)
 - Custom report generation and export
