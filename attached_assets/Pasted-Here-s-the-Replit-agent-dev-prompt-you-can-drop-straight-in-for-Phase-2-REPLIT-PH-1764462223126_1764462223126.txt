@@ -1,0 +1,406 @@
+Here’s the Replit agent / dev prompt you can drop straight in for **Phase 2**.
+
+---
+
+## 🔧 REPLIT PHASE 2 SPEC – RANKINGS HISTORY + QUICK WINS + FALLING STARS
+
+You are enhancing Tekrevol’s **Live SEO Command Center**.
+
+### 0. Current System State (Source of Truth)
+
+From the current inventory:
+
+* **Projects:** 2
+
+  * `Tekrevol` (primary)
+  * `Test SEO Project`
+* **Keywords:** 445
+
+  * 435 under Tekrevol
+  * 10 under Test SEO Project
+* **Locations:** 23 (with DataForSEO location codes)
+* **Competitors:** 20
+* **Pages:** 12
+* **Recommendations:** 14
+* **Metrics:**
+
+  * Keyword Metrics: 455 (position, difficulty, volume, intent, SERP features)
+  * SEO Health Snapshots: 32 (daily health scores, 0–100)
+  * **Rankings History: 0** (this is currently empty)
+  * Import Logs: 0
+
+Also:
+
+* ✅ DataForSEO API is wired and operational.
+* ✅ Keyword metrics are enriched with difficulty and intent.
+* ✅ Competitor analysis is running.
+* ✅ SEO health snapshots are generated daily at **5 PM CST**.
+
+### 1. Phase 2 Goals
+
+Implement the following:
+
+1. **Rankings History Pipeline**
+
+   * Store **daily per-keyword ranking snapshots** in a dedicated `rankings_history` table.
+   * Backfill from existing `ranking.xlsx` historical file.
+   * Wire the daily 5 PM CST DataForSEO SERP job to append to `rankings_history`, not just overwrite metrics.
+
+2. **Page Expansion & Mapping**
+
+   * Expand `pages` coverage by auto-discovering pages from:
+
+     * keyword target URLs
+     * SERP ranking URLs
+   * Mark **core pages** based on existing business rules (commercial / transactional keywords in top positions).
+
+3. **Two Operational Boards**
+
+   * **Quick Wins Board**: high-opportunity keywords that are close to top positions.
+   * **Falling Stars Board**: keywords whose rankings are dropping and need defensive action.
+
+These changes should **not break** the existing dashboard, but **enhance it with actionable, time-based intelligence.**
+
+---
+
+## 2. Data Model Changes
+
+### 2.1 `rankings_history` Table
+
+Create a new table (if not already present) to store historical per-keyword rankings:
+
+Fields (Postgres + Drizzle):
+
+* `id` – PK
+* `keyword_id` – FK → `keywords.id`
+* `project_id` – FK → `projects.id` (optional but useful)
+* `location_id` – FK → `locations.id` (optional; can be derived from keyword)
+* `date` – DATE (no time) or TIMESTAMP (normalized to UTC)
+* `position` – INT (1–100 or null if not ranked)
+* `url` – TEXT (ranking URL)
+* `device` – TEXT (e.g. `desktop`, `mobile`, optional)
+* `inserted_at` – TIMESTAMP (default now)
+
+Constraints / indexes:
+
+* Unique composite index on `(keyword_id, date)` or `(keyword_id, date, device)` to avoid duplicates.
+* Index on `(project_id, date)` for reporting.
+* Index on `(keyword_id)` for trend queries.
+
+### 2.2 `pages` Table Enhancements
+
+The system already has 12 pages stored. Extend and standardize:
+
+Fields:
+
+* `id` – PK
+* `project_id` – FK → `projects.id`
+* `url` – TEXT (unique per project)
+* `page_type` – enum or text: `service`, `blog`, `case-study`, `location-landing`, `other`
+* `cluster` – TEXT (align with keyword clusters if possible)
+* `is_core_page` – BOOLEAN (default false)
+* `is_active` – BOOLEAN (default true)
+* `created_at`, `updated_at`
+
+Add a **unique constraint** on `(project_id, url)`.
+
+---
+
+## 3. Rankings History: Backfill + Daily Append
+
+### 3.1 Backfill from `ranking.xlsx`
+
+Assumptions:
+
+* `ranking.xlsx` is available in `/mnt/data` (or configured path).
+* It contains columns:
+
+  * `keyword` (or similar)
+  * `date`
+  * `position`
+  * `url` (column H, as specified)
+  * optionally `project`, `location`, `device`
+
+Implementation steps:
+
+1. **Read `ranking.xlsx`** using a Node library (e.g. `xlsx`) in a one-off script or import job.
+2. For each row:
+
+   * Normalize `keyword` string (trim, lowercase for matching).
+   * Look up `keyword_id` by joining to existing `keywords` table on:
+
+     * `keyword` + `project` + `location` (if location present in file).
+   * If no match, log this row to an **import log table** and skip.
+3. Insert into `rankings_history`:
+
+   * `keyword_id`
+   * `project_id` (from keyword)
+   * `location_id` (from keyword)
+   * `date`
+   * `position`
+   * `url`
+   * `device` if present
+4. **Avoid duplicates**:
+
+   * Before insert, check if a row with `(keyword_id, date)` already exists; if yes, update or skip.
+5. Log:
+
+   * Number of rows processed, number inserted, number skipped, number unmatched keywords.
+
+### 3.2 Modify Daily DataForSEO SERP Job
+
+Current behavior:
+
+* Daily at 5pm CST, system fetches keyword metrics via DataForSEO SERP and updates metrics/health.
+
+Required changes:
+
+1. After fetching SERP data for each keyword:
+
+   * Determine today’s date (UTC or normalized).
+   * Extract:
+
+     * final chosen position (e.g. best organic position)
+     * ranking URL
+     * device (if applicable)
+   * Insert (or upsert) a row into `rankings_history` as described above.
+
+2. Maintain a **current snapshot**:
+
+   * Option A: use `keyword_metrics` to store “current_position”.
+   * Option B: add a `current_rankings` materialized view or table that always reflects the latest `rankings_history` row per keyword.
+   * Ensure all “current rank” displays in the UI pull from this “current” source.
+
+3. Ensure idempotency:
+
+   * If the job is re-run on the same day, it should **update** the same `(keyword_id, date)` row, not create duplicates.
+
+---
+
+## 4. Page Expansion & Mapping Logic
+
+Goal: move from 12 pages to a more realistic set by auto-discovering pages from existing data.
+
+### 4.1 Auto-Create Pages from URLs
+
+Sources of URLs:
+
+* `keywords.target_url` (if present)
+* `rankings_history.url` (backfilled + daily)
+* Any existing `pages` records
+
+Implementation:
+
+1. Collect all unique URLs that:
+
+   * Belong to the main Tekrevol domain(s), e.g. `tekrevol.com`, `www.tekrevol.com`.
+   * Exclude obvious junk/third-party domains.
+
+2. For each unique URL:
+
+   * Check if `(project_id, url)` already exists in `pages`.
+   * If not, insert with:
+
+     * `project_id`
+     * `url`
+     * `page_type` guessed from URL path:
+
+       * contains `/blog/` → `blog`
+       * contains `/case-studies` or `/portfolio` → `case-study`
+       * else → `service` or `other` (choose a reasonable default)
+     * `cluster` – can be derived later by majority cluster of attached keywords.
+     * `is_core_page` – see below.
+
+### 4.2 Core Page Identification (v1 Rules)
+
+Mark `is_core_page = true` when either:
+
+* The page URL matches known **service patterns**, e.g.:
+
+  * `/mobile-app-development`
+  * `/custom-software-development`
+  * `/web-development`
+  * `/game-development`
+  * `/houston-app-development`, `/austin-app-development`, etc.
+* Or the page has:
+
+  * At least one keyword with:
+
+    * `intent_hint` in (`commercial`, `transactional`)
+    * AND current or historical position in top 10.
+
+Implementation:
+
+* Run a one-time job and a periodic job (weekly) that:
+
+  * Joins `pages` with `keywords` via `target_url` or `rankings_history.url`.
+  * Applies the rules above to toggle `is_core_page`.
+
+---
+
+## 5. Operational Boards
+
+### 5.1 Quick Wins Board
+
+A new backend endpoint and frontend view.
+
+Definition (v1):
+
+* **Filters (server-side):**
+
+  * `priority` in (P1, P2) OR computed on the fly:
+
+    * current or latest `position` between 6 and 20.
+    * `intent_hint` in (`commercial`, `transactional`).
+    * keyword has non-trivial search volume (from keyword metrics; e.g. `volume >= 50`).
+  * `is_active = true`.
+  * Project filter (start with Tekrevol default).
+
+* **Fields to display per row:**
+
+  * keyword
+  * location_name
+  * current_position
+  * best_historical_position (last 30/60 days)
+  * search_volume
+  * difficulty
+  * intent_hint
+  * cluster
+  * target_url / page url
+  * competitor_pressure (if available)
+  * suggested_action (optional string: e.g. “Refresh content”, “Build links”, “Internal links”).
+
+* **Sorting:**
+
+  * Default sort by an **opportunity score**, for ex:
+
+    * `opportunity = normalizedVolume × (1 / (position+1)) × (1 - normalizedDifficulty)`
+  * Fallback sort: lowest position (closest to top).
+
+* **Filters in UI:**
+
+  * project
+  * location
+  * cluster
+  * intent
+  * min volume, max difficulty
+
+Goal: this becomes the **primary workboard** for proactive growth.
+
+### 5.2 Falling Stars Board
+
+Definition (v1):
+
+* **Filters (server-side):**
+
+  * Compute rank change over a window (default 7 days, configurable).
+  * Only consider:
+
+    * keywords that:
+
+      * were previously in top 10 (within last 7–14 days).
+      * have dropped by ≥ `N` positions (e.g. 5+).
+  * `is_active = true`.
+
+* **Fields to display per row:**
+
+  * keyword
+  * location_name
+  * current_position
+  * position_7d_ago
+  * delta (current - past)
+  * search_volume
+  * difficulty
+  * intent_hint
+  * target_url / page url
+  * core flag (`is_core_page`)
+  * competitor currently outranking us (top 1–3 domain, if available)
+
+* **Sorting:**
+
+  * Default sort by largest negative delta (biggest drop first).
+  * Secondary: by search volume.
+
+Goal: this board is for **defensive SEO** — stop losing money keywords.
+
+---
+
+## 6. Configurability & Admin Controls
+
+Make thresholds **config-driven**, not hard-coded.
+
+Create a `settings` table or JSON config for:
+
+* Quick Wins:
+
+  * `qw_min_position = 6`
+  * `qw_max_position = 20`
+  * `qw_min_volume = 50`
+  * `qw_max_difficulty = 70`
+  * valid intents: [commercial, transactional]
+
+* Falling Stars:
+
+  * `fs_window_days = 7`
+  * `fs_min_drop = 5`
+  * `fs_min_previous_position = 10`
+
+Ensure these can be changed via a simple config file or an admin UI later.
+
+---
+
+## 7. UX / Frontend Enhancements
+
+* Add **two new tabs/views** in the frontend:
+
+  * “Quick Wins”
+  * “Falling Stars”
+* Both should:
+
+  * Default to Tekrevol project.
+  * Allow filtering by project, location, cluster, intent.
+  * Respect existing theming and layout.
+* Add drill-down:
+
+  * Clicking a keyword opens a detail panel with:
+
+    * rank history chart (using `rankings_history`)
+    * related recommendations
+    * main competitors for that keyword.
+
+---
+
+## 8. Testing & Validation
+
+* After implementing:
+
+1. Confirm `rankings_history` is populated:
+
+   * From backfill script.
+   * From next daily crawl (check rows for today’s date).
+
+2. Confirm Quick Wins:
+
+   * At least a subset of P1/P2 Tekrevol keywords appear.
+   * Filters and sorting behave as expected.
+
+3. Confirm Falling Stars:
+
+   * Create a test scenario:
+
+     * Simulate a rank drop for a known keyword across 7 days.
+     * Ensure it shows in the board.
+
+4. Ensure no regression:
+
+   * Existing SEO health snapshots still generate correctly.
+   * Keyword metrics still show.
+
+---
+
+**End of Phase 2 spec.**
+Implement this fully so the Tekrevol SEO team can use the system daily to decide:
+
+* “Where do we attack?” → Quick Wins
+* “Where do we defend?” → Falling Stars
+  backed by real ranking history and page-level mapping.

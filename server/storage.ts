@@ -19,6 +19,8 @@ import {
   type SettingsPriorityRules,
   type CrawlSchedule,
   type InsertCrawlSchedule,
+  type RankingsHistory,
+  type InsertRankingsHistory,
   users,
   projects,
   keywords,
@@ -30,6 +32,7 @@ import {
   locations,
   settingsPriorityRules,
   crawlSchedules,
+  rankingsHistory,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
@@ -77,6 +80,14 @@ export interface IStorage {
   createCrawlSchedule(schedule: InsertCrawlSchedule): Promise<CrawlSchedule>;
   updateCrawlSchedule(id: number, schedule: Partial<InsertCrawlSchedule>): Promise<CrawlSchedule | undefined>;
   deleteCrawlSchedule(id: number): Promise<void>;
+
+  getRankingsHistory(keywordId: number, limit?: number): Promise<RankingsHistory[]>;
+  getRankingsHistoryForDate(keywordId: number, date: string): Promise<RankingsHistory | undefined>;
+  createRankingsHistory(history: InsertRankingsHistory): Promise<RankingsHistory>;
+  upsertRankingsHistory(keywordId: number, date: string, data: Omit<InsertRankingsHistory, "keywordId" | "date">): Promise<RankingsHistory>;
+
+  getQuickWins(projectId: string, filters?: { location?: string; cluster?: string; intent?: string }): Promise<any[]>;
+  getFallingStars(projectId: string, filters?: { location?: string }): Promise<any[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -342,6 +353,134 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCrawlSchedule(id: number): Promise<void> {
     await db.delete(crawlSchedules).where(eq(crawlSchedules.id, id));
+  }
+
+  async getRankingsHistory(keywordId: number, limit: number = 100): Promise<RankingsHistory[]> {
+    return await db
+      .select()
+      .from(rankingsHistory)
+      .where(eq(rankingsHistory.keywordId, keywordId))
+      .orderBy(desc(rankingsHistory.date))
+      .limit(limit);
+  }
+
+  async getRankingsHistoryForDate(keywordId: number, date: string): Promise<RankingsHistory | undefined> {
+    const [history] = await db
+      .select()
+      .from(rankingsHistory)
+      .where(and(eq(rankingsHistory.keywordId, keywordId), eq(rankingsHistory.date, date)));
+    return history || undefined;
+  }
+
+  async createRankingsHistory(insertHistory: InsertRankingsHistory): Promise<RankingsHistory> {
+    const [history] = await db.insert(rankingsHistory).values(insertHistory).returning();
+    return history;
+  }
+
+  async upsertRankingsHistory(
+    keywordId: number,
+    date: string,
+    data: Omit<InsertRankingsHistory, "keywordId" | "date">
+  ): Promise<RankingsHistory> {
+    const existing = await this.getRankingsHistoryForDate(keywordId, date);
+    if (existing) {
+      const [updated] = await db
+        .update(rankingsHistory)
+        .set({ ...data })
+        .where(and(eq(rankingsHistory.keywordId, keywordId), eq(rankingsHistory.date, date)))
+        .returning();
+      return updated;
+    }
+    return this.createRankingsHistory({ keywordId, date, ...data });
+  }
+
+  async getQuickWins(projectId: string, filters?: { location?: string; cluster?: string; intent?: string }): Promise<any[]> {
+    const allKeywordsWithMetrics = await db
+      .select({
+        keyword: keywords,
+        metrics: keywordMetrics,
+        location: locations,
+      })
+      .from(keywords)
+      .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
+      .leftJoin(locations, eq(locations.id, keywords.locationId))
+      .where(
+        and(
+          eq(keywords.projectId, projectId),
+          eq(keywords.isActive, true),
+          gte(keywordMetrics.position, 6),
+          lte(keywordMetrics.position, 20)
+        )
+      )
+      .orderBy(desc(keywordMetrics.opportunityScore));
+
+    let results = allKeywordsWithMetrics.map((row) => ({
+      keywordId: row.keyword.id,
+      keyword: row.keyword.keyword,
+      cluster: row.keyword.cluster,
+      location: row.location?.name || "Global",
+      currentPosition: row.metrics?.position || 0,
+      searchVolume: row.metrics?.searchVolume || 0,
+      difficulty: row.metrics?.difficulty ? Number(row.metrics.difficulty) : 0,
+      intent: row.metrics?.intent || "informational",
+      opportunityScore: row.metrics?.opportunityScore ? Number(row.metrics.opportunityScore) : 0,
+      targetUrl: row.keyword.targetUrl || "",
+    }));
+
+    if (filters?.location) {
+      results = results.filter((r) => r.location === filters.location);
+    }
+    if (filters?.cluster) {
+      results = results.filter((r) => r.cluster === filters.cluster);
+    }
+    if (filters?.intent) {
+      results = results.filter((r) => r.intent === filters.intent);
+    }
+
+    return results;
+  }
+
+  async getFallingStars(projectId: string, filters?: { location?: string }): Promise<any[]> {
+    const windowDays = 7;
+    const minDrop = 5;
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - windowDays);
+    const pastDateStr = pastDate.toISOString().split("T")[0];
+
+    const allWithHistory = await db
+      .select({
+        keyword: keywords,
+        currentMetrics: keywordMetrics,
+        location: locations,
+      })
+      .from(keywords)
+      .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
+      .leftJoin(locations, eq(locations.id, keywords.locationId))
+      .where(
+        and(
+          eq(keywords.projectId, projectId),
+          eq(keywords.isActive, true),
+          lte(keywordMetrics.position, 10)
+        )
+      )
+      .orderBy(desc(keywordMetrics.positionDelta));
+
+    return allWithHistory
+      .map((row) => ({
+        keywordId: row.keyword.id,
+        keyword: row.keyword.keyword,
+        cluster: row.keyword.cluster,
+        location: row.location?.name || "Global",
+        currentPosition: row.currentMetrics?.position || 0,
+        positionDelta: row.currentMetrics?.positionDelta || 0,
+        searchVolume: row.currentMetrics?.searchVolume || 0,
+        difficulty: row.currentMetrics?.difficulty ? Number(row.currentMetrics.difficulty) : 0,
+        intent: row.currentMetrics?.intent || "informational",
+        targetUrl: row.keyword.targetUrl || "",
+        isCoreKeyword: row.keyword.isCorePage || false,
+      }))
+      .filter((r) => r.positionDelta <= -minDrop)
+      .filter((f) => !filters?.location || f.location === filters.location);
   }
 }
 

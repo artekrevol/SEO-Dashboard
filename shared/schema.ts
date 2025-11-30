@@ -152,6 +152,44 @@ export const insertRankingsHistorySchema = createInsertSchema(rankingsHistory).o
 export type InsertRankingsHistory = z.infer<typeof insertRankingsHistorySchema>;
 export type RankingsHistory = typeof rankingsHistory.$inferSelect;
 
+export const settingsQuickWins = pgTable("settings_quick_wins", {
+  id: serial("id").primaryKey(),
+  minPosition: integer("min_position").default(6).notNull(),
+  maxPosition: integer("max_position").default(20).notNull(),
+  minVolume: integer("min_volume").default(50).notNull(),
+  maxDifficulty: integer("max_difficulty").default(70).notNull(),
+  validIntents: jsonb("valid_intents").$type<string[]>().default(["commercial", "transactional"]).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSettingsQuickWinsSchema = createInsertSchema(settingsQuickWins).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSettingsQuickWins = z.infer<typeof insertSettingsQuickWinsSchema>;
+export type SettingsQuickWins = typeof settingsQuickWins.$inferSelect;
+
+export const settingsFallingStars = pgTable("settings_falling_stars", {
+  id: serial("id").primaryKey(),
+  windowDays: integer("window_days").default(7).notNull(),
+  minDropPositions: integer("min_drop_positions").default(5).notNull(),
+  minPreviousPosition: integer("min_previous_position").default(10).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertSettingsFallingStarsSchema = createInsertSchema(settingsFallingStars).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertSettingsFallingStars = z.infer<typeof insertSettingsFallingStarsSchema>;
+export type SettingsFallingStars = typeof settingsFallingStars.$inferSelect;
+
 export const settingsPriorityRules = pgTable("settings_priority_rules", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
