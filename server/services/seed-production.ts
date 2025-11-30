@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { projects, locations, keywords, pageMetrics, rankingsHistory } from "@shared/schema";
-import { eq, count } from "drizzle-orm";
+import { count } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
@@ -26,6 +26,11 @@ export async function seedProductionDatabase(): Promise<boolean> {
     console.log("[seed] Created TekRevol project");
 
     const seedDataPath = path.join(process.cwd(), "server", "seed-data");
+    
+    if (!fs.existsSync(seedDataPath)) {
+      console.error("[seed] Seed data directory not found:", seedDataPath);
+      return false;
+    }
 
     const locationsData = JSON.parse(fs.readFileSync(path.join(seedDataPath, "locations.json"), "utf-8"));
     if (locationsData && locationsData.length > 0) {
@@ -42,7 +47,13 @@ export async function seedProductionDatabase(): Promise<boolean> {
     }
 
     const keywordsData = JSON.parse(fs.readFileSync(path.join(seedDataPath, "keywords.json"), "utf-8"));
+    const oldIdToKeyword = new Map<number, string>();
+    
     if (keywordsData && keywordsData.length > 0) {
+      for (const kw of keywordsData) {
+        oldIdToKeyword.set(kw.id, kw.keyword);
+      }
+
       const batchSize = 50;
       for (let i = 0; i < keywordsData.length; i += batchSize) {
         const batch = keywordsData.slice(i, i + batchSize);
@@ -81,40 +92,59 @@ export async function seedProductionDatabase(): Promise<boolean> {
       console.log(`[seed] Inserted ${pagesData.length} page metrics`);
     }
 
-    const rankingsData = JSON.parse(fs.readFileSync(path.join(seedDataPath, "rankings.json"), "utf-8"));
-    if (rankingsData && rankingsData.length > 0) {
-      const keywordIdMap = new Map<number, number>();
-      const allKeywords = await db.select({ id: keywords.id, keyword: keywords.keyword }).from(keywords);
-      const keywordsByName = new Map(allKeywords.map(k => [k.keyword, k.id]));
-      
-      const oldKeywordsData = JSON.parse(fs.readFileSync(path.join(seedDataPath, "keywords.json"), "utf-8"));
-      for (const oldKw of oldKeywordsData) {
-        const newId = keywordsByName.get(oldKw.keyword);
-        if (newId) {
-          keywordIdMap.set(oldKw.id, newId);
+    const rankingsFile = path.join(seedDataPath, "rankings.json");
+    if (fs.existsSync(rankingsFile)) {
+      const rankingsData = JSON.parse(fs.readFileSync(rankingsFile, "utf-8"));
+      if (rankingsData && rankingsData.length > 0) {
+        const allKeywords = await db.select({ id: keywords.id, keyword: keywords.keyword }).from(keywords);
+        const keywordsByName = new Map<string, number>();
+        for (const k of allKeywords) {
+          keywordsByName.set(k.keyword, k.id);
         }
-      }
+        console.log(`[seed] Found ${allKeywords.length} keywords in database`);
+        
+        const oldIdToNewId = new Map<number, number>();
+        for (const [oldId, keywordText] of oldIdToKeyword.entries()) {
+          const newId = keywordsByName.get(keywordText);
+          if (newId) {
+            oldIdToNewId.set(oldId, newId);
+          }
+        }
+        console.log(`[seed] Mapped ${oldIdToNewId.size} keyword IDs`);
 
-      const today = new Date().toISOString().split("T")[0];
-      let insertedCount = 0;
-      for (const rank of rankingsData) {
-        const newKeywordId = keywordIdMap.get(rank.keyword_id);
-        if (newKeywordId && rank.position > 0) {
+        const today = new Date().toISOString().split("T")[0];
+        let insertedCount = 0;
+        let skippedCount = 0;
+        
+        for (const rank of rankingsData) {
+          const newKeywordId = oldIdToNewId.get(rank.keyword_id);
+          if (!newKeywordId) {
+            skippedCount++;
+            continue;
+          }
+          if (!rank.position || rank.position <= 0) {
+            skippedCount++;
+            continue;
+          }
+          
           try {
             await db.insert(rankingsHistory).values({
               keywordId: newKeywordId,
               projectId: rank.project_id,
               date: today,
               position: rank.position,
-              url: rank.url,
+              url: rank.url || null,
               serpFeatures: rank.serp_features || [],
             });
             insertedCount++;
-          } catch (e) {
+          } catch (e: any) {
+            if (!e.message?.includes("duplicate")) {
+              console.error(`[seed] Failed to insert ranking:`, e.message);
+            }
           }
         }
+        console.log(`[seed] Inserted ${insertedCount} ranking records (skipped ${skippedCount})`);
       }
-      console.log(`[seed] Inserted ${insertedCount} ranking records`);
     }
 
     console.log("[seed] Production database seeded successfully!");
