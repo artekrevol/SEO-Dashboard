@@ -9,6 +9,9 @@ import {
   runKeywordMetricsUpdate, 
   runCompetitorAnalysis, 
   runRecommendationGeneration,
+  runRankingsSync,
+  runImpactTracking,
+  runNarrativeGeneration,
   startScheduledJobs 
 } from "./services/jobs";
 import {
@@ -20,6 +23,31 @@ import {
   bulkUpdateKeywords,
   initializeDefaultPriorityRules
 } from "./services/ingestion";
+
+function getDefaultQuickWinsSettings(projectId: string) {
+  return {
+    projectId,
+    enabled: true,
+    minPosition: 6,
+    maxPosition: 20,
+    minVolume: 100,
+    minOpportunityScore: "0.5",
+    validIntents: ["commercial", "transactional"],
+    minIntentScore: "0.6",
+    minCpc: "0.50",
+  };
+}
+
+function getDefaultFallingStarsSettings(projectId: string) {
+  return {
+    projectId,
+    enabled: true,
+    minPositionDrop: 5,
+    lookbackDays: 7,
+    previousMaxPosition: 10,
+    highlightCorePages: true,
+  };
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -350,6 +378,140 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error running recommendation generation job:", error);
       res.status(500).json({ error: "Failed to run recommendation generation job" });
+    }
+  });
+
+  app.post("/api/jobs/rankings-sync", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const result = await runRankingsSync(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running rankings sync job:", error);
+      res.status(500).json({ error: "Failed to run rankings sync job" });
+    }
+  });
+
+  app.post("/api/jobs/impact-tracking", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const result = await runImpactTracking(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running impact tracking job:", error);
+      res.status(500).json({ error: "Failed to run impact tracking job" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/narrative", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const periodDays = parseInt(req.query.days as string) || 7;
+      const result = await runNarrativeGeneration(projectId, periodDays);
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating narrative:", error);
+      res.status(500).json({ error: "Failed to generate executive narrative" });
+    }
+  });
+
+  app.get("/api/keywords/:keywordId/competitors", async (req, res) => {
+    try {
+      const keywordId = parseInt(req.params.keywordId);
+      if (isNaN(keywordId)) {
+        return res.status(400).json({ error: "Invalid keywordId" });
+      }
+      const competitors = await storage.getKeywordCompetitorMetrics(keywordId);
+      res.json({ competitors });
+    } catch (error) {
+      console.error("Error fetching keyword competitors:", error);
+      res.status(500).json({ error: "Failed to fetch keyword competitors" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/keyword-competitors", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const keywordId = req.query.keywordId ? parseInt(req.query.keywordId as string) : undefined;
+      
+      if (keywordId) {
+        const competitors = await storage.getKeywordCompetitorMetrics(keywordId);
+        res.json({ competitors });
+      } else {
+        const keywords = await storage.getKeywords(projectId);
+        const allCompetitors = [];
+        for (const keyword of keywords.slice(0, 50)) {
+          const competitors = await storage.getKeywordCompetitorMetrics(keyword.id);
+          allCompetitors.push({
+            keywordId: keyword.id,
+            keyword: keyword.keyword,
+            competitors,
+          });
+        }
+        res.json({ keywordCompetitors: allCompetitors });
+      }
+    } catch (error) {
+      console.error("Error fetching keyword competitors:", error);
+      res.status(500).json({ error: "Failed to fetch keyword competitors" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/settings/quick-wins", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const settings = await storage.getSettingsQuickWins(projectId);
+      res.json({ settings: settings || getDefaultQuickWinsSettings(projectId) });
+    } catch (error) {
+      console.error("Error fetching quick wins settings:", error);
+      res.status(500).json({ error: "Failed to fetch quick wins settings" });
+    }
+  });
+
+  app.put("/api/projects/:projectId/settings/quick-wins", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const settings = await storage.upsertSettingsQuickWins(projectId, req.body);
+      res.json({ settings });
+    } catch (error) {
+      console.error("Error updating quick wins settings:", error);
+      res.status(500).json({ error: "Failed to update quick wins settings" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/settings/falling-stars", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const settings = await storage.getSettingsFallingStars(projectId);
+      res.json({ settings: settings || getDefaultFallingStarsSettings(projectId) });
+    } catch (error) {
+      console.error("Error fetching falling stars settings:", error);
+      res.status(500).json({ error: "Failed to fetch falling stars settings" });
+    }
+  });
+
+  app.put("/api/projects/:projectId/settings/falling-stars", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const settings = await storage.upsertSettingsFallingStars(projectId, req.body);
+      res.json({ settings });
+    } catch (error) {
+      console.error("Error updating falling stars settings:", error);
+      res.status(500).json({ error: "Failed to update falling stars settings" });
+    }
+  });
+
+  app.get("/api/projects/:projectId/import-logs", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const logs = await storage.getImportLogs(projectId, limit);
+      res.json({ logs });
+    } catch (error) {
+      console.error("Error fetching import logs:", error);
+      res.status(500).json({ error: "Failed to fetch import logs" });
     }
   });
 

@@ -15,12 +15,20 @@ import {
   type InsertSeoRecommendation,
   type CompetitorMetrics,
   type InsertCompetitorMetrics,
+  type KeywordCompetitorMetrics,
+  type InsertKeywordCompetitorMetrics,
   type Location,
   type SettingsPriorityRules,
   type CrawlSchedule,
   type InsertCrawlSchedule,
   type RankingsHistory,
   type InsertRankingsHistory,
+  type SettingsQuickWins,
+  type InsertSettingsQuickWins,
+  type SettingsFallingStars,
+  type InsertSettingsFallingStars,
+  type ImportLog,
+  type InsertImportLog,
   users,
   projects,
   keywords,
@@ -29,13 +37,17 @@ import {
   pageMetrics,
   seoRecommendations,
   competitorMetrics,
+  keywordCompetitorMetrics,
   locations,
   settingsPriorityRules,
   crawlSchedules,
   rankingsHistory,
+  settingsQuickWins,
+  settingsFallingStars,
+  importLogs,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -88,6 +100,25 @@ export interface IStorage {
 
   getQuickWins(projectId: string, filters?: { location?: string; cluster?: string; intent?: string }): Promise<any[]>;
   getFallingStars(projectId: string, filters?: { location?: string }): Promise<any[]>;
+
+  getKeywordCompetitorMetrics(keywordId: number): Promise<KeywordCompetitorMetrics[]>;
+  getKeywordCompetitorMetricsForProject(projectId: string): Promise<KeywordCompetitorMetrics[]>;
+  upsertKeywordCompetitorMetrics(data: InsertKeywordCompetitorMetrics): Promise<KeywordCompetitorMetrics>;
+  
+  getActiveCrawlSchedules(): Promise<CrawlSchedule[]>;
+  updateCrawlScheduleLastRun(id: number, status: string): Promise<void>;
+  
+  getSettingsQuickWins(projectId: string): Promise<SettingsQuickWins | undefined>;
+  upsertSettingsQuickWins(projectId: string, settings: Partial<InsertSettingsQuickWins>): Promise<SettingsQuickWins>;
+  getSettingsFallingStars(projectId: string): Promise<SettingsFallingStars | undefined>;
+  upsertSettingsFallingStars(projectId: string, settings: Partial<InsertSettingsFallingStars>): Promise<SettingsFallingStars>;
+  
+  updateSeoRecommendation(id: number, updates: Partial<SeoRecommendation>): Promise<SeoRecommendation | undefined>;
+  
+  getRankingsHistoryByProject(projectId: string, startDate?: string, endDate?: string): Promise<RankingsHistory[]>;
+  
+  getImportLogs(projectId?: string, limit?: number): Promise<ImportLog[]>;
+  createImportLog(log: InsertImportLog): Promise<ImportLog>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -377,7 +408,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createRankingsHistory(insertHistory: InsertRankingsHistory): Promise<RankingsHistory> {
-    const [history] = await db.insert(rankingsHistory).values(insertHistory).returning();
+    const values = {
+      projectId: insertHistory.projectId,
+      keywordId: insertHistory.keywordId,
+      date: insertHistory.date,
+      position: insertHistory.position,
+      url: insertHistory.url,
+      device: insertHistory.device,
+      locationId: insertHistory.locationId,
+      serpFeatures: insertHistory.serpFeatures as string[] | null | undefined,
+    };
+    const [history] = await db.insert(rankingsHistory).values(values).returning();
     return history;
   }
 
@@ -388,14 +429,34 @@ export class DatabaseStorage implements IStorage {
   ): Promise<RankingsHistory> {
     const existing = await this.getRankingsHistoryForDate(keywordId, date);
     if (existing) {
+      const updateData: Record<string, unknown> = {
+        projectId: data.projectId,
+        position: data.position,
+        url: data.url,
+        device: data.device,
+        locationId: data.locationId,
+      };
+      if (data.serpFeatures !== undefined) {
+        updateData.serpFeatures = data.serpFeatures;
+      }
       const [updated] = await db
         .update(rankingsHistory)
-        .set({ ...data })
+        .set(updateData)
         .where(and(eq(rankingsHistory.keywordId, keywordId), eq(rankingsHistory.date, date)))
         .returning();
       return updated;
     }
-    return this.createRankingsHistory({ keywordId, date, ...data });
+    const insertData: InsertRankingsHistory = {
+      keywordId,
+      date,
+      projectId: data.projectId,
+      position: data.position,
+      url: data.url,
+      device: data.device,
+      locationId: data.locationId,
+      serpFeatures: data.serpFeatures as string[] | undefined,
+    };
+    return this.createRankingsHistory(insertData);
   }
 
   async getQuickWins(projectId: string, filters?: { location?: string; cluster?: string; intent?: string }): Promise<any[]> {
@@ -485,6 +546,232 @@ export class DatabaseStorage implements IStorage {
       }))
       .filter((r) => r.positionDelta <= -minDrop)
       .filter((f) => !filters?.location || f.location === filters.location);
+  }
+
+  async getKeywordCompetitorMetrics(keywordId: number): Promise<KeywordCompetitorMetrics[]> {
+    return await db
+      .select()
+      .from(keywordCompetitorMetrics)
+      .where(eq(keywordCompetitorMetrics.keywordId, keywordId))
+      .orderBy(desc(keywordCompetitorMetrics.latestPosition));
+  }
+
+  async getKeywordCompetitorMetricsForProject(projectId: string): Promise<KeywordCompetitorMetrics[]> {
+    return await db
+      .select()
+      .from(keywordCompetitorMetrics)
+      .where(eq(keywordCompetitorMetrics.projectId, projectId))
+      .orderBy(desc(keywordCompetitorMetrics.updatedAt));
+  }
+
+  async upsertKeywordCompetitorMetrics(data: InsertKeywordCompetitorMetrics): Promise<KeywordCompetitorMetrics> {
+    const existing = await db
+      .select()
+      .from(keywordCompetitorMetrics)
+      .where(
+        and(
+          eq(keywordCompetitorMetrics.keywordId, data.keywordId),
+          eq(keywordCompetitorMetrics.competitorDomain, data.competitorDomain)
+        )
+      )
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const updateData: Record<string, unknown> = {
+        latestPosition: data.latestPosition,
+        avgPosition: data.avgPosition,
+        visibilityScore: data.visibilityScore,
+        isDirectCompetitor: data.isDirectCompetitor,
+        clickShareEstimate: data.clickShareEstimate,
+        competitorUrl: data.competitorUrl,
+        lastSeenAt: data.lastSeenAt,
+        updatedAt: new Date(),
+      };
+      if (data.serpFeatures !== undefined) {
+        updateData.serpFeatures = data.serpFeatures;
+      }
+      const [updated] = await db
+        .update(keywordCompetitorMetrics)
+        .set(updateData)
+        .where(eq(keywordCompetitorMetrics.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const insertValues = {
+      projectId: data.projectId,
+      keywordId: data.keywordId,
+      competitorDomain: data.competitorDomain,
+      competitorUrl: data.competitorUrl,
+      latestPosition: data.latestPosition,
+      avgPosition: data.avgPosition,
+      visibilityScore: data.visibilityScore,
+      serpFeatures: data.serpFeatures as string[] | null | undefined,
+      isDirectCompetitor: data.isDirectCompetitor,
+      clickShareEstimate: data.clickShareEstimate,
+      lastSeenAt: data.lastSeenAt,
+    };
+    const [created] = await db
+      .insert(keywordCompetitorMetrics)
+      .values(insertValues)
+      .returning();
+    return created;
+  }
+
+  async getActiveCrawlSchedules(): Promise<CrawlSchedule[]> {
+    return await db
+      .select()
+      .from(crawlSchedules)
+      .where(eq(crawlSchedules.isActive, true))
+      .orderBy(crawlSchedules.scheduledTime);
+  }
+
+  async updateCrawlScheduleLastRun(id: number, status: string): Promise<void> {
+    await db
+      .update(crawlSchedules)
+      .set({
+        lastRunAt: new Date(),
+        lastRunStatus: status,
+        updatedAt: new Date(),
+      })
+      .where(eq(crawlSchedules.id, id));
+  }
+
+  async getSettingsQuickWins(projectId: string): Promise<SettingsQuickWins | undefined> {
+    const [settings] = await db
+      .select()
+      .from(settingsQuickWins)
+      .where(eq(settingsQuickWins.projectId, projectId))
+      .limit(1);
+    return settings || undefined;
+  }
+
+  async upsertSettingsQuickWins(projectId: string, settings: Partial<InsertSettingsQuickWins>): Promise<SettingsQuickWins> {
+    const existing = await this.getSettingsQuickWins(projectId);
+    if (existing) {
+      const updateData: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+      if (settings.minPosition !== undefined) updateData.minPosition = settings.minPosition;
+      if (settings.maxPosition !== undefined) updateData.maxPosition = settings.maxPosition;
+      if (settings.minVolume !== undefined) updateData.minVolume = settings.minVolume;
+      if (settings.maxDifficulty !== undefined) updateData.maxDifficulty = settings.maxDifficulty;
+      if (settings.minIntentScore !== undefined) updateData.minIntentScore = settings.minIntentScore;
+      if (settings.minCpc !== undefined) updateData.minCpc = settings.minCpc;
+      if (settings.enabled !== undefined) updateData.enabled = settings.enabled;
+      if (settings.validIntents !== undefined) updateData.validIntents = settings.validIntents;
+      
+      const [updated] = await db
+        .update(settingsQuickWins)
+        .set(updateData)
+        .where(eq(settingsQuickWins.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const insertValues = {
+      projectId,
+      minPosition: settings.minPosition ?? 6,
+      maxPosition: settings.maxPosition ?? 20,
+      minVolume: settings.minVolume ?? 100,
+      maxDifficulty: settings.maxDifficulty ?? 70,
+      minIntentScore: settings.minIntentScore,
+      minCpc: settings.minCpc,
+      enabled: settings.enabled ?? true,
+      validIntents: (settings.validIntents as string[] | undefined) ?? ["commercial", "transactional"],
+    };
+    const [created] = await db
+      .insert(settingsQuickWins)
+      .values(insertValues)
+      .returning();
+    return created;
+  }
+
+  async getSettingsFallingStars(projectId: string): Promise<SettingsFallingStars | undefined> {
+    const [settings] = await db
+      .select()
+      .from(settingsFallingStars)
+      .where(eq(settingsFallingStars.projectId, projectId))
+      .limit(1);
+    return settings || undefined;
+  }
+
+  async upsertSettingsFallingStars(projectId: string, settings: Partial<InsertSettingsFallingStars>): Promise<SettingsFallingStars> {
+    const existing = await this.getSettingsFallingStars(projectId);
+    if (existing) {
+      const updateData: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+      if (settings.windowDays !== undefined) updateData.windowDays = settings.windowDays;
+      if (settings.minDropPositions !== undefined) updateData.minDropPositions = settings.minDropPositions;
+      if (settings.minPreviousPosition !== undefined) updateData.minPreviousPosition = settings.minPreviousPosition;
+      if (settings.minVolume !== undefined) updateData.minVolume = settings.minVolume;
+      if (settings.enabled !== undefined) updateData.enabled = settings.enabled;
+      
+      const [updated] = await db
+        .update(settingsFallingStars)
+        .set(updateData)
+        .where(eq(settingsFallingStars.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const insertValues = {
+      projectId,
+      windowDays: settings.windowDays ?? 7,
+      minDropPositions: settings.minDropPositions ?? 5,
+      minPreviousPosition: settings.minPreviousPosition ?? 10,
+      minVolume: settings.minVolume ?? 0,
+      enabled: settings.enabled ?? true,
+    };
+    const [created] = await db
+      .insert(settingsFallingStars)
+      .values(insertValues)
+      .returning();
+    return created;
+  }
+
+  async updateSeoRecommendation(id: number, updates: Partial<SeoRecommendation>): Promise<SeoRecommendation | undefined> {
+    const [updated] = await db
+      .update(seoRecommendations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(seoRecommendations.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getRankingsHistoryByProject(projectId: string, startDate?: string, endDate?: string): Promise<RankingsHistory[]> {
+    let conditions = [eq(rankingsHistory.projectId, projectId)];
+    if (startDate) {
+      conditions.push(gte(rankingsHistory.date, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(rankingsHistory.date, endDate));
+    }
+    return await db
+      .select()
+      .from(rankingsHistory)
+      .where(and(...conditions))
+      .orderBy(desc(rankingsHistory.date));
+  }
+
+  async getImportLogs(projectId?: string, limit: number = 20): Promise<ImportLog[]> {
+    if (projectId) {
+      return await db
+        .select()
+        .from(importLogs)
+        .where(eq(importLogs.projectId, projectId))
+        .orderBy(desc(importLogs.createdAt))
+        .limit(limit);
+    }
+    return await db
+      .select()
+      .from(importLogs)
+      .orderBy(desc(importLogs.createdAt))
+      .limit(limit);
+  }
+
+  async createImportLog(log: InsertImportLog): Promise<ImportLog> {
+    const [created] = await db.insert(importLogs).values(log).returning();
+    return created;
   }
 }
 

@@ -14,6 +14,14 @@ import {
   generateRecommendationsFromPages,
   prioritizeRecommendations,
 } from "./recommendations";
+import { rankingsSyncService } from "./rankings-sync";
+import { impactTracker } from "./impact-tracker";
+import { narrativeGenerator } from "./narrative-generator";
+
+function getCrawlSchedulerService() {
+  const { crawlSchedulerService } = require("./crawl-scheduler");
+  return crawlSchedulerService;
+}
 import type { Project, InsertSeoHealthSnapshot, InsertKeywordMetrics, InsertCompetitorMetrics, Keyword } from "@shared/schema";
 import * as cron from "node-cron";
 
@@ -381,6 +389,61 @@ export async function runRecommendationGeneration(projectId: string): Promise<Jo
   }
 }
 
+export async function runRankingsSync(projectId?: string): Promise<JobResult> {
+  try {
+    if (!rankingsSyncService.constructor) {
+      return { success: false, message: "Rankings sync service not available" };
+    }
+
+    if (projectId) {
+      const result = await rankingsSyncService.syncRankingsForProject(projectId);
+      return {
+        success: result.success,
+        message: result.message,
+        data: { keywordsUpdated: result.keywordsUpdated, competitorsFound: result.competitorsFound },
+      };
+    }
+
+    const results = await rankingsSyncService.syncDailyRankings();
+    const totalKeywords = results.reduce((sum, r) => sum + r.keywordsUpdated, 0);
+    const totalCompetitors = results.reduce((sum, r) => sum + r.competitorsFound, 0);
+
+    return {
+      success: results.every(r => r.success),
+      message: `Synced ${totalKeywords} keywords across ${results.length} projects with ${totalCompetitors} competitor entries`,
+      data: results,
+    };
+  } catch (error) {
+    return { success: false, message: `Rankings sync failed: ${error}` };
+  }
+}
+
+export async function runImpactTracking(projectId: string): Promise<JobResult> {
+  try {
+    const results = await impactTracker.trackImplementedRecommendations(projectId);
+    return {
+      success: true,
+      message: `Tracked impact for ${results.length} implemented recommendations`,
+      data: results,
+    };
+  } catch (error) {
+    return { success: false, message: `Impact tracking failed: ${error}` };
+  }
+}
+
+export async function runNarrativeGeneration(projectId: string, periodDays: number = 7): Promise<JobResult> {
+  try {
+    const narrative = await narrativeGenerator.generateNarrative(projectId, periodDays);
+    return {
+      success: true,
+      message: `Generated executive narrative with alert level: ${narrative.alertLevel}`,
+      data: narrative,
+    };
+  } catch (error) {
+    return { success: false, message: `Narrative generation failed: ${error}` };
+  }
+}
+
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
 export function startScheduledJobs(): void {
@@ -427,6 +490,68 @@ export function startScheduledJobs(): void {
   );
   cronJobs.set("weekend-heavy-jobs", weekendHeavyJob);
   console.log("[Jobs] Scheduled weekend-heavy-jobs to run Sunday 3 AM CST");
+
+  const rankingsSyncJob = cron.schedule(
+    "0 6 * * *",
+    async () => {
+      console.log("[Job] Running daily-rankings-sync (6 AM CST)...");
+      try {
+        const result = await runRankingsSync();
+        console.log(`[Job] daily-rankings-sync completed: ${result.message}`);
+      } catch (error) {
+        console.error("[Job] daily-rankings-sync failed:", error);
+      }
+    },
+    {
+      timezone: "America/Chicago",
+    }
+  );
+  cronJobs.set("daily-rankings-sync", rankingsSyncJob);
+  console.log("[Jobs] Scheduled daily-rankings-sync to run at 6 AM CST");
+
+  const crawlScheduleRunner = cron.schedule(
+    "*/15 * * * *",
+    async () => {
+      console.log("[Job] Running crawl-schedule-check (every 15 min)...");
+      try {
+        const crawlService = getCrawlSchedulerService();
+        const results = await crawlService.runDueSchedules();
+        if (results.length > 0) {
+          console.log(`[Job] Executed ${results.length} scheduled crawls`);
+        }
+      } catch (error) {
+        console.error("[Job] crawl-schedule-check failed:", error);
+      }
+    },
+    {
+      timezone: "America/Chicago",
+    }
+  );
+  cronJobs.set("crawl-schedule-check", crawlScheduleRunner);
+  console.log("[Jobs] Scheduled crawl-schedule-check to run every 15 minutes");
+
+  const impactTrackingJob = cron.schedule(
+    "0 18 * * *",
+    async () => {
+      console.log("[Job] Running daily-impact-tracking (6 PM CST)...");
+      try {
+        const projects = await storage.getProjects();
+        for (const project of projects) {
+          if (project.isActive) {
+            await runImpactTracking(project.id);
+          }
+        }
+        console.log("[Job] daily-impact-tracking completed");
+      } catch (error) {
+        console.error("[Job] daily-impact-tracking failed:", error);
+      }
+    },
+    {
+      timezone: "America/Chicago",
+    }
+  );
+  cronJobs.set("daily-impact-tracking", impactTrackingJob);
+  console.log("[Jobs] Scheduled daily-impact-tracking to run at 6 PM CST");
 
   console.log("[Jobs] Scheduled jobs started");
 }
