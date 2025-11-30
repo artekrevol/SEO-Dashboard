@@ -19,8 +19,22 @@ interface QuickWinKeyword {
 
 export function QuickWinsPage({ projectId }: { projectId: string }) {
   const { data: quickWins = [], isLoading } = useQuery<QuickWinKeyword[]>({
-    queryKey: ["/api/quick-wins", projectId],
+    queryKey: ["/api/quick-wins", { projectId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/quick-wins?projectId=${projectId}`);
+      if (!res.ok) throw new Error("Failed to fetch quick wins");
+      return res.json();
+    },
+    enabled: !!projectId,
   });
+
+  if (!projectId) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <p className="text-muted-foreground">Select a project to view quick wins.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="p-8">Loading quick wins...</div>;

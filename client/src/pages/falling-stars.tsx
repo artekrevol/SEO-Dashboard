@@ -20,8 +20,22 @@ interface FallingStarKeyword {
 
 export function FallingStarsPage({ projectId }: { projectId: string }) {
   const { data: fallingStars = [], isLoading } = useQuery<FallingStarKeyword[]>({
-    queryKey: ["/api/falling-stars", projectId],
+    queryKey: ["/api/falling-stars", { projectId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/falling-stars?projectId=${projectId}`);
+      if (!res.ok) throw new Error("Failed to fetch falling stars");
+      return res.json();
+    },
+    enabled: !!projectId,
   });
+
+  if (!projectId) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <p className="text-muted-foreground">Select a project to view falling stars.</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="p-8">Loading falling stars...</div>;
