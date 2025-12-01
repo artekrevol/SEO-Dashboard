@@ -555,23 +555,44 @@ export async function registerRoutes(
   app.post("/api/jobs/page-metrics", async (req, res) => {
     try {
       const projectId = req.query.projectId as string;
-      if (!projectId) {
-        return res.status(400).json({ error: "projectId is required" });
+      if (!projectId || typeof projectId !== 'string' || projectId.length < 10) {
+        return res.status(400).json({ error: "Valid projectId is required" });
       }
-      const result = await runPageMetricsSync(projectId);
-      res.json(result);
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({ 
+        success: true, 
+        message: "Page metrics sync started", 
+        status: "processing" 
+      });
+      
+      runPageMetricsSync(projectId).then(result => {
+        console.log(`[Jobs] Page metrics sync completed: ${result.message}`);
+      }).catch(err => {
+        console.error("[Jobs] Page metrics sync failed:", err);
+      });
     } catch (error) {
       console.error("Error running page metrics sync:", error);
-      res.status(500).json({ error: "Failed to run page metrics sync" });
+      res.status(500).json({ error: "Failed to start page metrics sync" });
     }
   });
 
   app.post("/api/jobs/on-page-crawl", async (req, res) => {
     try {
       const projectId = req.query.projectId as string;
-      if (!projectId) {
-        return res.status(400).json({ error: "projectId is required" });
+      if (!projectId || typeof projectId !== 'string' || projectId.length < 10) {
+        return res.status(400).json({ error: "Valid projectId is required" });
       }
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
       const result = await runOnPageCrawl(projectId);
       res.json(result);
     } catch (error) {
@@ -584,14 +605,32 @@ export async function registerRoutes(
     try {
       const projectId = req.query.projectId as string;
       const taskId = req.query.taskId as string;
-      if (!projectId || !taskId) {
-        return res.status(400).json({ error: "projectId and taskId are required" });
+      if (!projectId || typeof projectId !== 'string' || projectId.length < 10) {
+        return res.status(400).json({ error: "Valid projectId is required" });
       }
-      const result = await runOnPageSync(projectId, taskId);
-      res.json(result);
+      if (!taskId || typeof taskId !== 'string') {
+        return res.status(400).json({ error: "Valid taskId is required" });
+      }
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "On-page sync started", 
+        status: "processing" 
+      });
+      
+      runOnPageSync(projectId, taskId).then(result => {
+        console.log(`[Jobs] On-page sync completed: ${result.message}`);
+      }).catch(err => {
+        console.error("[Jobs] On-page sync failed:", err);
+      });
     } catch (error) {
       console.error("Error syncing on-page data:", error);
-      res.status(500).json({ error: "Failed to sync on-page data" });
+      res.status(500).json({ error: "Failed to start on-page sync" });
     }
   });
 

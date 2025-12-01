@@ -33,6 +33,9 @@ interface PageData {
   avgPosition: number;
   bestPosition: number;
   keywordsInTop10: number;
+  keywordsInTop3: number;
+  totalKeywords: number;
+  rankedKeywords: number;
   backlinksCount: number;
   referringDomains: number;
   newLinks7d: number;
@@ -152,36 +155,67 @@ export function PagesTable({ data, isLoading }: PagesTableProps) {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="text-lg font-semibold">
-                        {Number(item.avgPosition).toFixed(1)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary" className="font-mono">
-                        {item.keywordsInTop10}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="flex items-center gap-1">
-                          <Link2 className="h-3 w-3 text-muted-foreground" />
-                          <span className="font-mono text-sm">{item.backlinksCount}</span>
+                      {item.avgPosition > 0 ? (
+                        <div className="flex flex-col items-center">
+                          <Badge 
+                            variant={item.avgPosition <= 10 ? "default" : item.avgPosition <= 20 ? "outline" : "secondary"}
+                            className="font-mono text-sm"
+                          >
+                            {Number(item.avgPosition).toFixed(1)}
+                          </Badge>
+                          {item.bestPosition > 0 && item.bestPosition !== Math.round(item.avgPosition) && (
+                            <span className="text-xs text-muted-foreground mt-0.5">
+                              best: {item.bestPosition}
+                            </span>
+                          )}
                         </div>
-                        <span className="text-xs text-muted-foreground">
-                          {item.referringDomains} domains
-                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Badge 
+                          variant={item.keywordsInTop10 > 0 ? "default" : "outline"} 
+                          className="font-mono"
+                        >
+                          {item.keywordsInTop10}
+                        </Badge>
+                        {item.totalKeywords > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            / {item.totalKeywords} total
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="text-sm text-emerald-600 dark:text-emerald-400">
-                          +{item.newLinks7d}
-                        </span>
-                        <span className="text-muted-foreground">/</span>
-                        <span className="text-sm text-red-600 dark:text-red-400">
-                          -{item.lostLinks7d}
-                        </span>
-                      </div>
+                      {item.backlinksCount > 0 ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-1">
+                            <Link2 className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-mono text-sm">{item.backlinksCount.toLocaleString()}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {item.referringDomains} domains
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {item.backlinksCount > 0 ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <Badge variant="outline" className="text-xs font-mono">
+                            +{item.newLinks7d}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs font-mono">
+                            -{item.lostLinks7d}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-2">

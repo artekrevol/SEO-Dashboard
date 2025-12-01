@@ -1,8 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { PagesTable } from "@/components/pages-table";
 import { KpiCard } from "@/components/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   BarChart,
   Bar,
@@ -15,14 +18,16 @@ import {
   Scatter,
   ZAxis,
 } from "recharts";
-import { FileText, Link2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { FileText, Link2, AlertTriangle, CheckCircle2, RefreshCw, TrendingUp, Target } from "lucide-react";
 
 interface PagesPageProps {
   projectId: string | null;
 }
 
 export function PagesPage({ projectId }: PagesPageProps) {
-  const { data: pages, isLoading } = useQuery({
+  const { toast } = useToast();
+  
+  const { data: pages, isLoading, refetch } = useQuery({
     queryKey: ["/api/dashboard/pages", { projectId }],
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/pages?projectId=${projectId}`);
@@ -30,6 +35,28 @@ export function PagesPage({ projectId }: PagesPageProps) {
       return res.json();
     },
     enabled: !!projectId,
+  });
+
+  const syncPageMetrics = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/jobs/page-metrics?projectId=${projectId}`);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Page Metrics Sync Complete",
+        description: data.message || "Page metrics have been updated",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/pages"] });
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Sync Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   if (!projectId) {
@@ -52,6 +79,13 @@ export function PagesPage({ projectId }: PagesPageProps) {
   const totalReferringDomains = pageItems.reduce((sum: number, p: any) => sum + (p.referringDomains || 0), 0);
   const indexablePages = pageItems.filter((p: any) => p.isIndexable).length;
   const pagesWithSchema = pageItems.filter((p: any) => p.hasSchema).length;
+  
+  const pagesWithRankings = pageItems.filter((p: any) => p.rankedKeywords > 0).length;
+  const totalKeywordsInTop10 = pageItems.reduce((sum: number, p: any) => sum + (p.keywordsInTop10 || 0), 0);
+  const totalKeywordsInTop3 = pageItems.reduce((sum: number, p: any) => sum + (p.keywordsInTop3 || 0), 0);
+  const avgPositionAll = pageItems.filter((p: any) => p.avgPosition > 0).length > 0
+    ? pageItems.filter((p: any) => p.avgPosition > 0).reduce((sum: number, p: any) => sum + p.avgPosition, 0) / pageItems.filter((p: any) => p.avgPosition > 0).length
+    : 0;
 
   const avgTechRisk = pageItems.length > 0
     ? pageItems.reduce((sum: number, p: any) => sum + (p.techRiskScore || 0), 0) / pageItems.length
@@ -89,40 +123,53 @@ export function PagesPage({ projectId }: PagesPageProps) {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-pages-title">
-          Page Analytics
-        </h1>
-        <p className="text-muted-foreground">
-          Analyze page performance, backlinks, and technical health.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-pages-title">
+            Page Analytics
+          </h1>
+          <p className="text-muted-foreground">
+            Analyze page performance, keyword rankings, and backlinks for {pageItems.length} tracked pages.
+          </p>
+        </div>
+        <Button
+          onClick={() => syncPageMetrics.mutate()}
+          disabled={syncPageMetrics.isPending}
+          variant="outline"
+          data-testid="button-sync-page-metrics"
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${syncPageMetrics.isPending ? "animate-spin" : ""}`} />
+          {syncPageMetrics.isPending ? "Fetching Backlinks..." : "Fetch Backlinks Data"}
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          title="Total Pages"
-          value={pageItems.length}
-          testId="kpi-total-pages"
+          title="Pages Ranking"
+          value={pagesWithRankings}
+          suffix={`/ ${pageItems.length} pages`}
+          status={pagesWithRankings > pageItems.length * 0.5 ? "healthy" : "at_risk"}
+          testId="kpi-pages-ranking"
+        />
+        <KpiCard
+          title="Keywords in Top 10"
+          value={totalKeywordsInTop10}
+          suffix={totalKeywordsInTop3 > 0 ? `(${totalKeywordsInTop3} in Top 3)` : ""}
+          status={totalKeywordsInTop10 > 0 ? "healthy" : "at_risk"}
+          testId="kpi-keywords-top10"
+        />
+        <KpiCard
+          title="Avg Position"
+          value={avgPositionAll > 0 ? avgPositionAll.toFixed(1) : "-"}
+          suffix="(ranked pages)"
+          status={avgPositionAll > 0 && avgPositionAll <= 20 ? "healthy" : avgPositionAll > 20 ? "at_risk" : undefined}
+          testId="kpi-avg-position"
         />
         <KpiCard
           title="Total Backlinks"
-          value={totalBacklinks.toLocaleString()}
-          suffix={`(${totalReferringDomains} domains)`}
+          value={totalBacklinks > 0 ? totalBacklinks.toLocaleString() : "Not synced"}
+          suffix={totalReferringDomains > 0 ? `(${totalReferringDomains} domains)` : ""}
           testId="kpi-total-backlinks"
-        />
-        <KpiCard
-          title="Indexable Pages"
-          value={indexablePages}
-          suffix={`/ ${pageItems.length}`}
-          status={indexablePages === pageItems.length ? "healthy" : "at_risk"}
-          testId="kpi-indexable-pages"
-        />
-        <KpiCard
-          title="Pages with Schema"
-          value={pagesWithSchema}
-          suffix={`/ ${pageItems.length}`}
-          status={pagesWithSchema > pageItems.length * 0.5 ? "healthy" : "at_risk"}
-          testId="kpi-pages-schema"
         />
       </div>
 
