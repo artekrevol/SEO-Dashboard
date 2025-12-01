@@ -1,0 +1,265 @@
+You’re absolutely right to pause here — **the Competitors page is structurally wrong**, not just “missing data.”
+
+Right now it’s acting like a **domain leaderboard**, while tools like **SEMrush** and **Ahrefs** treat competitors as a **keyword-defined battlefield**.
+
+Below is a **clean, final blueprint** for how the Competitors module *should* work, **what DataForSEO endpoints must power it**, and **how to re-architect the UX** so it actually drives insight and action.
+
+---
+
+# 🚨 What’s Broken in the Current Competitors Page
+
+From your screenshots, the current issues are clear:
+
+### ❌ Structural Problems
+
+* Competitors are **project-level static domains**
+* Pressure Index = 100 for everyone → meaningless
+* “Authority” is empty (no source wired)
+* No keyword context → no why
+* No page context → no what-to-fix
+* No drill-down → no action
+
+This creates **false precision** without decision-making power.
+
+---
+
+# ✅ How SEMrush & Ahrefs ACTUALLY Define Competitors
+
+> **Competitors are not domain lists.
+> They are domains that rank for the *same keywords* you care about.**
+
+### SEMrush/Ahrefs core logic:
+
+* Start from **your keyword set**
+* For each keyword:
+
+  * Fetch **Top 10–20 SERP URLs**
+* Aggregate:
+
+  * Domains that appear **most frequently**
+  * Domains that **outrank you**
+  * Domains that block **high-value keywords**
+
+That’s the missing layer in your product.
+
+---
+
+# 🧠 Correct Mental Model (Lock This In)
+
+### Competitors =
+
+**Domains that steal traffic from your tracked keywords**
+
+NOT:
+
+* Market competitors
+* Business competitors
+* Hand-picked domains
+
+---
+
+# ✅ FINAL COMPETITOR SYSTEM ARCHITECTURE
+
+## 1️⃣ Data Model (Critical Fix)
+
+### Replace / Extend with **Keyword-Centric Tables**
+
+You already discussed this, but here is the final shape:
+
+### `keyword_competitor_metrics` (CORE TABLE)
+
+| Field             | Purpose         |
+| ----------------- | --------------- |
+| project_id        | Scope           |
+| keyword_id        | Anchor          |
+| competitor_domain | Who             |
+| competitor_url    | Which page      |
+| position          | Where they rank |
+| your_position     | Where you rank  |
+| position_delta    | Gap             |
+| serp_features     | Why they win    |
+| last_seen_at      | Freshness       |
+
+✅ This table should be filled **every time you crawl SERPs**
+✅ This becomes the source of truth for competitors
+
+---
+
+## 2️⃣ DataForSEO APIs You MUST Use (and how)
+
+### A. **SERP API (Already Using — Needs Better Aggregation)**
+
+Use:
+
+* `serp/google/organic/live`
+
+For **every tracked keyword**:
+
+* Fetch Top 10–20 results
+* Extract:
+
+  * Domain
+  * URL
+  * Position
+  * SERP features (featured, sitelinks, etc.)
+
+Store results **per keyword** → not aggregated prematurely.
+
+👉 This powers:
+
+* Shared keywords
+* Keywords above us
+* Average position
+* REAL competitor discovery
+
+---
+
+### B. **Backlinks API (Authority & Pressure Layer)**
+
+Use selectively (weekly/monthly):
+
+* `backlinks/domain_summary`
+* `backlinks/page_summary`
+* `domain_intersection` (future)
+
+Fetch:
+
+* Referring domains
+* Authority score
+* Link velocity
+
+⚠️ **DO NOT RUN THIS FOR EVERY KEYWORD**
+Only enrich **top competitors** (by shared keywords).
+
+---
+
+# 🧩 FINAL COMPETITOR PAGE UX (SEMrush/Ahrefs-Inspired)
+
+## SECTION 1 — Competitor Discovery (Auto-Generated)
+
+> “Based on 445 tracked keywords”
+
+**Table: “Organic Search Competitors”**
+
+| Competitor | Shared Keywords | Keywords Above You | Avg Pos (Us vs Them) | Traffic Threat | Authority |
+| ---------- | --------------- | ------------------ | -------------------- | -------------- | --------- |
+| clutch.co  | 19              | 17                 | 5.9 vs 4.6           | 🔴 High        | Strong    |
+| zazz.io    | 13              | 13                 | 9.5 vs 6.2           | 🔴 High        | Medium    |
+
+### 🔑 Rules
+
+* Competitors appear **only if**
+
+  * Share ≥ X keywords
+  * OR outrank you on ≥ X high-intent keywords
+* Your own domain NEVER appears as competitor
+
+✅ This instantly replaces your current flat list
+
+---
+
+## SECTION 2 — Competitive Pressure Distribution (Meaningful)
+
+Replace the red 100% bars with:
+
+### Chart: **Where competitors beat you**
+
+* X-axis: Average ranking gap
+* Y-axis: Number of keywords
+
+This answers:
+
+> “Are we barely losing… or getting destroyed?”
+
+---
+
+## SECTION 3 — Keyword-Level Breakdown (THIS IS THE MONEY VIEW)
+
+When clicking a competitor → **drill-down drawer or page**
+
+### “Keywords Where *clutch.co* Beats You”
+
+| Keyword                 | Volume | Your Pos | Their Pos | Traffic Loss | Page URL              |
+| ----------------------- | ------ | -------- | --------- | ------------ | --------------------- |
+| android app development | 6,600  | 9        | 3         | 🔥 High      | clutch.co/android-dev |
+
+✅ This is **exactly** how Ahrefs/SEMrush win trust.
+
+---
+
+## SECTION 4 — Page-Level Competition (Where to Attack)
+
+Inside competitor drill-down:
+
+### “Pages Blocking You”
+
+| Keyword Cluster  | Their URL | Their Links | Your Page    | Action                  |
+| ---------------- | --------- | ----------- | ------------ | ----------------------- |
+| App Dev Services | /android  | 212         | /android-dev | Upgrade content + links |
+
+✅ Now the tool tells PMs what page to fix.
+
+---
+
+## SECTION 5 — Authority & Link Context (Supporting Data)
+
+Only after keyword proof:
+
+* Domain authority (from Backlinks API)
+* Referring domains
+* Link velocity
+
+Displayed as:
+
+> “They outrank you mostly due to authority”
+> or
+> “Authority equal — content wins this SERP”
+
+---
+
+# 🔁 How DataForSEO Data Maps to UI (1:1)
+
+| UI Element           | DataForSEO Source                    |
+| -------------------- | ------------------------------------ |
+| Competitor discovery | SERP API (per keyword)               |
+| Shared keywords      | Keyword × competitor join            |
+| Above us             | Position comparison                  |
+| Avg position         | Aggregated SERP data                 |
+| Authority            | Backlinks domain summary             |
+| Links per page       | Backlinks page summary               |
+| Competitive pressure | (# keywords × position gap × volume) |
+| Drill-down views     | keyword_competitor_metrics           |
+
+---
+
+# ❌ What NOT To Do (Important)
+
+* ❌ Manually define competitors
+* ❌ Use backlink authority alone to define competition
+* ❌ Show “pressure index” without explaining its inputs
+* ❌ Aggregate before storing raw keyword-level data
+
+---
+
+# ✅ One-Sentence Fix to Give Your Devs
+
+> “Rebuild Competitors around **keywords first**.
+> Discover competitors from SERP data per keyword, store them in `keyword_competitor_metrics`, then aggregate up to domain-level views. Enrich only top competitors with Backlinks API.”
+
+---
+
+## Where this puts you vs SEMrush/Ahrefs
+
+You’ll actually be **better** because:
+
+* You’re **project-specific** (they’re generic)
+* You’re execution-oriented (they’re research-heavy)
+* You connect **keywords → pages → recommendations**
+
+If you want next, I can:
+
+* Give you a **Replit/Cursor system prompt** to rebuild the Competitors page
+* Define the **exact SQL + API contracts**
+* Or redesign the **Competitor UX wireframe** diagrammatically
+
+Just tell me which layer to lock next 🔥
