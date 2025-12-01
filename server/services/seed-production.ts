@@ -89,12 +89,12 @@ export async function seedProductionDatabase(): Promise<boolean> {
       console.log(`[seed] Found ${allKeywords.length} keywords in database`);
       
       const oldIdToNewId = new Map<number, number>();
-      for (const [oldId, keywordText] of oldIdToKeyword.entries()) {
+      oldIdToKeyword.forEach((keywordText, oldId) => {
         const newId = keywordsByName.get(keywordText);
         if (newId) {
           oldIdToNewId.set(oldId, newId);
         }
-      }
+      });
       console.log(`[seed] Mapped ${oldIdToNewId.size} keyword IDs`);
 
       const today = new Date().toISOString().split("T")[0];
