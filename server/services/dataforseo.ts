@@ -477,6 +477,252 @@ export class DataForSEOService {
     };
   }
 
+  async getBulkPagesBacklinks(urls: string[]): Promise<Map<string, {
+    backlinksCount: number;
+    referringDomains: number;
+    dofollowLinks: number;
+    rank: number;
+  }>> {
+    const results = new Map<string, {
+      backlinksCount: number;
+      referringDomains: number;
+      dofollowLinks: number;
+      rank: number;
+    }>();
+
+    const batchSize = 100;
+    console.log(`[DataForSEO] Fetching bulk backlinks for ${urls.length} URLs`);
+
+    for (let i = 0; i < urls.length; i += batchSize) {
+      const batch = urls.slice(i, i + batchSize);
+      
+      try {
+        const tasks = batch.map(url => ({
+          target: url,
+          internal_list_limit: 0,
+        }));
+
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            status_code: number;
+            data?: { target: string };
+            result: Array<{
+              target: string;
+              total_count: number;
+              referring_domains: number;
+              dofollow: number;
+              rank: number;
+            }>;
+          }>;
+        }>("/backlinks/bulk_pages_summary/live", "POST", tasks);
+
+        for (const task of response.tasks || []) {
+          if (task.status_code === 20000 && task.result?.[0]) {
+            const result = task.result[0];
+            const url = task.data?.target || result.target;
+            results.set(url, {
+              backlinksCount: result.total_count || 0,
+              referringDomains: result.referring_domains || 0,
+              dofollowLinks: result.dofollow || 0,
+              rank: result.rank || 0,
+            });
+          }
+        }
+      } catch (error) {
+        console.error(`[DataForSEO] Error fetching bulk backlinks batch:`, error);
+      }
+
+      if (i + batchSize < urls.length) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+
+    console.log(`[DataForSEO] Retrieved backlinks for ${results.size}/${urls.length} URLs`);
+    return results;
+  }
+
+  async getBacklinksTimeseries(url: string, days: number = 30): Promise<{
+    newLinks: number;
+    lostLinks: number;
+  }> {
+    try {
+      const dateFrom = new Date();
+      dateFrom.setDate(dateFrom.getDate() - days);
+      const dateTo = new Date();
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            items: Array<{
+              date: string;
+              new_backlinks: number;
+              lost_backlinks: number;
+            }>;
+          }>;
+        }>;
+      }>("/backlinks/history/live", "POST", [{
+        target: url,
+        date_from: dateFrom.toISOString().split('T')[0],
+        date_to: dateTo.toISOString().split('T')[0],
+      }]);
+
+      let totalNew = 0;
+      let totalLost = 0;
+
+      const items = response.tasks?.[0]?.result?.[0]?.items || [];
+      for (const item of items) {
+        totalNew += item.new_backlinks || 0;
+        totalLost += item.lost_backlinks || 0;
+      }
+
+      return { newLinks: totalNew, lostLinks: totalLost };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching backlinks timeseries for ${url}:`, error);
+      return { newLinks: 0, lostLinks: 0 };
+    }
+  }
+
+  async getOnPagePagesData(taskId: string, urls: string[]): Promise<Map<string, {
+    statusCode: number;
+    isIndexable: boolean;
+    hasSchema: boolean;
+    wordCount: number;
+    pageScore: number;
+    duplicateContent: boolean;
+    coreWebVitalsScore: number;
+  }>> {
+    const results = new Map<string, {
+      statusCode: number;
+      isIndexable: boolean;
+      hasSchema: boolean;
+      wordCount: number;
+      pageScore: number;
+      duplicateContent: boolean;
+      coreWebVitalsScore: number;
+    }>();
+
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            items: Array<{
+              url: string;
+              status_code: number;
+              meta?: {
+                canonical?: string;
+                content?: string;
+              };
+              page_timing?: {
+                time_to_interactive?: number;
+              };
+              onpage_score?: number;
+              checks?: {
+                no_index_page?: boolean;
+                is_redirect?: boolean;
+                no_content?: boolean;
+                duplicate_content?: boolean;
+                deprecated_html_tags?: boolean;
+              };
+              content_encoding?: string;
+              total_dom_size?: number;
+              custom_js_response?: unknown;
+              resource_errors?: number;
+              schema_types?: string[];
+              content?: {
+                plain_text_word_count?: number;
+              };
+            }>;
+          }>;
+        }>;
+      }>(`/on_page/pages/${taskId}`, "GET");
+
+      const items = response.tasks?.[0]?.result?.[0]?.items || [];
+      
+      for (const item of items) {
+        const normalizedUrl = item.url?.toLowerCase().replace(/\/$/, '') || '';
+        
+        if (urls.some(u => u.toLowerCase().replace(/\/$/, '') === normalizedUrl)) {
+          results.set(item.url, {
+            statusCode: item.status_code || 0,
+            isIndexable: !item.checks?.no_index_page && !item.checks?.is_redirect,
+            hasSchema: (item.schema_types?.length || 0) > 0,
+            wordCount: item.content?.plain_text_word_count || 0,
+            pageScore: item.onpage_score || 0,
+            duplicateContent: item.checks?.duplicate_content || false,
+            coreWebVitalsScore: item.page_timing?.time_to_interactive ? 
+              Math.max(0, 100 - (item.page_timing.time_to_interactive / 100)) : 75,
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching on-page data:`, error);
+    }
+
+    return results;
+  }
+
+  async startOnPageCrawl(domain: string, maxPages: number = 500): Promise<string | null> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{ id: string; status_code: number }>;
+      }>("/on_page/task_post", "POST", [{
+        target: domain,
+        max_crawl_pages: maxPages,
+        load_resources: false,
+        enable_javascript: false,
+        store_raw_html: false,
+        check_spell: false,
+        calculate_keyword_density: false,
+      }]);
+
+      const taskId = response.tasks?.[0]?.id;
+      if (taskId) {
+        console.log(`[DataForSEO] Started on-page crawl for ${domain}, task ID: ${taskId}`);
+        return taskId;
+      }
+      return null;
+    } catch (error) {
+      console.error(`[DataForSEO] Error starting on-page crawl:`, error);
+      return null;
+    }
+  }
+
+  async getOnPageCrawlStatus(taskId: string): Promise<{
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    pagesCrawled: number;
+    pagesTotal: number;
+  }> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          result: Array<{
+            crawl_progress: string;
+            crawl_status?: {
+              pages_crawled?: number;
+              max_crawl_pages?: number;
+            };
+          }>;
+        }>;
+      }>(`/on_page/summary/${taskId}`, "GET");
+
+      const result = response.tasks?.[0]?.result?.[0];
+      const progress = result?.crawl_progress || 'failed';
+      
+      return {
+        status: progress === 'finished' ? 'completed' : 
+                progress === 'in_progress' ? 'in_progress' : 
+                progress === 'failed' ? 'failed' : 'pending',
+        pagesCrawled: result?.crawl_status?.pages_crawled || 0,
+        pagesTotal: result?.crawl_status?.max_crawl_pages || 0,
+      };
+    } catch (error) {
+      console.error(`[DataForSEO] Error getting crawl status:`, error);
+      return { status: 'failed', pagesCrawled: 0, pagesTotal: 0 };
+    }
+  }
+
   async getOnPageSummary(domain: string): Promise<{
     crawledPages: number;
     indexablePages: number;

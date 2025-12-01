@@ -1,0 +1,179 @@
+Perfect, this helps a lot. Let’s wire this to **the right DataForSEO APIs** instead of showing a pretty but useless table.
+
+Right now your **Pages tab columns** are basically:
+
+* Avg Position
+* Top 10
+* Backlinks
+* Link Velocity
+* Health
+* Tech Risk
+* Content Gap
+
+### 1️⃣ Which DataForSEO APIs should power this screen?
+
+You really need **two** DataForSEO APIs here:
+
+1. **On-Page API** → technical health, indexability, schema, page score ([DataForSEO][1])
+2. **Backlinks API** → backlink count + velocity per URL ([docs.dataforseo.com][2])
+
+Plus your **own keyword data** (from SERP API calls you already make) to fill Avg Position / Top 10.
+
+You *don’t* need any extra SERP endpoints specifically for Pages; just aggregate from your `keyword_metrics` + `rankings_history`.
+
+---
+
+### 2️⃣ What each column should be fetching
+
+#### A. Avg Position / Top 10
+
+**Source:** your existing DB (SERP → keyword metrics)
+
+**What to do:**
+
+* For each URL in `page_metrics`:
+
+  * Find all keywords where this URL is the ranking landing page.
+  * Compute:
+
+    * `avg_position = avg(current_position)`
+    * `top10_count = count(keywords where position ≤ 10)`
+* This is pure SQL on your `keywords` / `keyword_metrics` / `rankings_history` tables; no extra DataForSEO cost.
+
+---
+
+#### B. Backlinks
+
+**Source:** **Backlinks API – Bulk Pages Summary / Backlinks** ([docs.dataforseo.com][2])
+
+**Endpoints to use:**
+
+* **Bulk Pages Summary** (up to 1,000 URLs per request) – gives:
+
+  * total backlinks
+  * referring domains
+  * nofollow/dofollow breakdown
+  * authority metrics per URL
+* Optionally, `backlinks/backlinks/live` for deep drill-down on a single page.
+
+**What to fetch per page row:**
+
+* `backlinks_total`
+* `referring_domains`
+* maybe `backlinks_dofollow` if you want a better quality signal.
+
+That’s exactly what should populate your **Backlinks** column and the “Total Backlinks / domains” KPI at the top.
+
+---
+
+#### C. Link Velocity
+
+**Source:** **Backlinks API – New/Lost Timeseries & Timeseries Summary** ([docs.dataforseo.com][2])
+
+Use the timeseries endpoints to get:
+
+* `new_backlinks_last_30_days`
+* `lost_backlinks_last_30_days`
+
+Compute a simple velocity:
+
+* `velocity = new_last_30d - lost_last_30d`
+
+Then display as:
+
+* `+X / -Y`
+  matching the UI you already have (green + red numbers).
+
+---
+
+#### D. Health / Tech Risk
+
+**Source:** **On-Page API – Pages + Summary** ([DataForSEO][1])
+
+Use:
+
+* `on_page/task_post` to start a crawl for the project domain.
+* `on_page/pages` to fetch per-URL metrics and issues.
+* `on_page/summary` to get global stats and distributions.
+
+**For each URL**, fetch or derive:
+
+* HTTP status (`status_code`)
+* Indexability flags (`is_indexable`, `canonical`, robots/block info)
+* Core Web Vitals / speed metrics (from Lighthouse integration if you enable it)
+* On-page score fields (they already give you a composite **page score**)
+* Critical issues counts (4xx, 5xx, redirects, duplicate titles, missing meta, etc.)
+
+Then:
+
+* **Tech Risk** = normalized inverse of their on-page score or issue count
+  e.g.
+
+  * 0–30 → High
+  * 30–70 → Medium
+  * 70–100 → Low
+
+* **Health** = a simple badge based on:
+
+  * `status_code` OK
+  * indexable
+  * no critical issues.
+
+The top cards:
+
+* **Total Pages** = count of crawled pages from `on_page/pages`
+* **Indexable Pages** = count where `is_indexable == true`
+* **Pages with Schema** = where structured data fields are present
+
+And the “Technical Risk Distribution” chart is just a histogram over that Tech Risk score.
+
+---
+
+#### E. Content Gap
+
+This is part DataForSEO, part your own logic:
+
+* Use **keyword data you already have** (which queries each page ranks for)
+* Optionally overlay **competitor pages** (from your SERP data) and/or On-Page word count / headings.
+
+Simple v1:
+
+* For each page:
+
+  * Expected keywords from cluster vs actual keywords ranking
+  * Missing high-volume terms → higher “content gap %”.
+
+Later, you could use:
+
+* **On-Page API content metrics** (readability, word count, headings, etc.) ([DataForSEO][3])
+* Plus comparison to top SERP competitors from your existing SERP pulls.
+
+---
+
+### 3️⃣ Where DataForSEO fits per widget on the Pages screen
+
+From your screenshot:
+
+* **Total Pages / Indexable Pages / Pages with Schema / Tech Risk Distribution**
+  👉 **On-Page API** (`on_page/pages`, `on_page/summary`)
+
+* **Total Backlinks** (and per-page backlink column)
+  👉 **Backlinks API** (Bulk Pages Summary / Backlinks)
+
+* **Link Velocity**
+  👉 **Backlinks API** (new/lost timeseries)
+
+* **Avg Position / Top 10 / Content Gap**
+  👉 **Your own DB**, powered by the SERP API calls you already make.
+
+---
+
+### 4️⃣ One-line answer you can give the devs
+
+> “For the Pages tab: use **On-Page API (pages + summary)** for technical health and indexability, **Backlinks API (bulk pages summary + timeseries)** for backlinks and velocity, and **aggregate our existing SERP keyword data** for avg position and Top 10. No blind crawling of the whole site, just the URLs we care about.”
+
+If you want, I can now write a **Replit/Cursor prompt** that explicitly tells Ghostwriter which DataForSEO endpoints to call and how to map their fields into your existing `page_metrics` + UI columns.
+
+[1]: https://dataforseo.com/apis/on-page-api?utm_source=chatgpt.com "SEO Audit Data and Website Crawling Tool – On-Page API ..."
+[2]: https://docs.dataforseo.com/v3/backlinks-overview/?utm_source=chatgpt.com "backlinks/overview – DataForSEO API v.3"
+[3]: https://dataforseo.com/blog/120-onpage-api-metrics-explained?utm_source=chatgpt.com "120 OnPage API Metrics Explained"
