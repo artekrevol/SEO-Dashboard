@@ -422,6 +422,27 @@ export async function runRankingsSync(projectId?: string): Promise<JobResult> {
   }
 }
 
+export async function runRankingsSyncWithLimit(projectId: string, limit?: number): Promise<JobResult> {
+  try {
+    if (!rankingsSyncService.constructor) {
+      return { success: false, message: "Rankings sync service not available" };
+    }
+
+    const result = await rankingsSyncService.syncRankingsForProject(projectId, limit);
+    return {
+      success: result.success,
+      message: result.message,
+      data: { 
+        keywordsUpdated: result.keywordsUpdated, 
+        competitorsFound: result.competitorsFound,
+        progress: result.progress,
+      },
+    };
+  } catch (error) {
+    return { success: false, message: `Rankings sync failed: ${error}` };
+  }
+}
+
 export async function runImpactTracking(projectId: string): Promise<JobResult> {
   try {
     const results = await impactTracker.trackImplementedRecommendations(projectId);

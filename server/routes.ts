@@ -12,6 +12,7 @@ import {
   runCompetitorAnalysis, 
   runRecommendationGeneration,
   runRankingsSync,
+  runRankingsSyncWithLimit,
   runImpactTracking,
   runNarrativeGeneration,
   startScheduledJobs 
@@ -909,6 +910,7 @@ export async function registerRoutes(
     type: z.enum(["keywords", "pages", "competitors"]),
     scope: z.enum(["all", "selected"]).default("all"),
     keywordIds: z.array(z.number().int().positive()).optional(),
+    limit: z.number().int().positive().optional(),
   }).refine(
     (data) => {
       // If scope is "selected", keywordIds must be non-empty
@@ -931,7 +933,7 @@ export async function registerRoutes(
         });
       }
 
-      const { projectId, type, scope, keywordIds } = parseResult.data;
+      const { projectId, type, scope, keywordIds, limit } = parseResult.data;
 
       // Verify project exists
       const project = await storage.getProject(projectId);
@@ -943,7 +945,7 @@ export async function registerRoutes(
 
       switch (type) {
         case "keywords":
-          result = await runRankingsSync(projectId);
+          result = await runRankingsSyncWithLimit(projectId, limit);
           if (scope === "selected" && keywordIds && keywordIds.length > 0) {
             result.note = `Crawl requested for ${keywordIds.length} specific keywords`;
           }
