@@ -16,8 +16,10 @@ import {
   runImpactTracking,
   runNarrativeGeneration,
   runPageMetricsSync,
+  runPageMetricsSyncWithLimit,
   runOnPageCrawl,
   runOnPageSync,
+  runFullProjectSync,
   startScheduledJobs 
 } from "./services/jobs";
 import {
@@ -631,6 +633,75 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error syncing on-page data:", error);
       res.status(500).json({ error: "Failed to start on-page sync" });
+    }
+  });
+
+  app.post("/api/jobs/full-sync", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const keywordLimit = req.query.keywordLimit ? parseInt(req.query.keywordLimit as string) : undefined;
+      const pageLimit = req.query.pageLimit ? parseInt(req.query.pageLimit as string) : undefined;
+      const includeOnPageCrawl = req.query.includeOnPageCrawl === 'true';
+      
+      if (!projectId || typeof projectId !== 'string' || projectId.length < 10) {
+        return res.status(400).json({ error: "Valid projectId is required" });
+      }
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "Full project sync started", 
+        status: "processing",
+        options: { keywordLimit, pageLimit, includeOnPageCrawl }
+      });
+      
+      runFullProjectSync(projectId, { 
+        keywordLimit, 
+        pageLimit, 
+        includeOnPageCrawl 
+      }).then(result => {
+        console.log(`[Jobs] Full sync completed: ${result.message}`);
+      }).catch(err => {
+        console.error("[Jobs] Full sync failed:", err);
+      });
+    } catch (error) {
+      console.error("Error starting full sync:", error);
+      res.status(500).json({ error: "Failed to start full sync" });
+    }
+  });
+
+  app.post("/api/jobs/page-metrics-limited", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      
+      if (!projectId || typeof projectId !== 'string' || projectId.length < 10) {
+        return res.status(400).json({ error: "Valid projectId is required" });
+      }
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: `Page metrics sync started for ${limit} pages`, 
+        status: "processing" 
+      });
+      
+      runPageMetricsSyncWithLimit(projectId, limit).then(result => {
+        console.log(`[Jobs] Page metrics sync (limited) completed: ${result.message}`);
+      }).catch(err => {
+        console.error("[Jobs] Page metrics sync (limited) failed:", err);
+      });
+    } catch (error) {
+      console.error("Error running page metrics sync:", error);
+      res.status(500).json({ error: "Failed to start page metrics sync" });
     }
   });
 

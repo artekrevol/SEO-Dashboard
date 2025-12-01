@@ -341,7 +341,7 @@ export class RankingsSyncService {
     return results;
   }
 
-  async syncPageMetrics(projectId: string): Promise<{
+  async syncPageMetrics(projectId: string, urlLimit?: number): Promise<{
     success: boolean;
     message: string;
     pagesUpdated: number;
@@ -374,14 +374,18 @@ export class RankingsSyncService {
         }
       }
 
-      const urls = Array.from(urlSet);
+      let urls = Array.from(urlSet);
       if (urls.length === 0) {
         return { success: true, message: "No URLs to sync", pagesUpdated: 0, errors: [] };
       }
 
-      console.log(`[PageMetrics] Syncing ${urls.length} pages for project ${project.name}`);
+      if (urlLimit && urlLimit > 0) {
+        urls = urls.slice(0, urlLimit);
+      }
 
-      const backlinkData = await this.dataForSEO.getBulkPagesBacklinks(urls);
+      console.log(`[PageMetrics] Syncing ${urls.length} pages for project ${project.name} using Summary API`);
+
+      const backlinkData = await this.dataForSEO.syncPagesBacklinks(urls);
       console.log(`[PageMetrics] Retrieved backlinks for ${backlinkData.size} URLs`);
 
       const today = new Date().toISOString().split('T')[0];
@@ -480,7 +484,10 @@ export class RankingsSyncService {
       let pagesUpdated = 0;
       const today = new Date().toISOString().split('T')[0];
 
-      for (const [url, data] of onPageData) {
+      const onPageEntries = Array.from(onPageData.entries());
+      for (const entry of onPageEntries) {
+        const url = entry[0];
+        const data = entry[1];
         const existingPages = await storage.getPageMetrics(projectId);
         const existingPage = existingPages.find(p => 
           p.url.toLowerCase().replace(/\/+$/, '') === url.toLowerCase().replace(/\/+$/, '')

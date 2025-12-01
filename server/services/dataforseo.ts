@@ -541,6 +541,98 @@ export class DataForSEOService {
     return results;
   }
 
+  async getPageBacklinksSummary(url: string): Promise<{
+    backlinksCount: number;
+    referringDomains: number;
+    dofollowLinks: number;
+    rank: number;
+  } | null> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          result: Array<{
+            target: string;
+            backlinks: number;
+            referring_main_domains: number;
+            referring_domains: number;
+            referring_ips: number;
+            referring_subnets: number;
+            referring_pages: number;
+            dofollow: number;
+            nofollow: number;
+            rank: number;
+            main_domain_rank: number;
+            broken_backlinks: number;
+            broken_pages: number;
+          }>;
+        }>;
+      }>("/backlinks/summary/live", "POST", [{
+        target: url,
+        include_subdomains: false,
+      }]);
+
+      const task = response.tasks?.[0];
+      if (task?.status_code === 20000 && task.result?.[0]) {
+        const result = task.result[0];
+        return {
+          backlinksCount: result.backlinks || 0,
+          referringDomains: result.referring_domains || 0,
+          dofollowLinks: result.dofollow || 0,
+          rank: result.rank || 0,
+        };
+      }
+      return null;
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching backlinks summary for ${url}:`, error);
+      return null;
+    }
+  }
+
+  async syncPagesBacklinks(urls: string[], onProgress?: (processed: number, total: number) => void): Promise<Map<string, {
+    backlinksCount: number;
+    referringDomains: number;
+    dofollowLinks: number;
+    rank: number;
+  }>> {
+    const results = new Map<string, {
+      backlinksCount: number;
+      referringDomains: number;
+      dofollowLinks: number;
+      rank: number;
+    }>();
+
+    console.log(`[DataForSEO] Syncing backlinks for ${urls.length} pages using Summary API`);
+
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i];
+      
+      try {
+        const data = await this.getPageBacklinksSummary(url);
+        if (data) {
+          results.set(url.toLowerCase().replace(/\/+$/, ''), data);
+          console.log(`  ✓ ${url}: ${data.backlinksCount} backlinks, ${data.referringDomains} domains`);
+        } else {
+          console.log(`  ! ${url}: No data returned`);
+        }
+      } catch (error) {
+        console.error(`  ! ${url}: Error - ${error}`);
+      }
+      
+      if (onProgress) {
+        onProgress(i + 1, urls.length);
+      }
+      
+      if (i < urls.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+
+    console.log(`[DataForSEO] Synced backlinks for ${results.size}/${urls.length} pages`);
+    return results;
+  }
+
   async getBacklinksTimeseries(url: string, days: number = 30): Promise<{
     newLinks: number;
     lostLinks: number;

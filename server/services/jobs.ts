@@ -524,6 +524,122 @@ export async function runOnPageSync(projectId: string, taskId: string): Promise<
   }
 }
 
+export async function runFullProjectSync(projectId: string, options?: {
+  keywordLimit?: number;
+  pageLimit?: number;
+  includeCompetitors?: boolean;
+  includeOnPageCrawl?: boolean;
+}): Promise<JobResult> {
+  const results: string[] = [];
+  const errors: string[] = [];
+  
+  const project = await storage.getProject(projectId);
+  if (!project) {
+    return { success: false, message: "Project not found" };
+  }
+
+  console.log(`[FullSync] Starting full sync for project: ${project.name}`);
+  const startTime = Date.now();
+
+  try {
+    console.log("[FullSync] Step 1: Syncing keyword rankings...");
+    const rankingsResult = await runRankingsSyncWithLimit(projectId, options?.keywordLimit);
+    if (rankingsResult.success) {
+      results.push(`Keywords: ${(rankingsResult.data as any)?.keywordsUpdated || 0} updated`);
+    } else {
+      errors.push(`Keywords: ${rankingsResult.message}`);
+    }
+  } catch (error) {
+    errors.push(`Keywords sync error: ${error}`);
+  }
+
+  try {
+    console.log("[FullSync] Step 2: Syncing page backlinks (Summary API)...");
+    const pageResult = await rankingsSyncService.syncPageMetrics(projectId, options?.pageLimit);
+    if (pageResult.success) {
+      results.push(`Pages: ${pageResult.pagesUpdated} updated with backlinks`);
+    } else {
+      errors.push(`Pages: ${pageResult.message}`);
+    }
+  } catch (error) {
+    errors.push(`Page sync error: ${error}`);
+  }
+
+  if (options?.includeCompetitors !== false) {
+    try {
+      console.log("[FullSync] Step 3: Running competitor analysis...");
+      const competitorResult = await runCompetitorAnalysis(projectId);
+      if (competitorResult.success) {
+        results.push(`Competitors: analysis completed`);
+      } else {
+        errors.push(`Competitors: ${competitorResult.message}`);
+      }
+    } catch (error) {
+      errors.push(`Competitor analysis error: ${error}`);
+    }
+  }
+
+  if (options?.includeOnPageCrawl) {
+    try {
+      console.log("[FullSync] Step 4: Starting On-Page crawl...");
+      const crawlResult = await runOnPageCrawl(projectId);
+      if (crawlResult.success) {
+        results.push(`On-Page crawl: started (task: ${(crawlResult.data as any)?.taskId})`);
+      } else {
+        errors.push(`On-Page crawl: ${crawlResult.message}`);
+      }
+    } catch (error) {
+      errors.push(`On-Page crawl error: ${error}`);
+    }
+  }
+
+  try {
+    console.log("[FullSync] Step 5: Generating recommendations...");
+    const recsResult = await runRecommendationGeneration(projectId);
+    if (recsResult.success) {
+      results.push(`Recommendations: generated`);
+    }
+  } catch (error) {
+    console.log(`[FullSync] Recommendations error: ${error}`);
+  }
+
+  try {
+    console.log("[FullSync] Step 6: Creating SEO snapshot...");
+    const snapshotResult = await runDailySEOSnapshot(projectId);
+    if (snapshotResult.success) {
+      results.push(`Snapshot: saved`);
+    }
+  } catch (error) {
+    console.log(`[FullSync] Snapshot error: ${error}`);
+  }
+
+  const duration = Math.round((Date.now() - startTime) / 1000);
+  console.log(`[FullSync] Completed in ${duration}s. Results: ${results.join(", ")}`);
+  
+  if (errors.length > 0) {
+    console.log(`[FullSync] Errors: ${errors.join(", ")}`);
+  }
+
+  return {
+    success: errors.length === 0,
+    message: `Full sync completed in ${duration}s: ${results.join("; ")}`,
+    data: { results, errors, duration },
+  };
+}
+
+export async function runPageMetricsSyncWithLimit(projectId: string, limit?: number): Promise<JobResult> {
+  try {
+    const result = await rankingsSyncService.syncPageMetrics(projectId, limit);
+    return {
+      success: result.success,
+      message: result.message,
+      data: { pagesUpdated: result.pagesUpdated, errors: result.errors },
+    };
+  } catch (error) {
+    return { success: false, message: `Page metrics sync failed: ${error}` };
+  }
+}
+
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
 export function startScheduledJobs(): void {
@@ -557,6 +673,7 @@ export function startScheduledJobs(): void {
             await runKeywordMetricsUpdate(project.id);
             await runCompetitorAnalysis(project.id);
             await runRecommendationGeneration(project.id);
+            await runPageMetricsSync(project.id);
           }
         }
         console.log("[Job] weekend-heavy-jobs completed");
@@ -570,6 +687,31 @@ export function startScheduledJobs(): void {
   );
   cronJobs.set("weekend-heavy-jobs", weekendHeavyJob);
   console.log("[Jobs] Scheduled weekend-heavy-jobs to run Sunday 3 AM CST");
+
+  const pageMetricsSyncJob = cron.schedule(
+    "0 7 * * 1,3,5",
+    async () => {
+      console.log("[Job] Running page-metrics-sync (Mon/Wed/Fri 7 AM CST)...");
+      try {
+        const projects = await storage.getProjects();
+        for (const project of projects) {
+          if (project.isActive) {
+            console.log(`[Job] Syncing page metrics for ${project.name}...`);
+            const result = await runPageMetricsSync(project.id);
+            console.log(`[Job] ${project.name}: ${result.message}`);
+          }
+        }
+        console.log("[Job] page-metrics-sync completed");
+      } catch (error) {
+        console.error("[Job] page-metrics-sync failed:", error);
+      }
+    },
+    {
+      timezone: "America/Chicago",
+    }
+  );
+  cronJobs.set("page-metrics-sync", pageMetricsSyncJob);
+  console.log("[Jobs] Scheduled page-metrics-sync to run Mon/Wed/Fri at 7 AM CST");
 
   const rankingsSyncJob = cron.schedule(
     "0 6 * * *",
