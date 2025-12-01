@@ -81,71 +81,96 @@ export class DataForSEOService {
     return data;
   }
 
-  async getSerpRankings(keywords: string[], domain: string, locationCode: number = 2840): Promise<Map<string, SerpResultItem | null>> {
-    const tasks = keywords.map(keyword => ({
-      keyword,
-      location_code: locationCode,
-      language_code: "en",
-      device: "desktop",
-      os: "windows",
-      depth: 100,
-    }));
-
-    const response = await this.makeRequest<{
-      tasks: Array<{
-        data?: { keyword: string };
-        result: Array<{
-          keyword: string;
-          items: Array<{
-            type: string;
-            rank_group: number;
-            rank_absolute: number;
-            domain?: string;
-            url?: string;
-            title?: string;
-            description?: string;
-            breadcrumb?: string;
-          }>;
-        }>;
-      }>;
-    }>("/serp/google/organic/live/advanced", "POST", tasks);
-
+  async getSerpRankings(keywords: string[], domain: string, locationCode: number = 2840, onProgress?: (processed: number, total: number) => void): Promise<Map<string, SerpResultItem | null>> {
     const results = new Map<string, SerpResultItem | null>();
-    
-    for (const task of response.tasks || []) {
-      const keyword = task.data?.keyword || '';
-      for (const result of task.result || []) {
-        const organicItems = (result.items || []).filter(item => item.type === 'organic');
-        const domainResult = organicItems.find(item => 
-          item.domain === domain || 
-          item.domain?.includes(domain) ||
-          item.url?.includes(domain)
-        );
-        
-        if (domainResult) {
-          results.set(keyword, {
-            keyword,
-            rank_group: domainResult.rank_group,
-            rank_absolute: domainResult.rank_absolute,
-            domain: domainResult.domain || '',
-            url: domainResult.url || '',
-            title: domainResult.title || '',
-            description: domainResult.description || '',
-            breadcrumb: domainResult.breadcrumb || '',
-            is_featured_snippet: false,
-            is_image: false,
-            is_video: false,
-          });
-        } else {
-          results.set(keyword, null);
+    const requestDelay = 500;
+
+    console.log(`[DataForSEO] Processing ${keywords.length} keywords sequentially for SERP rankings`);
+
+    for (let i = 0; i < keywords.length; i++) {
+      const keyword = keywords[i];
+
+      try {
+        const task = [{
+          keyword,
+          location_code: locationCode,
+          language_code: "en",
+          device: "desktop",
+          os: "windows",
+          depth: 100,
+        }];
+
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            status_code: number;
+            status_message: string;
+            data?: { keyword: string };
+            result: Array<{
+              keyword: string;
+              items: Array<{
+                type: string;
+                rank_group: number;
+                rank_absolute: number;
+                domain?: string;
+                url?: string;
+                title?: string;
+                description?: string;
+                breadcrumb?: string;
+              }>;
+            }>;
+          }>;
+        }>("/serp/google/organic/live/advanced", "POST", task);
+
+        const taskResult = response.tasks?.[0];
+        if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
+          const result = taskResult.result[0];
+          const organicItems = (result.items || []).filter(item => item.type === 'organic');
+          const domainResult = organicItems.find(item => 
+            item.domain === domain || 
+            item.domain?.includes(domain) ||
+            item.url?.includes(domain)
+          );
+
+          if (domainResult) {
+            results.set(keyword, {
+              keyword,
+              rank_group: domainResult.rank_group,
+              rank_absolute: domainResult.rank_absolute,
+              domain: domainResult.domain || '',
+              url: domainResult.url || '',
+              title: domainResult.title || '',
+              description: domainResult.description || '',
+              breadcrumb: domainResult.breadcrumb || '',
+              is_featured_snippet: false,
+              is_image: false,
+              is_video: false,
+            });
+          } else {
+            results.set(keyword, null);
+          }
         }
+      } catch (error) {
+        console.error(`[DataForSEO] Error fetching SERP for "${keyword}":`, error);
+        results.set(keyword, null);
+      }
+
+      if (onProgress) {
+        onProgress(i + 1, keywords.length);
+      }
+
+      if (i < keywords.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, requestDelay));
+      }
+
+      if ((i + 1) % 10 === 0 || i === keywords.length - 1) {
+        console.log(`[DataForSEO] SERP progress: ${i + 1}/${keywords.length}`);
       }
     }
 
     return results;
   }
 
-  async getSerpRankingsWithCompetitors(keywords: string[], domain: string, locationCode: number = 2840): Promise<{
+  async getSerpRankingsWithCompetitors(keywords: string[], domain: string, locationCode: number = 2840, onProgress?: (processed: number, total: number) => void): Promise<{
     rankings: Map<string, SerpResultItem | null>;
     competitors: Map<string, Array<{
       domain: string;
@@ -155,35 +180,6 @@ export class DataForSEOService {
     }>>;
     serpFeatures: Map<string, string[]>;
   }> {
-    const tasks = keywords.map(keyword => ({
-      keyword,
-      location_code: locationCode,
-      language_code: "en",
-      device: "desktop",
-      os: "windows",
-      depth: 100,
-    }));
-
-    const response = await this.makeRequest<{
-      tasks: Array<{
-        data?: { keyword: string };
-        result: Array<{
-          keyword: string;
-          item_types?: string[];
-          items: Array<{
-            type: string;
-            rank_group: number;
-            rank_absolute: number;
-            domain?: string;
-            url?: string;
-            title?: string;
-            description?: string;
-            breadcrumb?: string;
-          }>;
-        }>;
-      }>;
-    }>("/serp/google/organic/live/advanced", "POST", tasks);
-
     const rankings = new Map<string, SerpResultItem | null>();
     const competitors = new Map<string, Array<{
       domain: string;
@@ -192,7 +188,8 @@ export class DataForSEOService {
       title: string;
     }>>();
     const serpFeatures = new Map<string, string[]>();
-    
+    const requestDelay = 500;
+
     const featureMapping: Record<string, string> = {
       featured_snippet: "featured_snippet",
       people_also_ask: "people_also_ask",
@@ -203,57 +200,112 @@ export class DataForSEOService {
       shopping: "shopping",
       news: "news",
     };
-    
-    for (const task of response.tasks || []) {
-      const keyword = task.data?.keyword || '';
-      for (const result of task.result || []) {
-        const organicItems = (result.items || []).filter(item => item.type === 'organic');
-        
-        const domainResult = organicItems.find(item => 
-          item.domain === domain || 
-          item.domain?.includes(domain) ||
-          item.url?.includes(domain)
-        );
-        
-        if (domainResult) {
-          rankings.set(keyword, {
-            keyword,
-            rank_group: domainResult.rank_group,
-            rank_absolute: domainResult.rank_absolute,
-            domain: domainResult.domain || '',
-            url: domainResult.url || '',
-            title: domainResult.title || '',
-            description: domainResult.description || '',
-            breadcrumb: domainResult.breadcrumb || '',
-            is_featured_snippet: false,
-            is_image: false,
-            is_video: false,
-          });
-        } else {
-          rankings.set(keyword, null);
+
+    console.log(`[DataForSEO] Processing ${keywords.length} keywords sequentially for SERP with competitors`);
+
+    for (let i = 0; i < keywords.length; i++) {
+      const keyword = keywords[i];
+
+      try {
+        const task = [{
+          keyword,
+          location_code: locationCode,
+          language_code: "en",
+          device: "desktop",
+          os: "windows",
+          depth: 100,
+        }];
+
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            status_code: number;
+            status_message: string;
+            data?: { keyword: string };
+            result: Array<{
+              keyword: string;
+              item_types?: string[];
+              items: Array<{
+                type: string;
+                rank_group: number;
+                rank_absolute: number;
+                domain?: string;
+                url?: string;
+                title?: string;
+                description?: string;
+                breadcrumb?: string;
+              }>;
+            }>;
+          }>;
+        }>("/serp/google/organic/live/advanced", "POST", task);
+
+        const taskResult = response.tasks?.[0];
+        if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
+          const result = taskResult.result[0];
+          const organicItems = (result.items || []).filter(item => item.type === 'organic');
+
+          const domainResult = organicItems.find(item => 
+            item.domain === domain || 
+            item.domain?.includes(domain) ||
+            item.url?.includes(domain)
+          );
+
+          if (domainResult) {
+            rankings.set(keyword, {
+              keyword,
+              rank_group: domainResult.rank_group,
+              rank_absolute: domainResult.rank_absolute,
+              domain: domainResult.domain || '',
+              url: domainResult.url || '',
+              title: domainResult.title || '',
+              description: domainResult.description || '',
+              breadcrumb: domainResult.breadcrumb || '',
+              is_featured_snippet: false,
+              is_image: false,
+              is_video: false,
+            });
+          } else {
+            rankings.set(keyword, null);
+          }
+
+          const top10Competitors = organicItems
+            .filter(item => 
+              item.domain !== domain && 
+              !item.domain?.includes(domain) &&
+              !item.url?.includes(domain)
+            )
+            .slice(0, 10)
+            .map(item => ({
+              domain: item.domain || '',
+              position: item.rank_group,
+              url: item.url || '',
+              title: item.title || '',
+            }));
+
+          competitors.set(keyword, top10Competitors);
+
+          const itemTypes = result.item_types || [];
+          const features = itemTypes
+            .map(type => featureMapping[type])
+            .filter(Boolean);
+          serpFeatures.set(keyword, features);
         }
-        
-        const top10Competitors = organicItems
-          .filter(item => 
-            item.domain !== domain && 
-            !item.domain?.includes(domain) &&
-            !item.url?.includes(domain)
-          )
-          .slice(0, 10)
-          .map(item => ({
-            domain: item.domain || '',
-            position: item.rank_group,
-            url: item.url || '',
-            title: item.title || '',
-          }));
-        
-        competitors.set(keyword, top10Competitors);
-        
-        const itemTypes = result.item_types || [];
-        const features = itemTypes
-          .map(type => featureMapping[type])
-          .filter(Boolean);
-        serpFeatures.set(keyword, features);
+      } catch (error) {
+        console.error(`[DataForSEO] Error fetching SERP with competitors for "${keyword}":`, error);
+        rankings.set(keyword, null);
+        competitors.set(keyword, []);
+        serpFeatures.set(keyword, []);
+      }
+
+      if (onProgress) {
+        onProgress(i + 1, keywords.length);
+      }
+
+      if (i < keywords.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, requestDelay));
+      }
+
+      if ((i + 1) % 10 === 0 || i === keywords.length - 1) {
+        console.log(`[DataForSEO] SERP+Competitors progress: ${i + 1}/${keywords.length}`);
       }
     }
 
