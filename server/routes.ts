@@ -83,16 +83,32 @@ export async function registerRoutes(
     try {
       const parsed = insertProjectSchema.safeParse(req.body);
       if (!parsed.success) {
+        console.error("Project validation failed:", parsed.error.errors);
         return res.status(400).json({ error: "Invalid project data", details: parsed.error.errors });
       }
-      const project = await storage.createProject(parsed.data);
       
-      await seedDemoData(project.id, project.domain);
+      let project;
+      try {
+        project = await storage.createProject(parsed.data);
+      } catch (dbError: any) {
+        console.error("Database error creating project:", dbError);
+        if (dbError.code === '23505') {
+          return res.status(409).json({ error: "A project with this name or domain already exists" });
+        }
+        return res.status(500).json({ error: dbError.message || "Database error while creating project" });
+      }
+      
+      try {
+        await seedDemoData(project.id, project.domain);
+      } catch (seedError) {
+        console.error("Warning: Failed to seed demo data for project:", seedError);
+      }
       
       res.status(201).json(project);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating project:", error);
-      res.status(500).json({ error: "Failed to create project" });
+      const message = error.message || "Failed to create project";
+      res.status(500).json({ error: message });
     }
   });
 
