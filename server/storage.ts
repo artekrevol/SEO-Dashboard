@@ -112,6 +112,7 @@ export interface IStorage {
   getKeywordCompetitorMetrics(keywordId: number): Promise<KeywordCompetitorMetrics[]>;
   getKeywordCompetitorMetricsForProject(projectId: string): Promise<KeywordCompetitorMetrics[]>;
   upsertKeywordCompetitorMetrics(data: InsertKeywordCompetitorMetrics): Promise<KeywordCompetitorMetrics>;
+  deleteCompetitorByDomain(projectId: string, competitorDomain: string): Promise<number>;
   
   getAggregatedCompetitors(projectId: string): Promise<{
     competitorDomain: string;
@@ -1035,6 +1036,19 @@ export class DatabaseStorage implements IStorage {
       targetUrl: row.targetUrl || '',
       cluster: row.cluster || '',
     }));
+  }
+
+  async deleteCompetitorByDomain(projectId: string, competitorDomain: string): Promise<number> {
+    const result = await db
+      .delete(keywordCompetitorMetrics)
+      .where(
+        and(
+          eq(keywordCompetitorMetrics.projectId, projectId),
+          eq(keywordCompetitorMetrics.competitorDomain, competitorDomain)
+        )
+      )
+      .returning({ id: keywordCompetitorMetrics.id });
+    return result.length;
   }
 
   async getActiveCrawlSchedules(): Promise<CrawlSchedule[]> {

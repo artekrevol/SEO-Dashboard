@@ -28,8 +28,10 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Trash2, Plus, Settings, FileText, Globe, ExternalLink } from "lucide-react";
+import { Trash2, Plus, Settings, FileText, Globe, ExternalLink, Users, TrendingUp, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 interface DataManagementProps {
   projectId: string | null;
@@ -39,8 +41,10 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
   const { toast } = useToast();
   const [selectedKeywords, setSelectedKeywords] = useState<number[]>([]);
   const [selectedPages, setSelectedPages] = useState<number[]>([]);
+  const [selectedCompetitors, setSelectedCompetitors] = useState<string[]>([]);
   const [filterIntent, setFilterIntent] = useState<string>("all");
   const [newPageUrl, setNewPageUrl] = useState<string>("");
+  const [competitorSearch, setCompetitorSearch] = useState<string>("");
 
   const { data: keywords, isLoading: keywordsLoading } = useQuery({
     queryKey: ["/api/dashboard/keywords", { projectId }],
@@ -58,6 +62,27 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
       const res = await fetch(`/api/dashboard/pages?projectId=${projectId}`);
       if (!res.ok) throw new Error("Failed to fetch pages");
       return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: competitors, isLoading: competitorsLoading } = useQuery({
+    queryKey: ["/api/competitors/summary", { projectId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/competitors/summary?projectId=${projectId}`);
+      if (!res.ok) throw new Error("Failed to fetch competitors");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: project } = useQuery({
+    queryKey: ["/api/projects", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects`);
+      if (!res.ok) throw new Error("Failed to fetch projects");
+      const data = await res.json();
+      return data.projects?.find((p: any) => p.id === projectId);
     },
     enabled: !!projectId,
   });
@@ -103,6 +128,33 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
       toast({
         title: "Error",
         description: "Failed to delete page.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCompetitorMutation = useMutation({
+    mutationFn: async (domain: string) => {
+      const response = await fetch(`/api/competitors/${encodeURIComponent(domain)}?projectId=${projectId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to delete competitor");
+      }
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/competitors/summary", { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/competitors", { projectId }] });
+      toast({
+        title: "Competitor removed",
+        description: data.message || "The competitor has been removed from tracking.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to remove competitor.",
         variant: "destructive",
       });
     },
@@ -189,10 +241,22 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
   const keywordItems = keywords?.items || [];
   const pageItems = pages?.items || [];
   
+  const projectDomain = project?.domain?.toLowerCase().replace(/^www\./, '') || '';
+  const competitorItems = (competitors?.competitors || []).filter((c: any) => {
+    const competitorDomain = c.competitorDomain.toLowerCase().replace(/^www\./, '');
+    return competitorDomain !== projectDomain && 
+           competitorDomain !== 'tekrevol.com' &&
+           !competitorDomain.includes('tekrevol');
+  });
+  
   const filteredKeywords = keywordItems.filter((k: any) => {
     if (filterIntent !== "all" && k.intent !== filterIntent) return false;
     return true;
   });
+
+  const filteredCompetitors = competitorItems.filter((c: any) =>
+    c.competitorDomain.toLowerCase().includes(competitorSearch.toLowerCase())
+  );
 
   const handleSelectKeyword = (id: number) => {
     setSelectedKeywords((prev) =>
@@ -222,6 +286,20 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
     }
   };
 
+  const handleSelectCompetitor = (domain: string) => {
+    setSelectedCompetitors((prev) =>
+      prev.includes(domain) ? prev.filter((d) => d !== domain) : [...prev, domain]
+    );
+  };
+
+  const handleSelectAllCompetitors = () => {
+    if (selectedCompetitors.length === filteredCompetitors.length) {
+      setSelectedCompetitors([]);
+    } else {
+      setSelectedCompetitors(filteredCompetitors.map((c: any) => c.competitorDomain));
+    }
+  };
+
   const handleAddPage = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPageUrl.trim()) {
@@ -235,6 +313,19 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
     }
   };
 
+  const handleBulkDeleteCompetitors = () => {
+    if (window.confirm(`Remove ${selectedCompetitors.length} competitors from tracking?`)) {
+      selectedCompetitors.forEach((domain) => deleteCompetitorMutation.mutate(domain));
+      setSelectedCompetitors([]);
+    }
+  };
+
+  const getPressureColor = (index: number) => {
+    if (index >= 60) return "bg-red-500";
+    if (index >= 30) return "bg-amber-500";
+    return "bg-emerald-500";
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-2">
@@ -242,12 +333,12 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
           Data Management
         </h1>
         <p className="text-muted-foreground">
-          Manage keywords and pages for your SEO tracking.
+          Manage keywords, pages, and competitors for your SEO tracking.
         </p>
       </div>
 
       <Tabs defaultValue="keywords" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="keywords" data-testid="tab-keywords" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             Keywords ({keywordItems.length})
@@ -255,6 +346,10 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
           <TabsTrigger value="pages" data-testid="tab-pages" className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
             Pages ({pageItems.length})
+          </TabsTrigger>
+          <TabsTrigger value="competitors" data-testid="tab-competitors" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Competitors ({competitorItems.length})
           </TabsTrigger>
         </TabsList>
 
@@ -573,6 +668,169 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
                   <Globe className="mx-auto h-12 w-12 text-muted-foreground" />
                   <h3 className="mt-4 text-lg font-semibold">No pages tracked</h3>
                   <p className="mt-2 text-muted-foreground">Add pages to start tracking their SEO performance.</p>
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="competitors" className="mt-6 space-y-4">
+          {competitorsLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-96" />
+            </div>
+          ) : (
+            <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">Search Competitors</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by domain..."
+                      value={competitorSearch}
+                      onChange={(e) => setCompetitorSearch(e.target.value)}
+                      className="pl-9"
+                      data-testid="input-competitor-search"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {selectedCompetitors.length > 0 && (
+                <Card className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">
+                      {selectedCompetitors.length} competitor{selectedCompetitors.length !== 1 ? "s" : ""} selected
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleBulkDeleteCompetitors}
+                      disabled={deleteCompetitorMutation.isPending}
+                      data-testid="button-bulk-delete-competitors"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Remove Selected
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">
+                            <Checkbox
+                              checked={selectedCompetitors.length === filteredCompetitors.length && filteredCompetitors.length > 0}
+                              onCheckedChange={handleSelectAllCompetitors}
+                              data-testid="checkbox-select-all-competitors"
+                            />
+                          </TableHead>
+                          <TableHead>Competitor Domain</TableHead>
+                          <TableHead className="text-center">Shared Keywords</TableHead>
+                          <TableHead className="text-center">Above Us</TableHead>
+                          <TableHead className="text-center">Avg Position</TableHead>
+                          <TableHead className="text-center">Total Volume</TableHead>
+                          <TableHead className="w-[150px]">Pressure Index</TableHead>
+                          <TableHead className="w-20 text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredCompetitors.map((competitor: any) => (
+                          <TableRow key={competitor.competitorDomain} data-testid={`row-competitor-${competitor.competitorDomain}`}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedCompetitors.includes(competitor.competitorDomain)}
+                                onCheckedChange={() => handleSelectCompetitor(competitor.competitorDomain)}
+                                data-testid={`checkbox-competitor-${competitor.competitorDomain}`}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <span>{competitor.competitorDomain}</span>
+                                <a
+                                  href={`https://${competitor.competitorDomain}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary" className="font-mono">
+                                {competitor.sharedKeywords}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge
+                                variant="secondary"
+                                className={cn(
+                                  "font-mono border-0",
+                                  competitor.keywordsAboveUs > 0
+                                    ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                )}
+                              >
+                                {competitor.keywordsAboveUs}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center font-mono">
+                              {competitor.avgCompetitorPosition.toFixed(1)}
+                            </TableCell>
+                            <TableCell className="text-center font-mono">
+                              {competitor.totalVolume.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-mono">{competitor.pressureIndex}</span>
+                                </div>
+                                <Progress
+                                  value={competitor.pressureIndex}
+                                  className="h-1.5"
+                                  indicatorClassName={getPressureColor(competitor.pressureIndex)}
+                                />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => deleteCompetitorMutation.mutate(competitor.competitorDomain)}
+                                disabled={deleteCompetitorMutation.isPending}
+                                data-testid={`button-delete-competitor-${competitor.competitorDomain}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {filteredCompetitors.length === 0 && (
+                <div className="text-center py-12">
+                  <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 text-lg font-semibold">No competitors found</h3>
+                  <p className="mt-2 text-muted-foreground">
+                    {competitorSearch 
+                      ? "No competitors match your search. Try a different term."
+                      : "Run a rankings sync to discover competitors from SERP data."}
+                  </p>
                 </div>
               )}
             </>

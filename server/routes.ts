@@ -425,17 +425,22 @@ export async function registerRoutes(
 
       const aggregatedCompetitors = await storage.getAggregatedCompetitors(projectId);
 
-      const items = aggregatedCompetitors.map((c) => ({
-        competitorDomain: c.competitorDomain,
-        sharedKeywords: c.sharedKeywords,
-        aboveUsKeywords: c.keywordsAboveUs,
-        avgTheirPosition: c.avgCompetitorPosition,
-        avgOurPosition: c.avgOurPosition,
-        avgGap: c.avgGap,
-        totalVolume: c.totalVolume,
-        pressureIndex: c.pressureIndex,
-        trafficThreat: c.pressureIndex >= 60 ? 'high' : c.pressureIndex >= 30 ? 'medium' : 'low',
-      }));
+      const items = aggregatedCompetitors
+        .filter((c) => {
+          const domain = c.competitorDomain.toLowerCase().replace(/^www\./, '');
+          return !domain.includes('tekrevol');
+        })
+        .map((c) => ({
+          competitorDomain: c.competitorDomain,
+          sharedKeywords: c.sharedKeywords,
+          aboveUsKeywords: c.keywordsAboveUs,
+          avgTheirPosition: c.avgCompetitorPosition,
+          avgOurPosition: c.avgOurPosition,
+          avgGap: c.avgGap,
+          totalVolume: c.totalVolume,
+          pressureIndex: c.pressureIndex,
+          trafficThreat: c.pressureIndex >= 60 ? 'high' : c.pressureIndex >= 30 ? 'medium' : 'low',
+        }));
 
       res.json({ items });
     } catch (error) {
@@ -451,8 +456,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const competitors = await storage.getAggregatedCompetitors(projectId);
+      const allCompetitors = await storage.getAggregatedCompetitors(projectId);
       const keywords = await storage.getKeywords(projectId);
+      
+      const competitors = allCompetitors.filter((c) => {
+        const domain = c.competitorDomain.toLowerCase().replace(/^www\./, '');
+        return !domain.includes('tekrevol');
+      });
 
       res.json({ 
         competitors,
@@ -496,6 +506,31 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching competitor keyword details:", error);
       res.status(500).json({ error: "Failed to fetch competitor keyword details" });
+    }
+  });
+
+  app.delete("/api/competitors/:domain", async (req, res) => {
+    try {
+      const { domain } = req.params;
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+
+      const deletedCount = await storage.deleteCompetitorByDomain(projectId, domain);
+      
+      res.json({ 
+        success: true,
+        deletedCount,
+        message: `Deleted ${deletedCount} competitor entries for ${domain}`
+      });
+    } catch (error) {
+      console.error("Error deleting competitor:", error);
+      res.status(500).json({ error: "Failed to delete competitor" });
     }
   });
 
