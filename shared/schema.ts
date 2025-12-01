@@ -172,6 +172,7 @@ export const keywordCompetitorMetrics = pgTable("keyword_competitor_metrics", {
   competitorDomain: text("competitor_domain").notNull(),
   competitorUrl: text("competitor_url"),
   latestPosition: integer("latest_position"),
+  ourPosition: integer("our_position"),
   avgPosition: numeric("avg_position", { precision: 5, scale: 2 }),
   visibilityScore: numeric("visibility_score", { precision: 5, scale: 2 }),
   serpFeatures: jsonb("serp_features").$type<string[]>(),

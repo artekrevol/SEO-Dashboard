@@ -24,7 +24,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **SEO Health Score**: Aggregated 0-100 score based on various SEO factors.
 - **Opportunity Scoring**: Identifies high-potential keywords.
 - **Technical Risk Analysis**: Monitors indexability, schema, Core Web Vitals, and duplicate content.
-- **Competitor Pressure Index**: Tracks competitive threat levels.
+- **Competitor Pressure Index**: Volume-weighted threat score measuring competitive pressure. Formula: For keywords where competitors rank in top 20, calculates positionScore = (21 - competitorPos) / 20, gapFactor based on our ranking position (or 1.0 if not ranking), and aggregates threatScore = volume × positionScore × gapFactor. Final index is normalized to 0-100 scale.
 - **Actionable Recommendations**: Task-like items with severity and status tracking.
 - **Historical Trend Analysis**: SEO health chart with date range selection, linear regression forecasting, period comparison, and moving averages.
 - **Advanced Keyword Filtering**: Comprehensive filtering options including position, opportunity, SERP features, and clusters.
@@ -44,7 +44,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - `seo_health_snapshots`: Daily SEO health aggregates.
     - `keyword_metrics`, `page_metrics`, `competitor_metrics`: Various performance metrics.
     - `seo_recommendations`: Actionable tasks.
-    - `keyword_competitor_metrics`: Per-keyword competitor data.
+    - `keyword_competitor_metrics`: Per-keyword competitor data with `ourPosition` field for gap calculations.
     - `settings_priority_rules`, `settings_quick_wins`, `settings_falling_stars`: Configurable project settings.
     - `import_logs`: Audit trail for data imports.
     - `crawl_schedules`: Manages page crawl configurations.

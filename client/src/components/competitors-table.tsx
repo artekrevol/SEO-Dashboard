@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -12,6 +14,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   BarChart,
   Bar,
   XAxis,
@@ -21,53 +29,83 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Shield, Target } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface CompetitorData {
   competitorDomain: string;
   sharedKeywords: number;
   aboveUsKeywords: number;
-  authorityScore: number;
-  avgPosition: number;
+  avgTheirPosition?: number;
+  avgOurPosition?: number;
+  avgGap?: number;
+  totalVolume?: number;
   pressureIndex: number;
+  trafficThreat?: string;
+}
+
+interface KeywordDetail {
+  keywordId: number;
+  keyword: string;
+  searchVolume: number;
+  competitorPosition: number;
+  ourPosition: number | null;
+  gap: number;
+  serpFeatures: string[];
+  competitorUrl: string;
+  targetUrl: string;
+  cluster: string;
 }
 
 interface CompetitorsTableProps {
   data: CompetitorData[];
   isLoading?: boolean;
+  projectId?: string | null;
 }
 
-export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
+export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTableProps) {
   const [search, setSearch] = useState("");
+  const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
+
+  const { data: keywordDetails, isLoading: loadingDetails } = useQuery({
+    queryKey: ["/api/competitors", selectedCompetitor, "keywords", projectId],
+    queryFn: async () => {
+      if (!selectedCompetitor || !projectId) return null;
+      const res = await fetch(`/api/competitors/${encodeURIComponent(selectedCompetitor)}/keywords?projectId=${projectId}`);
+      if (!res.ok) throw new Error("Failed to fetch keyword details");
+      return res.json();
+    },
+    enabled: !!selectedCompetitor && !!projectId,
+  });
 
   const filteredData = data.filter((item) =>
     item.competitorDomain.toLowerCase().includes(search.toLowerCase())
   );
 
-  const sortedData = [...filteredData].sort((a, b) => b.pressureIndex - a.pressureIndex);
+  const sortedData = [...filteredData].sort((a, b) => b.sharedKeywords - a.sharedKeywords);
 
   const getPressureColor = (index: number) => {
-    if (index >= 70) return "hsl(var(--destructive))";
-    if (index >= 40) return "hsl(var(--chart-5))";
+    if (index >= 60) return "hsl(var(--destructive))";
+    if (index >= 30) return "hsl(var(--chart-5))";
     return "hsl(var(--chart-4))";
   };
 
   const getPressureLabel = (index: number) => {
-    if (index >= 70) return "High";
-    if (index >= 40) return "Medium";
+    if (index >= 60) return "High";
+    if (index >= 30) return "Medium";
     return "Low";
   };
 
   const getPressureBadgeClass = (index: number) => {
-    if (index >= 70) return "bg-red-500/10 text-red-600 dark:text-red-400";
-    if (index >= 40) return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+    if (index >= 60) return "bg-red-500/10 text-red-600 dark:text-red-400";
+    if (index >= 30) return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
     return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
   };
 
   const chartData = sortedData.slice(0, 10).map((item) => ({
     domain: item.competitorDomain.replace(/^www\./, "").split(".")[0],
-    pressure: item.pressureIndex,
+    sharedKeywords: item.sharedKeywords,
+    aboveUs: item.aboveUsKeywords,
     fullDomain: item.competitorDomain,
   }));
 
@@ -78,8 +116,12 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
         <div className="rounded-lg border bg-popover px-4 py-3 shadow-md">
           <p className="mb-1 font-medium text-popover-foreground">{data.fullDomain}</p>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Pressure Index:</span>
-            <span className="font-semibold">{data.pressure.toFixed(1)}</span>
+            <span className="text-muted-foreground">Shared Keywords:</span>
+            <span className="font-semibold">{data.sharedKeywords}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Above Us:</span>
+            <span className="font-semibold text-red-500">{data.aboveUs}</span>
           </div>
         </div>
       );
@@ -110,7 +152,7 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
     <div className="space-y-6">
       <Card data-testid="competitors-chart">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg font-medium">Competitive Pressure Index</CardTitle>
+          <CardTitle className="text-lg font-medium">Keyword Overlap by Competitor</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-64">
@@ -118,7 +160,7 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
               <BarChart
                 data={chartData}
                 layout="vertical"
-                margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
+                margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -128,7 +170,6 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
                 />
                 <XAxis
                   type="number"
-                  domain={[0, 100]}
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                   tickLine={false}
@@ -144,11 +185,8 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
                   width={80}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="pressure" radius={[0, 4, 4, 0]} maxBarSize={24}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={getPressureColor(entry.pressure)} />
-                  ))}
-                </Bar>
+                <Bar dataKey="sharedKeywords" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} maxBarSize={20} name="Shared" />
+                <Bar dataKey="aboveUs" fill="hsl(var(--destructive))" radius={[0, 4, 4, 0]} maxBarSize={20} name="Above Us" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -157,7 +195,7 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
 
       <Card data-testid="competitors-table">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 pb-4">
-          <CardTitle className="text-lg font-medium">Competitor Details</CardTitle>
+          <CardTitle className="text-lg font-medium">Organic Search Competitors</CardTitle>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -174,21 +212,23 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[250px]">Competitor</TableHead>
-                  <TableHead className="text-center">Shared Keywords</TableHead>
+                  <TableHead className="w-[220px]">Competitor</TableHead>
+                  <TableHead className="text-center">Shared KWs</TableHead>
                   <TableHead className="text-center">Above Us</TableHead>
-                  <TableHead className="text-center">Authority</TableHead>
-                  <TableHead className="text-center">Avg Position</TableHead>
-                  <TableHead className="w-[200px]">Pressure Index</TableHead>
+                  <TableHead className="text-center">Avg Pos (Us vs Them)</TableHead>
+                  <TableHead className="text-center">Traffic Threat</TableHead>
+                  <TableHead className="w-[180px]">Pressure</TableHead>
+                  <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center">
+                    <TableCell colSpan={7} className="h-32 text-center">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <Search className="h-8 w-8" />
                         <p>No competitors found</p>
+                        <p className="text-sm">Run a rankings sync to discover competitors from SERP data</p>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -196,8 +236,9 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
                   sortedData.map((item, index) => (
                     <TableRow
                       key={item.competitorDomain}
-                      className="hover-elevate"
+                      className="hover-elevate cursor-pointer"
                       data-testid={`row-competitor-${index}`}
+                      onClick={() => setSelectedCompetitor(item.competitorDomain)}
                     >
                       <TableCell>
                         <a
@@ -205,6 +246,7 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <span>{item.competitorDomain}</span>
                           <ExternalLink className="h-3 w-3" />
@@ -230,15 +272,26 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Shield className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono">{Number(item.authorityScore).toFixed(0)}</span>
+                        <div className="flex items-center justify-center gap-1 font-mono">
+                          <span className="text-muted-foreground">{item.avgOurPosition?.toFixed(1) || '-'}</span>
+                          <span className="text-muted-foreground">vs</span>
+                          <span className="font-semibold">{item.avgTheirPosition?.toFixed(1) || '-'}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <span className="font-mono text-lg">
-                          {Number(item.avgPosition).toFixed(1)}
-                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "border-0",
+                            item.trafficThreat === 'high'
+                              ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                              : item.trafficThreat === 'medium'
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          )}
+                        >
+                          {item.trafficThreat === 'high' ? 'High' : item.trafficThreat === 'medium' ? 'Medium' : 'Low'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-2">
@@ -251,21 +304,26 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
                               {getPressureLabel(item.pressureIndex)}
                             </Badge>
                             <span className="font-mono text-sm">
-                              {Number(item.pressureIndex).toFixed(1)}
+                              {Number(item.pressureIndex).toFixed(0)}
                             </span>
                           </div>
                           <Progress
                             value={item.pressureIndex}
                             className="h-2"
                             indicatorClassName={
-                              item.pressureIndex >= 70
+                              item.pressureIndex >= 60
                                 ? "bg-red-500"
-                                : item.pressureIndex >= 40
+                                : item.pressureIndex >= 30
                                 ? "bg-amber-500"
                                 : "bg-emerald-500"
                             }
                           />
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -275,6 +333,125 @@ export function CompetitorsTable({ data, isLoading }: CompetitorsTableProps) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!selectedCompetitor} onOpenChange={() => setSelectedCompetitor(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span>Keywords Where</span>
+              <Badge variant="outline" className="text-base font-normal">
+                {selectedCompetitor}
+              </Badge>
+              <span>Competes</span>
+            </DialogTitle>
+          </DialogHeader>
+          
+          {keywordDetails?.summary && (
+            <div className="grid grid-cols-4 gap-4 py-4 border-b">
+              <div className="text-center">
+                <div className="text-2xl font-bold">{keywordDetails.summary.total}</div>
+                <div className="text-sm text-muted-foreground">Total Keywords</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-500">{keywordDetails.summary.aboveUs}</div>
+                <div className="text-sm text-muted-foreground">Above Us</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-emerald-500">{keywordDetails.summary.belowUs}</div>
+                <div className="text-sm text-muted-foreground">Below Us</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold">{keywordDetails.summary.totalVolume?.toLocaleString()}</div>
+                <div className="text-sm text-muted-foreground">Total Volume</div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-auto">
+            {loadingDetails ? (
+              <div className="space-y-2 p-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="h-12 animate-pulse rounded bg-muted" />
+                ))}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Keyword</TableHead>
+                    <TableHead className="text-center">Volume</TableHead>
+                    <TableHead className="text-center">Their Pos</TableHead>
+                    <TableHead className="text-center">Our Pos</TableHead>
+                    <TableHead className="text-center">Gap</TableHead>
+                    <TableHead>Competitor URL</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(keywordDetails?.keywords || []).map((kw: KeywordDetail) => (
+                    <TableRow key={kw.keywordId} data-testid={`row-keyword-detail-${kw.keywordId}`}>
+                      <TableCell>
+                        <div className="font-medium">{kw.keyword}</div>
+                        {kw.cluster && (
+                          <div className="text-xs text-muted-foreground">{kw.cluster}</div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center font-mono">
+                        {kw.searchVolume.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary" className="font-mono">
+                          {kw.competitorPosition}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge 
+                          variant="secondary" 
+                          className={cn(
+                            "font-mono",
+                            kw.ourPosition === null 
+                              ? "bg-gray-500/10 text-gray-600 dark:text-gray-400"
+                              : ""
+                          )}
+                        >
+                          {kw.ourPosition || 'N/R'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className={cn(
+                          "flex items-center justify-center gap-1 font-mono",
+                          kw.gap > 0 ? "text-red-500" : kw.gap < 0 ? "text-emerald-500" : "text-muted-foreground"
+                        )}>
+                          {kw.gap > 0 ? (
+                            <ArrowDown className="h-3 w-3" />
+                          ) : kw.gap < 0 ? (
+                            <ArrowUp className="h-3 w-3" />
+                          ) : (
+                            <Minus className="h-3 w-3" />
+                          )}
+                          <span>{Math.abs(kw.gap)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {kw.competitorUrl && (
+                          <a
+                            href={kw.competitorUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary truncate max-w-[200px]"
+                          >
+                            <span className="truncate">{kw.competitorUrl.replace(/^https?:\/\//, '')}</span>
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                          </a>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

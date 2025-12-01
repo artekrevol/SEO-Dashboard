@@ -41,6 +41,9 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
     ? items.reduce((sum: number, c: any) => sum + (c.pressureIndex || 0), 0) / items.length
     : 0;
   const highPressureCompetitors = items.filter((c: any) => c.pressureIndex >= 60).length;
+  const avgTheirPosition = items.length > 0
+    ? items.reduce((sum: number, c: any) => sum + (c.avgTheirPosition || 0), 0) / items.length
+    : 0;
 
   if (isLoading) {
     return (
@@ -93,7 +96,7 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
         />
       </div>
 
-      <CompetitorsTable data={items} isLoading={isLoading} />
+      <CompetitorsTable data={items} isLoading={isLoading} projectId={projectId} />
     </div>
   );
 }

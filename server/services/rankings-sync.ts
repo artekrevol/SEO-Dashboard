@@ -247,6 +247,7 @@ export class RankingsSyncService {
                   competitorDomain: competitor.domain,
                   competitorUrl: competitor.url,
                   latestPosition: competitor.position,
+                  ourPosition: result.position || null,
                   avgPosition: competitor.position.toFixed(2),
                   visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
                   serpFeatures: result.serpFeatures,

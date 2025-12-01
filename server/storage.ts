@@ -113,6 +113,29 @@ export interface IStorage {
   getKeywordCompetitorMetricsForProject(projectId: string): Promise<KeywordCompetitorMetrics[]>;
   upsertKeywordCompetitorMetrics(data: InsertKeywordCompetitorMetrics): Promise<KeywordCompetitorMetrics>;
   
+  getAggregatedCompetitors(projectId: string): Promise<{
+    competitorDomain: string;
+    sharedKeywords: number;
+    keywordsAboveUs: number;
+    avgCompetitorPosition: number;
+    avgOurPosition: number;
+    avgGap: number;
+    totalVolume: number;
+    pressureIndex: number;
+  }[]>;
+  getCompetitorKeywordDetails(projectId: string, competitorDomain: string): Promise<{
+    keywordId: number;
+    keyword: string;
+    searchVolume: number;
+    competitorPosition: number;
+    ourPosition: number | null;
+    gap: number;
+    serpFeatures: string[];
+    competitorUrl: string;
+    targetUrl: string;
+    cluster: string;
+  }[]>;
+  
   getActiveCrawlSchedules(): Promise<CrawlSchedule[]>;
   updateCrawlScheduleLastRun(id: number, status: string): Promise<void>;
   
@@ -811,6 +834,7 @@ export class DatabaseStorage implements IStorage {
     if (existing.length > 0) {
       const updateData: Record<string, unknown> = {
         latestPosition: data.latestPosition,
+        ourPosition: data.ourPosition,
         avgPosition: data.avgPosition,
         visibilityScore: data.visibilityScore,
         isDirectCompetitor: data.isDirectCompetitor,
@@ -836,6 +860,7 @@ export class DatabaseStorage implements IStorage {
       competitorDomain: data.competitorDomain,
       competitorUrl: data.competitorUrl,
       latestPosition: data.latestPosition,
+      ourPosition: data.ourPosition,
       avgPosition: data.avgPosition,
       visibilityScore: data.visibilityScore,
       serpFeatures: data.serpFeatures as string[] | null | undefined,
@@ -848,6 +873,168 @@ export class DatabaseStorage implements IStorage {
       .values(insertValues)
       .returning();
     return created;
+  }
+
+  async getAggregatedCompetitors(projectId: string): Promise<{
+    competitorDomain: string;
+    sharedKeywords: number;
+    keywordsAboveUs: number;
+    avgCompetitorPosition: number;
+    avgOurPosition: number;
+    avgGap: number;
+    totalVolume: number;
+    pressureIndex: number;
+  }[]> {
+    const competitorData = await db
+      .select({
+        competitorDomain: keywordCompetitorMetrics.competitorDomain,
+        latestPosition: keywordCompetitorMetrics.latestPosition,
+        ourPosition: keywordCompetitorMetrics.ourPosition,
+        keywordId: keywordCompetitorMetrics.keywordId,
+        searchVolume: keywords.searchVolume,
+      })
+      .from(keywordCompetitorMetrics)
+      .innerJoin(keywords, eq(keywords.id, keywordCompetitorMetrics.keywordId))
+      .where(eq(keywordCompetitorMetrics.projectId, projectId));
+
+    const domainStats = new Map<string, {
+      sharedKeywords: number;
+      keywordsAboveUs: number;
+      totalCompetitorPosition: number;
+      totalOurPosition: number;
+      positionsWithUs: number;
+      totalGap: number;
+      totalVolume: number;
+      threatScore: number;
+    }>();
+
+    for (const row of competitorData) {
+      const domain = row.competitorDomain;
+      if (!domainStats.has(domain)) {
+        domainStats.set(domain, {
+          sharedKeywords: 0,
+          keywordsAboveUs: 0,
+          totalCompetitorPosition: 0,
+          totalOurPosition: 0,
+          positionsWithUs: 0,
+          totalGap: 0,
+          totalVolume: 0,
+          threatScore: 0,
+        });
+      }
+
+      const stats = domainStats.get(domain)!;
+      stats.sharedKeywords++;
+      stats.totalCompetitorPosition += row.latestPosition || 100;
+      stats.totalVolume += row.searchVolume || 0;
+
+      const competitorPos = row.latestPosition || 100;
+      const ourPos = row.ourPosition;
+      
+      if (ourPos !== null) {
+        stats.totalOurPosition += ourPos;
+        stats.positionsWithUs++;
+        stats.totalGap += (ourPos - competitorPos);
+        
+        if (competitorPos < ourPos) {
+          stats.keywordsAboveUs++;
+        }
+      } else {
+        stats.keywordsAboveUs++;
+      }
+
+      const volume = row.searchVolume || 0;
+      if (competitorPos <= 20) {
+        const positionScore = (21 - competitorPos) / 20;
+        const weRank = ourPos !== null && ourPos <= 100;
+        const gapFactor = weRank 
+          ? Math.max(0, (ourPos! - competitorPos) / 20)
+          : 1.0;
+        stats.threatScore += volume * positionScore * gapFactor;
+      }
+    }
+
+    const results = [];
+    const entries = Array.from(domainStats.entries());
+    for (const entry of entries) {
+      const domain = entry[0];
+      const stats = entry[1];
+      const avgCompetitorPosition = stats.sharedKeywords > 0 
+        ? stats.totalCompetitorPosition / stats.sharedKeywords 
+        : 0;
+      const avgOurPosition = stats.positionsWithUs > 0 
+        ? stats.totalOurPosition / stats.positionsWithUs 
+        : 100;
+      const avgGap = stats.positionsWithUs > 0 
+        ? stats.totalGap / stats.positionsWithUs 
+        : 0;
+
+      const normalizedThreat = stats.totalVolume > 0 
+        ? (stats.threatScore / stats.totalVolume) * 100
+        : 0;
+      const pressureIndex = Math.min(100, Math.max(0, normalizedThreat));
+
+      results.push({
+        competitorDomain: domain,
+        sharedKeywords: stats.sharedKeywords,
+        keywordsAboveUs: stats.keywordsAboveUs,
+        avgCompetitorPosition: Math.round(avgCompetitorPosition * 10) / 10,
+        avgOurPosition: Math.round(avgOurPosition * 10) / 10,
+        avgGap: Math.round(avgGap * 10) / 10,
+        totalVolume: stats.totalVolume,
+        pressureIndex: Math.round(pressureIndex),
+      });
+    }
+
+    return results.sort((a, b) => b.sharedKeywords - a.sharedKeywords);
+  }
+
+  async getCompetitorKeywordDetails(projectId: string, competitorDomain: string): Promise<{
+    keywordId: number;
+    keyword: string;
+    searchVolume: number;
+    competitorPosition: number;
+    ourPosition: number | null;
+    gap: number;
+    serpFeatures: string[];
+    competitorUrl: string;
+    targetUrl: string;
+    cluster: string;
+  }[]> {
+    const details = await db
+      .select({
+        keywordId: keywordCompetitorMetrics.keywordId,
+        keyword: keywords.keyword,
+        searchVolume: keywords.searchVolume,
+        competitorPosition: keywordCompetitorMetrics.latestPosition,
+        ourPosition: keywordCompetitorMetrics.ourPosition,
+        serpFeatures: keywordCompetitorMetrics.serpFeatures,
+        competitorUrl: keywordCompetitorMetrics.competitorUrl,
+        targetUrl: keywords.targetUrl,
+        cluster: keywords.cluster,
+      })
+      .from(keywordCompetitorMetrics)
+      .innerJoin(keywords, eq(keywords.id, keywordCompetitorMetrics.keywordId))
+      .where(
+        and(
+          eq(keywordCompetitorMetrics.projectId, projectId),
+          eq(keywordCompetitorMetrics.competitorDomain, competitorDomain)
+        )
+      )
+      .orderBy(desc(keywords.searchVolume));
+
+    return details.map(row => ({
+      keywordId: row.keywordId,
+      keyword: row.keyword,
+      searchVolume: row.searchVolume || 0,
+      competitorPosition: row.competitorPosition || 100,
+      ourPosition: row.ourPosition,
+      gap: (row.ourPosition || 100) - (row.competitorPosition || 100),
+      serpFeatures: row.serpFeatures || [],
+      competitorUrl: row.competitorUrl || '',
+      targetUrl: row.targetUrl || '',
+      cluster: row.cluster || '',
+    }));
   }
 
   async getActiveCrawlSchedules(): Promise<CrawlSchedule[]> {

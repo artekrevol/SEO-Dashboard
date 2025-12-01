@@ -423,21 +423,79 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const competitors = await storage.getCompetitorMetrics(projectId);
+      const aggregatedCompetitors = await storage.getAggregatedCompetitors(projectId);
 
-      const items = competitors.map((c) => ({
+      const items = aggregatedCompetitors.map((c) => ({
         competitorDomain: c.competitorDomain,
-        sharedKeywords: c.sharedKeywords || 0,
-        aboveUsKeywords: c.aboveUsKeywords || 0,
-        authorityScore: Number(c.authorityScore) || 0,
-        avgPosition: Number(c.avgPosition) || 0,
-        pressureIndex: Number(c.pressureIndex) || 0,
+        sharedKeywords: c.sharedKeywords,
+        aboveUsKeywords: c.keywordsAboveUs,
+        avgTheirPosition: c.avgCompetitorPosition,
+        avgOurPosition: c.avgOurPosition,
+        avgGap: c.avgGap,
+        totalVolume: c.totalVolume,
+        pressureIndex: c.pressureIndex,
+        trafficThreat: c.pressureIndex >= 60 ? 'high' : c.pressureIndex >= 30 ? 'medium' : 'low',
       }));
 
       res.json({ items });
     } catch (error) {
       console.error("Error fetching competitor metrics:", error);
       res.status(500).json({ error: "Failed to fetch competitor metrics" });
+    }
+  });
+
+  app.get("/api/competitors/summary", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const competitors = await storage.getAggregatedCompetitors(projectId);
+      const keywords = await storage.getKeywords(projectId);
+
+      res.json({ 
+        competitors,
+        totalTrackedKeywords: keywords.length,
+        topCompetitors: competitors.slice(0, 10),
+      });
+    } catch (error) {
+      console.error("Error fetching competitor summary:", error);
+      res.status(500).json({ error: "Failed to fetch competitor summary" });
+    }
+  });
+
+  app.get("/api/competitors/:domain/keywords", async (req, res) => {
+    try {
+      const { domain } = req.params;
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+
+      const keywordDetails = await storage.getCompetitorKeywordDetails(projectId, domain);
+      
+      const aboveUs = keywordDetails.filter(k => k.gap > 0);
+      const belowUs = keywordDetails.filter(k => k.gap < 0);
+      const equal = keywordDetails.filter(k => k.gap === 0);
+
+      res.json({ 
+        keywords: keywordDetails,
+        summary: {
+          total: keywordDetails.length,
+          aboveUs: aboveUs.length,
+          belowUs: belowUs.length,
+          equalPosition: equal.length,
+          totalVolume: keywordDetails.reduce((sum, k) => sum + k.searchVolume, 0),
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching competitor keyword details:", error);
+      res.status(500).json({ error: "Failed to fetch competitor keyword details" });
     }
   });
 
