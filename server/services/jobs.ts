@@ -469,6 +469,61 @@ export async function runNarrativeGeneration(projectId: string, periodDays: numb
   }
 }
 
+export async function runPageMetricsSync(projectId: string): Promise<JobResult> {
+  try {
+    const result = await rankingsSyncService.syncPageMetrics(projectId);
+    return {
+      success: result.success,
+      message: result.message,
+      data: { pagesUpdated: result.pagesUpdated, errors: result.errors },
+    };
+  } catch (error) {
+    return { success: false, message: `Page metrics sync failed: ${error}` };
+  }
+}
+
+export async function runOnPageCrawl(projectId: string): Promise<JobResult> {
+  const dataForSEO = createDataForSEOService();
+  if (!dataForSEO) {
+    return { success: false, message: "DataForSEO not configured" };
+  }
+
+  try {
+    const project = await storage.getProject(projectId);
+    if (!project) {
+      return { success: false, message: "Project not found" };
+    }
+
+    const domain = project.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const taskId = await dataForSEO.startOnPageCrawl(domain, 500);
+    
+    if (!taskId) {
+      return { success: false, message: "Failed to start on-page crawl" };
+    }
+
+    return {
+      success: true,
+      message: `Started on-page crawl for ${domain}`,
+      data: { taskId, domain },
+    };
+  } catch (error) {
+    return { success: false, message: `On-page crawl failed: ${error}` };
+  }
+}
+
+export async function runOnPageSync(projectId: string, taskId: string): Promise<JobResult> {
+  try {
+    const result = await rankingsSyncService.syncOnPageData(projectId, taskId);
+    return {
+      success: result.success,
+      message: result.message,
+      data: { pagesUpdated: result.pagesUpdated },
+    };
+  } catch (error) {
+    return { success: false, message: `On-page sync failed: ${error}` };
+  }
+}
+
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
 export function startScheduledJobs(): void {

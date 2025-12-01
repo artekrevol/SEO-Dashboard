@@ -15,6 +15,9 @@ import {
   runRankingsSyncWithLimit,
   runImpactTracking,
   runNarrativeGeneration,
+  runPageMetricsSync,
+  runOnPageCrawl,
+  runOnPageSync,
   startScheduledJobs 
 } from "./services/jobs";
 import {
@@ -546,6 +549,49 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error running impact tracking job:", error);
       res.status(500).json({ error: "Failed to run impact tracking job" });
+    }
+  });
+
+  app.post("/api/jobs/page-metrics", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const result = await runPageMetricsSync(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error running page metrics sync:", error);
+      res.status(500).json({ error: "Failed to run page metrics sync" });
+    }
+  });
+
+  app.post("/api/jobs/on-page-crawl", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const result = await runOnPageCrawl(projectId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error starting on-page crawl:", error);
+      res.status(500).json({ error: "Failed to start on-page crawl" });
+    }
+  });
+
+  app.post("/api/jobs/on-page-sync", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const taskId = req.query.taskId as string;
+      if (!projectId || !taskId) {
+        return res.status(400).json({ error: "projectId and taskId are required" });
+      }
+      const result = await runOnPageSync(projectId, taskId);
+      res.json(result);
+    } catch (error) {
+      console.error("Error syncing on-page data:", error);
+      res.status(500).json({ error: "Failed to sync on-page data" });
     }
   });
 
