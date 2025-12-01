@@ -1,15 +1,18 @@
 import { storage } from "../storage";
 import { rankingsSyncService } from "./rankings-sync";
 import { runCompetitorAnalysis, runDailySEOSnapshot, runKeywordMetricsUpdate } from "./jobs";
-import type { CrawlSchedule } from "@shared/schema";
+import type { CrawlSchedule, CrawlResult } from "@shared/schema";
 import * as cron from "node-cron";
 
 interface CrawlRunResult {
   scheduleId: number;
+  crawlResultId?: number;
   type: string;
   success: boolean;
   message: string;
   duration: number;
+  keywordsProcessed?: number;
+  keywordsUpdated?: number;
 }
 
 type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery";
@@ -35,15 +38,29 @@ export class CrawlSchedulerService {
 
     this.runningSchedules.add(schedule.id);
 
+    // Create initial crawl result record
+    const crawlResult = await storage.createCrawlResult({
+      projectId: schedule.projectId,
+      scheduleId: schedule.id,
+      type: scheduleType,
+      status: "running",
+      message: `Starting ${scheduleType} crawl...`,
+    });
+
     try {
       console.log(`[CrawlScheduler] Executing ${scheduleType} for project ${schedule.projectId}`);
 
-      let result: { success: boolean; message: string };
+      let result: { success: boolean; message: string; keywordsProcessed?: number; keywordsUpdated?: number };
 
       switch (scheduleType) {
         case "keyword_ranks":
           const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId);
-          result = { success: rankResult.success, message: rankResult.message };
+          result = { 
+            success: rankResult.success, 
+            message: rankResult.message,
+            keywordsProcessed: rankResult.keywordsUpdated,
+            keywordsUpdated: rankResult.keywordsUpdated,
+          };
           break;
 
         case "competitors":
@@ -66,27 +83,50 @@ export class CrawlSchedulerService {
       const duration = Date.now() - startTime;
       const status = result.success ? "success" : "failed";
 
+      // Update crawl result with final status
+      await storage.updateCrawlResult(crawlResult.id, {
+        status,
+        message: result.message,
+        duration,
+        keywordsProcessed: result.keywordsProcessed || 0,
+        keywordsUpdated: result.keywordsUpdated || 0,
+        completedAt: new Date(),
+      });
+
       await storage.updateCrawlScheduleLastRun(schedule.id, status);
 
       console.log(`[CrawlScheduler] ${scheduleType} completed in ${duration}ms: ${result.message}`);
 
       return {
         scheduleId: schedule.id,
+        crawlResultId: crawlResult.id,
         type: scheduleType,
         success: result.success,
         message: result.message,
         duration,
+        keywordsProcessed: result.keywordsProcessed,
+        keywordsUpdated: result.keywordsUpdated,
       };
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      await storage.updateCrawlScheduleLastRun(schedule.id, "error");
+      // Update crawl result with failed status
+      await storage.updateCrawlResult(crawlResult.id, {
+        status: "failed",
+        message: errorMessage,
+        duration,
+        errorsCount: 1,
+        completedAt: new Date(),
+      });
+
+      await storage.updateCrawlScheduleLastRun(schedule.id, "failed");
 
       console.error(`[CrawlScheduler] ${scheduleType} failed:`, error);
 
       return {
         scheduleId: schedule.id,
+        crawlResultId: crawlResult.id,
         type: scheduleType,
         success: false,
         message: errorMessage,

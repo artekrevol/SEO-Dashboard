@@ -559,3 +559,46 @@ export const insertCrawlScheduleSchema = createInsertSchema(crawlSchedules).omit
 
 export type InsertCrawlSchedule = z.infer<typeof insertCrawlScheduleSchema>;
 export type CrawlSchedule = typeof crawlSchedules.$inferSelect;
+
+export const crawlResultStatusEnum = z.enum(["running", "success", "failed", "error"]);
+export type CrawlResultStatus = z.infer<typeof crawlResultStatusEnum>;
+
+export const crawlResults = pgTable("crawl_results", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  scheduleId: integer("schedule_id").references(() => crawlSchedules.id, { onDelete: "set null" }),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("running"),
+  message: text("message"),
+  keywordsProcessed: integer("keywords_processed").default(0),
+  keywordsUpdated: integer("keywords_updated").default(0),
+  errorsCount: integer("errors_count").default(0),
+  duration: integer("duration"),
+  details: jsonb("details").$type<Record<string, unknown>>(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  projectIdIdx: index("crawl_results_project_id_idx").on(table.projectId),
+  scheduleIdIdx: index("crawl_results_schedule_id_idx").on(table.scheduleId),
+  statusIdx: index("crawl_results_status_idx").on(table.status),
+  startedAtIdx: index("crawl_results_started_at_idx").on(table.startedAt),
+}));
+
+export const crawlResultsRelations = relations(crawlResults, ({ one }) => ({
+  project: one(projects, {
+    fields: [crawlResults.projectId],
+    references: [projects.id],
+  }),
+  schedule: one(crawlSchedules, {
+    fields: [crawlResults.scheduleId],
+    references: [crawlSchedules.id],
+  }),
+}));
+
+export const insertCrawlResultSchema = createInsertSchema(crawlResults).omit({
+  id: true,
+  startedAt: true,
+});
+
+export type InsertCrawlResult = z.infer<typeof insertCrawlResultSchema>;
+export type CrawlResult = typeof crawlResults.$inferSelect;

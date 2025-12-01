@@ -999,6 +999,62 @@ export async function registerRoutes(
     }
   });
 
+  // Crawl Results History API
+  app.get("/api/crawl-results", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const limit = parseInt(req.query.limit as string) || 50;
+      const results = await storage.getCrawlResults(projectId, limit);
+      
+      // Format results with CST timezone info
+      const formattedResults = results.map(r => ({
+        ...r,
+        startedAtCST: r.startedAt ? new Date(r.startedAt).toLocaleString("en-US", { timeZone: "America/Chicago" }) : null,
+        completedAtCST: r.completedAt ? new Date(r.completedAt).toLocaleString("en-US", { timeZone: "America/Chicago" }) : null,
+        durationFormatted: r.duration ? `${Math.round(r.duration / 1000)}s` : null,
+      }));
+      
+      res.json({ results: formattedResults });
+    } catch (error) {
+      console.error("Error fetching crawl results:", error);
+      res.status(500).json({ error: "Failed to fetch crawl results" });
+    }
+  });
+
+  app.get("/api/crawl-results/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid crawl result ID" });
+      }
+      const result = await storage.getCrawlResult(id);
+      if (!result) {
+        return res.status(404).json({ error: "Crawl result not found" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching crawl result:", error);
+      res.status(500).json({ error: "Failed to fetch crawl result" });
+    }
+  });
+
+  app.get("/api/crawl-results/running", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const runningCrawls = await storage.getRunningCrawls(projectId);
+      res.json({ running: runningCrawls });
+    } catch (error) {
+      console.error("Error fetching running crawls:", error);
+      res.status(500).json({ error: "Failed to fetch running crawls" });
+    }
+  });
+
   // Quick Wins API - high-opportunity keywords close to top positions
   app.get("/api/quick-wins", async (req, res) => {
     try {

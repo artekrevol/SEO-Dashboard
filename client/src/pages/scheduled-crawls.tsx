@@ -19,7 +19,11 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  Calendar
+  Calendar,
+  History,
+  RefreshCw,
+  AlertCircle,
+  Timer
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -40,7 +44,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CrawlSchedule, Keyword } from "@shared/schema";
+import type { CrawlSchedule, Keyword, CrawlResult } from "@shared/schema";
+
+interface CrawlResultWithCST extends CrawlResult {
+  startedAtCST: string | null;
+  completedAtCST: string | null;
+  durationFormatted: string | null;
+}
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -123,6 +133,18 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
     },
   });
 
+  const { data: crawlHistory, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery<{
+    results: CrawlResultWithCST[];
+  }>({
+    queryKey: ["/api/crawl-results", projectId],
+    queryFn: async () => {
+      const response = await fetch(`/api/crawl-results?projectId=${projectId}&limit=50`);
+      if (!response.ok) throw new Error("Failed to fetch crawl history");
+      return response.json();
+    },
+    refetchInterval: 30000,
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const response = await apiRequest("POST", "/api/crawl-schedules", {
@@ -179,6 +201,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       });
       setShowManualCrawlDialog(false);
       setSelectedKeywords([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/crawl-results", projectId] });
     },
     onError: () => {
       toast({ 
@@ -197,6 +220,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-schedules", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/crawl-results", projectId] });
       toast({ title: "Crawl executed successfully" });
       setRunningCrawl(null);
     },
@@ -509,6 +533,54 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
         </Tabs>
       )}
 
+      <Card className="mt-6">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted text-muted-foreground">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Crawl History</CardTitle>
+                <CardDescription>Recent crawl executions with results (CST timezone)</CardDescription>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => refetchHistory()}
+              disabled={isLoadingHistory}
+              data-testid="button-refresh-history"
+            >
+              {isLoadingHistory ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoadingHistory ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !crawlHistory?.results?.length ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="w-10 h-10 mx-auto mb-2 opacity-50" />
+              <p>No crawl history yet</p>
+              <p className="text-sm mt-1">Run a crawl to see execution results here</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+              {crawlHistory.results.map((result) => (
+                <CrawlHistoryItem key={result.id} result={result} />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Dialog open={showManualCrawlDialog} onOpenChange={setShowManualCrawlDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -743,5 +815,100 @@ function CrawlTypeSection({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CrawlHistoryItem({ result }: { result: CrawlResultWithCST }) {
+  const getStatusIcon = () => {
+    switch (result.status) {
+      case "success":
+        return <CheckCircle2 className="w-4 h-4 text-green-600" />;
+      case "error":
+      case "failed":
+        return <XCircle className="w-4 h-4 text-red-600" />;
+      case "running":
+        return <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-yellow-600" />;
+    }
+  };
+
+  const getStatusBadge = () => {
+    switch (result.status) {
+      case "success":
+        return <Badge variant="default" className="bg-green-600">Success</Badge>;
+      case "error":
+      case "failed":
+        return <Badge variant="destructive">Failed</Badge>;
+      case "running":
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">Running</Badge>;
+      default:
+        return <Badge variant="secondary">{result.status}</Badge>;
+    }
+  };
+
+  const getCrawlTypeLabel = (type: string) => {
+    const typeMap: Record<string, string> = {
+      keyword_ranks: "Keyword Rankings",
+      keywords: "Keywords",
+      pages: "Page Metrics",
+      competitors: "Competitor Analysis",
+      backlinks: "Backlink Check",
+      technical: "Technical Audit",
+      manual: "Manual Crawl",
+    };
+    return typeMap[type] || type;
+  };
+
+  const metadata = result.metadata as Record<string, unknown> | null;
+
+  return (
+    <div 
+      className="flex items-start gap-3 p-3 rounded-lg border bg-card hover-elevate"
+      data-testid={`crawl-result-${result.id}`}
+    >
+      <div className="flex-shrink-0 pt-0.5">
+        {getStatusIcon()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm">{getCrawlTypeLabel(result.type)}</span>
+          {getStatusBadge()}
+          {result.durationFormatted && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Timer className="w-3 h-3" />
+              {result.durationFormatted}
+            </span>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground mt-1 truncate" title={result.message || ""}>
+          {result.message || "No message"}
+        </p>
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <span className="text-xs text-muted-foreground">
+            Started: {result.startedAtCST || "N/A"}
+          </span>
+          {metadata && typeof metadata === "object" && (
+            <>
+              {metadata.keywordsUpdated !== undefined && (
+                <Badge variant="outline" className="text-xs">
+                  {String(metadata.keywordsUpdated)} keywords updated
+                </Badge>
+              )}
+              {metadata.competitorsFound !== undefined && (
+                <Badge variant="outline" className="text-xs">
+                  {String(metadata.competitorsFound)} competitors found
+                </Badge>
+              )}
+              {metadata.errorCount !== undefined && Number(metadata.errorCount) > 0 && (
+                <Badge variant="destructive" className="text-xs">
+                  {String(metadata.errorCount)} errors
+                </Badge>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -21,6 +21,8 @@ import {
   type SettingsPriorityRules,
   type CrawlSchedule,
   type InsertCrawlSchedule,
+  type CrawlResult,
+  type InsertCrawlResult,
   type RankingsHistory,
   type InsertRankingsHistory,
   type SettingsQuickWins,
@@ -41,6 +43,7 @@ import {
   locations,
   settingsPriorityRules,
   crawlSchedules,
+  crawlResults,
   rankingsHistory,
   settingsQuickWins,
   settingsFallingStars,
@@ -123,6 +126,12 @@ export interface IStorage {
   
   getImportLogs(projectId?: string, limit?: number): Promise<ImportLog[]>;
   createImportLog(log: InsertImportLog): Promise<ImportLog>;
+  
+  getCrawlResults(projectId: string, limit?: number): Promise<CrawlResult[]>;
+  getCrawlResult(id: number): Promise<CrawlResult | undefined>;
+  createCrawlResult(result: InsertCrawlResult): Promise<CrawlResult>;
+  updateCrawlResult(id: number, updates: Partial<CrawlResult>): Promise<CrawlResult | undefined>;
+  getRunningCrawls(projectId: string): Promise<CrawlResult[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -269,7 +278,7 @@ export class DatabaseStorage implements IStorage {
       let opportunityScore = 0;
       if (kw.searchVolume && kw.difficulty !== undefined) {
         const volume = kw.searchVolume || 0;
-        const difficulty = kw.difficulty || 0;
+        const difficulty = Number(kw.difficulty) || 0;
         const position = currentPosition || 100;
         
         // Higher volume = higher opportunity
@@ -534,7 +543,7 @@ export class DatabaseStorage implements IStorage {
     const today = new Date().toISOString().split('T')[0];
     let idCounter = 1;
 
-    for (const [domain, stats] of domainStats.entries()) {
+    for (const [domain, stats] of Array.from(domainStats.entries())) {
       const avgPosition = stats.sharedKeywords > 0 
         ? stats.totalPosition / stats.sharedKeywords 
         : 0;
@@ -552,7 +561,6 @@ export class DatabaseStorage implements IStorage {
         authorityScore: null,
         pressureIndex: String(pressureIndex),
         createdAt: new Date(),
-        updatedAt: new Date(),
       });
     }
 
@@ -986,6 +994,47 @@ export class DatabaseStorage implements IStorage {
   async createImportLog(log: InsertImportLog): Promise<ImportLog> {
     const [created] = await db.insert(importLogs).values(log as typeof importLogs.$inferInsert).returning();
     return created;
+  }
+
+  async getCrawlResults(projectId: string, limit: number = 50): Promise<CrawlResult[]> {
+    return await db
+      .select()
+      .from(crawlResults)
+      .where(eq(crawlResults.projectId, projectId))
+      .orderBy(desc(crawlResults.startedAt))
+      .limit(limit);
+  }
+
+  async getCrawlResult(id: number): Promise<CrawlResult | undefined> {
+    const [result] = await db.select().from(crawlResults).where(eq(crawlResults.id, id));
+    return result || undefined;
+  }
+
+  async createCrawlResult(result: InsertCrawlResult): Promise<CrawlResult> {
+    const [created] = await db.insert(crawlResults).values(result as typeof crawlResults.$inferInsert).returning();
+    return created;
+  }
+
+  async updateCrawlResult(id: number, updates: Partial<CrawlResult>): Promise<CrawlResult | undefined> {
+    const [updated] = await db
+      .update(crawlResults)
+      .set(updates)
+      .where(eq(crawlResults.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getRunningCrawls(projectId: string): Promise<CrawlResult[]> {
+    return await db
+      .select()
+      .from(crawlResults)
+      .where(
+        and(
+          eq(crawlResults.projectId, projectId),
+          eq(crawlResults.status, "running")
+        )
+      )
+      .orderBy(desc(crawlResults.startedAt));
   }
 }
 
