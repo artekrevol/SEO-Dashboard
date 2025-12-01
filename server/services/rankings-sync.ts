@@ -341,6 +341,195 @@ export class RankingsSyncService {
     return results;
   }
 
+  async syncPageMetrics(projectId: string): Promise<{
+    success: boolean;
+    message: string;
+    pagesUpdated: number;
+    errors: string[];
+  }> {
+    if (!this.dataForSEO) {
+      return {
+        success: false,
+        message: "DataForSEO not configured",
+        pagesUpdated: 0,
+        errors: ["DataForSEO API credentials not configured"],
+      };
+    }
+
+    const errors: string[] = [];
+    let pagesUpdated = 0;
+
+    try {
+      const keywords = await storage.getKeywords(projectId);
+      const project = await storage.getProject(projectId);
+      
+      if (!project) {
+        return { success: false, message: "Project not found", pagesUpdated: 0, errors: ["Project not found"] };
+      }
+
+      const urlSet = new Set<string>();
+      for (const kw of keywords) {
+        if (kw.targetUrl) {
+          urlSet.add(kw.targetUrl.toLowerCase().replace(/\/+$/, ''));
+        }
+      }
+
+      const urls = Array.from(urlSet);
+      if (urls.length === 0) {
+        return { success: true, message: "No URLs to sync", pagesUpdated: 0, errors: [] };
+      }
+
+      console.log(`[PageMetrics] Syncing ${urls.length} pages for project ${project.name}`);
+
+      const backlinkData = await this.dataForSEO.getBulkPagesBacklinks(urls);
+      console.log(`[PageMetrics] Retrieved backlinks for ${backlinkData.size} URLs`);
+
+      const today = new Date().toISOString().split('T')[0];
+
+      for (const url of urls) {
+        try {
+          const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
+          const backlinks = backlinkData.get(normalizedUrl) || backlinkData.get(url);
+          
+          let velocity = { newLinks: 0, lostLinks: 0 };
+          try {
+            velocity = await this.dataForSEO!.getBacklinksTimeseries(url, 7);
+            await new Promise(r => setTimeout(r, 200));
+          } catch (e) {
+            console.log(`[PageMetrics] Could not get velocity for ${url}`);
+          }
+
+          const existingPages = await storage.getPageMetrics(projectId);
+          const existingPage = existingPages.find(p => 
+            p.url.toLowerCase().replace(/\/+$/, '') === normalizedUrl
+          );
+
+          const pageData = {
+            projectId,
+            url: existingPage?.url || url,
+            date: today,
+            backlinksCount: backlinks?.backlinksCount || 0,
+            referringDomains: backlinks?.referringDomains || 0,
+            newLinks7d: velocity.newLinks,
+            lostLinks7d: velocity.lostLinks,
+            avgPosition: existingPage?.avgPosition || null,
+            bestPosition: existingPage?.bestPosition || null,
+            keywordsInTop10: existingPage?.keywordsInTop10 || 0,
+            totalKeywords: existingPage?.totalKeywords || 0,
+            wordCount: existingPage?.wordCount || null,
+            hasSchema: existingPage?.hasSchema || false,
+            isIndexable: existingPage?.isIndexable !== false,
+            duplicateContent: existingPage?.duplicateContent || false,
+            coreWebVitalsOk: existingPage?.coreWebVitalsOk !== false,
+            contentGapScore: existingPage?.contentGapScore || null,
+            techRiskScore: existingPage?.techRiskScore || null,
+            authorityGapScore: existingPage?.authorityGapScore || null,
+          };
+
+          if (existingPage) {
+            await storage.updatePageMetrics(existingPage.id, pageData);
+          } else {
+            await storage.createPageMetrics(pageData);
+          }
+          pagesUpdated++;
+        } catch (error) {
+          errors.push(`Failed to sync page ${url}: ${error}`);
+        }
+      }
+
+      console.log(`[PageMetrics] Updated ${pagesUpdated}/${urls.length} pages`);
+
+      return {
+        success: errors.length === 0,
+        message: `Synced ${pagesUpdated} pages with backlink data`,
+        pagesUpdated,
+        errors,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Page metrics sync failed: ${error}`,
+        pagesUpdated,
+        errors: [...errors, String(error)],
+      };
+    }
+  }
+
+  async syncOnPageData(projectId: string, taskId: string): Promise<{
+    success: boolean;
+    message: string;
+    pagesUpdated: number;
+  }> {
+    if (!this.dataForSEO) {
+      return { success: false, message: "DataForSEO not configured", pagesUpdated: 0 };
+    }
+
+    try {
+      const keywords = await storage.getKeywords(projectId);
+      const urlSet = new Set<string>();
+      for (const kw of keywords) {
+        if (kw.targetUrl) {
+          urlSet.add(kw.targetUrl);
+        }
+      }
+      const urls = Array.from(urlSet);
+
+      const onPageData = await this.dataForSEO.getOnPagePagesData(taskId, urls);
+      console.log(`[OnPage] Retrieved data for ${onPageData.size} pages`);
+
+      let pagesUpdated = 0;
+      const today = new Date().toISOString().split('T')[0];
+
+      for (const [url, data] of onPageData) {
+        const existingPages = await storage.getPageMetrics(projectId);
+        const existingPage = existingPages.find(p => 
+          p.url.toLowerCase().replace(/\/+$/, '') === url.toLowerCase().replace(/\/+$/, '')
+        );
+
+        const techRiskScore = Math.max(0, 100 - (data.pageScore || 50));
+
+        if (existingPage) {
+          await storage.updatePageMetrics(existingPage.id, {
+            ...existingPage,
+            date: today,
+            hasSchema: data.hasSchema,
+            isIndexable: data.isIndexable,
+            duplicateContent: data.duplicateContent,
+            coreWebVitalsOk: data.coreWebVitalsScore >= 50,
+            wordCount: data.wordCount,
+            techRiskScore: String(techRiskScore),
+          });
+          pagesUpdated++;
+        } else {
+          await storage.createPageMetrics({
+            projectId,
+            url,
+            date: today,
+            hasSchema: data.hasSchema,
+            isIndexable: data.isIndexable,
+            duplicateContent: data.duplicateContent,
+            coreWebVitalsOk: data.coreWebVitalsScore >= 50,
+            wordCount: data.wordCount,
+            techRiskScore: String(techRiskScore),
+          });
+          pagesUpdated++;
+        }
+      }
+
+      return {
+        success: true,
+        message: `Updated on-page data for ${pagesUpdated} pages`,
+        pagesUpdated,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `On-page sync failed: ${error}`,
+        pagesUpdated: 0,
+      };
+    }
+  }
+
   static isConfigured(): boolean {
     return DataForSEOService.isConfigured();
   }

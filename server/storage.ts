@@ -80,6 +80,7 @@ export interface IStorage {
   getLatestPageMetrics(projectId: string): Promise<PageMetrics[]>;
   getPageMetricsWithKeywordAnalytics(projectId: string): Promise<any[]>;
   createPageMetrics(metrics: InsertPageMetrics): Promise<PageMetrics>;
+  updatePageMetrics(id: number, updates: Partial<InsertPageMetrics>): Promise<PageMetrics | undefined>;
   deletePageMetrics(id: number): Promise<void>;
   getPageMetricsById(id: number): Promise<PageMetrics | undefined>;
 
@@ -406,6 +407,15 @@ export class DatabaseStorage implements IStorage {
   async createPageMetrics(insertMetrics: InsertPageMetrics): Promise<PageMetrics> {
     const [metrics] = await db.insert(pageMetrics).values(insertMetrics).returning();
     return metrics;
+  }
+
+  async updatePageMetrics(id: number, updates: Partial<InsertPageMetrics>): Promise<PageMetrics | undefined> {
+    const [updated] = await db
+      .update(pageMetrics)
+      .set(updates)
+      .where(eq(pageMetrics.id, id))
+      .returning();
+    return updated || undefined;
   }
 
   async deletePageMetrics(id: number): Promise<void> {
