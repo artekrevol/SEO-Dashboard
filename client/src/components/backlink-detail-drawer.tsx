@@ -219,7 +219,7 @@ export function BacklinkDetailDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {isLoading ? (
             <div className="space-y-4 p-4">
               <div className="grid grid-cols-2 gap-4">
@@ -230,8 +230,8 @@ export function BacklinkDetailDrawer({
               <Skeleton className="h-64" />
             </div>
           ) : (
-            <Tabs defaultValue="overview" className="flex flex-col h-full">
-              <div className="flex items-center justify-between gap-2 mx-4 mt-4">
+            <Tabs defaultValue="overview" className="flex flex-col flex-1 min-h-0">
+              <div className="flex items-center justify-between gap-2 mx-4 mt-4 shrink-0">
                 <TabsList className="shrink-0" data-testid="tabs-list">
                   <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
                   <TabsTrigger value="all" data-testid="tab-all">All Links ({backlinks.length})</TabsTrigger>
@@ -461,7 +461,7 @@ export function BacklinkDetailDrawer({
                 </div>
               </TabsContent>
 
-              <TabsContent value="all" className="flex-1 overflow-hidden flex flex-col mt-4 px-4 pb-4">
+              <TabsContent value="all" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4 pb-4">
                 <div className="flex flex-wrap gap-2 mb-4 shrink-0">
                   <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -501,7 +501,8 @@ export function BacklinkDetailDrawer({
                   </div>
                 </div>
 
-                <ScrollArea className="flex-1 w-full">
+                <div className="flex-1 min-h-0 relative" data-testid="scroll-container-all-links">
+                  <ScrollArea className="absolute inset-0" data-testid="scroll-area-all-links">
                   <div className="space-y-3 pr-4">
                     {filteredBacklinks.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-backlinks">
@@ -613,11 +614,13 @@ export function BacklinkDetailDrawer({
                       ))
                     )}
                   </div>
-                </ScrollArea>
+                  </ScrollArea>
+                </div>
               </TabsContent>
 
-              <TabsContent value="domains" className="flex-1 overflow-hidden flex flex-col mt-4 px-4 pb-4">
-                <ScrollArea className="flex-1 w-full">
+              <TabsContent value="domains" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4 pb-4">
+                <div className="flex-1 min-h-0 relative" data-testid="scroll-container-domains">
+                  <ScrollArea className="absolute inset-0" data-testid="scroll-area-domains">
                   <div className="space-y-3 pr-4">
                     {domainGroups.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-domains">
@@ -672,7 +675,8 @@ export function BacklinkDetailDrawer({
                       ))
                     )}
                   </div>
-                </ScrollArea>
+                  </ScrollArea>
+                </div>
               </TabsContent>
             </Tabs>
           )}
