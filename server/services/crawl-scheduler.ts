@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { rankingsSyncService } from "./rankings-sync";
 import { runCompetitorAnalysis, runDailySEOSnapshot, runKeywordMetricsUpdate } from "./jobs";
+import { createDataForSEOService } from "./dataforseo";
 import type { CrawlSchedule, CrawlResult } from "@shared/schema";
 import * as cron from "node-cron";
 
@@ -224,40 +225,98 @@ export class CrawlSchedulerService {
       if (!project) {
         return { success: false, message: "Project not found" };
       }
+
+      const dataForSEOService = createDataForSEOService();
+      if (!dataForSEOService) {
+        console.warn("[CrawlScheduler] DataForSEO not configured, skipping backlinks fetch");
+        return { success: false, message: "DataForSEO API not configured" };
+      }
       
-      const existingBacklinks = await storage.getBacklinks(projectId);
-      const targetUrls = Array.from(new Set(existingBacklinks.map(b => b.targetUrl)));
+      const pageMetrics = await storage.getPageMetrics(projectId);
+      const targetUrls = pageMetrics
+        .filter(pm => pm.url)
+        .map(pm => pm.url)
+        .slice(0, 50);
       
-      let newBacklinks = 0;
-      let lostBacklinks = 0;
-      let verifiedBacklinks = 0;
+      if (targetUrls.length === 0) {
+        const domainUrl = `https://${project.domain}`;
+        targetUrls.push(domainUrl);
+      }
       
-      const seenSourceUrls = new Set<string>();
+      let newBacklinksCount = 0;
+      let lostBacklinksCount = 0;
+      let totalBacklinksIngested = 0;
       
-      for (const backlink of existingBacklinks) {
-        if (backlink.isLive) {
-          seenSourceUrls.add(backlink.sourceUrl);
-          await storage.updateBacklink(backlink.id, {
-            lastSeenAt: new Date(),
-          });
-          verifiedBacklinks++;
+      for (const targetUrl of targetUrls) {
+        try {
+          console.log(`[CrawlScheduler] Fetching backlinks for ${targetUrl}`);
+          
+          const { backlinks, totalCount } = await dataForSEOService.getIndividualBacklinks(targetUrl, 100);
+          
+          const existingBacklinks = await storage.getBacklinks(projectId, targetUrl);
+          const existingSourceUrls = new Set(existingBacklinks.map(b => b.sourceUrl.toLowerCase()));
+          
+          for (const backlink of backlinks) {
+            const sourceUrlLower = backlink.sourceUrl.toLowerCase();
+            
+            if (!existingSourceUrls.has(sourceUrlLower)) {
+              await storage.createBacklink({
+                projectId,
+                targetUrl,
+                sourceUrl: backlink.sourceUrl,
+                sourceDomain: backlink.sourceDomain,
+                anchorText: backlink.anchorText,
+                linkType: backlink.linkType,
+                domainAuthority: backlink.domainAuthority,
+                pageAuthority: backlink.pageAuthority,
+                isLive: backlink.isLive,
+                firstSeenAt: backlink.firstSeen || new Date(),
+                lastSeenAt: backlink.lastSeen || new Date(),
+              });
+              newBacklinksCount++;
+            } else {
+              const existing = existingBacklinks.find(
+                b => b.sourceUrl.toLowerCase() === sourceUrlLower
+              );
+              if (existing) {
+                await storage.updateBacklink(existing.id, {
+                  lastSeenAt: new Date(),
+                  isLive: backlink.isLive,
+                  domainAuthority: backlink.domainAuthority,
+                  pageAuthority: backlink.pageAuthority,
+                });
+              }
+            }
+            totalBacklinksIngested++;
+          }
+          
+          const apiSourceUrls = new Set(backlinks.map(b => b.sourceUrl.toLowerCase()));
+          for (const existing of existingBacklinks) {
+            if (existing.isLive && !apiSourceUrls.has(existing.sourceUrl.toLowerCase())) {
+              await storage.markBacklinkLost(existing.id);
+              lostBacklinksCount++;
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (urlError) {
+          console.error(`[CrawlScheduler] Error fetching backlinks for ${targetUrl}:`, urlError);
         }
       }
       
       const stats = {
         totalUrls: targetUrls.length,
-        existingBacklinks: existingBacklinks.length,
-        verifiedBacklinks,
-        newBacklinks,
-        lostBacklinks,
+        totalBacklinksIngested,
+        newBacklinks: newBacklinksCount,
+        lostBacklinks: lostBacklinksCount,
       };
       
       console.log(`[CrawlScheduler] Backlinks crawl completed:`, stats);
       
       return {
         success: true,
-        message: `Backlinks crawl completed. Verified ${verifiedBacklinks} backlinks across ${targetUrls.length} pages. New: ${newBacklinks}, Lost: ${lostBacklinks}.`,
-        keywordsProcessed: verifiedBacklinks,
+        message: `Backlinks crawl completed. Processed ${targetUrls.length} pages. Ingested: ${totalBacklinksIngested}, New: ${newBacklinksCount}, Lost: ${lostBacklinksCount}.`,
+        keywordsProcessed: totalBacklinksIngested,
       };
     } catch (error) {
       console.error("[CrawlScheduler] Backlinks crawl error:", error);

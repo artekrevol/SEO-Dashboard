@@ -6,7 +6,7 @@ The Live SEO Command Center is a production-ready dashboard designed for TekRevo
 ## Transformation Project Plan
 **See:** `docs/SEO_TRANSFORMATION_PROJECT_PLAN.md` for the complete 6-phase transformation roadmap.
 
-### Current Phase: PHASE 2 - Link Building Tracker 🚧 IN PROGRESS
+### Current Phase: PHASE 2 - Link Building Tracker ✅ COMPLETED
 Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
 
 **Completed Features:**
@@ -14,10 +14,9 @@ Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
 - **Backlink Detail Drawer**: Sheet component showing backlink overview (total, live, lost, new counts), top anchor texts, link type breakdown, and individual backlink details with filtering
 - **Backlinks Crawl Type**: Added to scheduled crawls system with weekly auto-verification (Sundays at 11:00 AM)
 - **Pages Integration**: Clickable backlinks count in Pages table opens drawer with filtered results for that page
-
-**Pending:**
-- DataForSEO Backlinks API integration for live discovery of new backlinks
-- Link status verification (checking if backlinks are still live)
+- **DataForSEO Backlinks API Integration**: Live discovery of new backlinks using `/backlinks/backlinks/live` endpoint
+- **Link Status Tracking**: Automatic detection of lost backlinks during crawls
+- **Manual Crawl Trigger**: POST `/api/backlinks/crawl` endpoint for on-demand backlink fetching
 
 ### Completed: PHASE 1 - Foundation ✅
 - **CSV/XLSX Export**: Reusable ExportButton component with export-utils.ts for all data tables

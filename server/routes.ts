@@ -31,6 +31,7 @@ import {
   bulkUpdateKeywords,
   initializeDefaultPriorityRules
 } from "./services/ingestion";
+import { crawlSchedulerService } from "./services/crawl-scheduler";
 
 function getDefaultQuickWinsSettings(projectId: string) {
   return {
@@ -1665,6 +1666,23 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting backlink:", error);
       res.status(500).json({ error: "Failed to delete backlink" });
+    }
+  });
+
+  app.post("/api/backlinks/crawl", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      console.log(`[API] Starting backlinks crawl for project ${projectId}`);
+      const result = await crawlSchedulerService.runBacklinksCrawl(projectId);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Error running backlinks crawl:", error);
+      res.status(500).json({ error: "Failed to run backlinks crawl" });
     }
   });
 

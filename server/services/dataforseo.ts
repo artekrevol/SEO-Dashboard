@@ -910,6 +910,189 @@ export class DataForSEOService {
       .filter(Boolean);
   }
 
+  async getIndividualBacklinks(targetUrl: string, limit: number = 100): Promise<{
+    backlinks: Array<{
+      sourceUrl: string;
+      sourceDomain: string;
+      anchorText: string;
+      linkType: 'dofollow' | 'nofollow';
+      domainAuthority: number;
+      pageAuthority: number;
+      firstSeen: Date | null;
+      lastSeen: Date | null;
+      isLive: boolean;
+    }>;
+    totalCount: number;
+  }> {
+    try {
+      console.log(`[DataForSEO] Fetching individual backlinks for ${targetUrl}`);
+      
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          result: Array<{
+            total_count: number;
+            items: Array<{
+              type: string;
+              domain_from: string;
+              url_from: string;
+              url_to: string;
+              anchor: string;
+              dofollow: boolean;
+              first_seen: string;
+              last_seen: string;
+              is_lost: boolean;
+              rank: number;
+              page_from_rank: number;
+            }>;
+          }>;
+        }>;
+      }>("/backlinks/backlinks/live", "POST", [{
+        target: targetUrl,
+        limit: limit,
+        order_by: ["rank,desc"],
+        filters: null,
+        include_subdomains: false,
+      }]);
+
+      const task = response.tasks?.[0];
+      if (task?.status_code !== 20000 || !task.result?.[0]) {
+        console.warn(`[DataForSEO] No backlinks data for ${targetUrl}: ${task?.status_message}`);
+        return { backlinks: [], totalCount: 0 };
+      }
+
+      const result = task.result[0];
+      const backlinks = (result.items || []).map(item => ({
+        sourceUrl: item.url_from || '',
+        sourceDomain: item.domain_from || '',
+        anchorText: item.anchor || '',
+        linkType: item.dofollow ? 'dofollow' as const : 'nofollow' as const,
+        domainAuthority: item.rank || 0,
+        pageAuthority: item.page_from_rank || 0,
+        firstSeen: item.first_seen ? new Date(item.first_seen) : null,
+        lastSeen: item.last_seen ? new Date(item.last_seen) : null,
+        isLive: !item.is_lost,
+      }));
+
+      console.log(`[DataForSEO] Found ${backlinks.length} backlinks (total: ${result.total_count}) for ${targetUrl}`);
+      return { backlinks, totalCount: result.total_count || 0 };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching individual backlinks for ${targetUrl}:`, error);
+      return { backlinks: [], totalCount: 0 };
+    }
+  }
+
+  async getNewAndLostBacklinks(targetUrl: string, days: number = 7): Promise<{
+    newBacklinks: Array<{
+      sourceUrl: string;
+      sourceDomain: string;
+      anchorText: string;
+      linkType: 'dofollow' | 'nofollow';
+      domainAuthority: number;
+      firstSeen: Date;
+    }>;
+    lostBacklinks: Array<{
+      sourceUrl: string;
+      sourceDomain: string;
+      lostDate: Date;
+    }>;
+  }> {
+    try {
+      console.log(`[DataForSEO] Fetching new/lost backlinks for ${targetUrl} (last ${days} days)`);
+      
+      const dateFrom = new Date();
+      dateFrom.setDate(dateFrom.getDate() - days);
+      const dateFromStr = dateFrom.toISOString().split('T')[0];
+      
+      const newBacklinks: Array<{
+        sourceUrl: string;
+        sourceDomain: string;
+        anchorText: string;
+        linkType: 'dofollow' | 'nofollow';
+        domainAuthority: number;
+        firstSeen: Date;
+      }> = [];
+
+      const lostBacklinks: Array<{
+        sourceUrl: string;
+        sourceDomain: string;
+        lostDate: Date;
+      }> = [];
+
+      const newResponse = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            items: Array<{
+              domain_from: string;
+              url_from: string;
+              anchor: string;
+              dofollow: boolean;
+              first_seen: string;
+              rank: number;
+            }>;
+          }>;
+        }>;
+      }>("/backlinks/backlinks/live", "POST", [{
+        target: targetUrl,
+        limit: 100,
+        order_by: ["first_seen,desc"],
+        filters: [["first_seen", ">=", dateFromStr]],
+        include_subdomains: false,
+      }]);
+
+      const newItems = newResponse.tasks?.[0]?.result?.[0]?.items || [];
+      for (const item of newItems) {
+        newBacklinks.push({
+          sourceUrl: item.url_from || '',
+          sourceDomain: item.domain_from || '',
+          anchorText: item.anchor || '',
+          linkType: item.dofollow ? 'dofollow' : 'nofollow',
+          domainAuthority: item.rank || 0,
+          firstSeen: new Date(item.first_seen),
+        });
+      }
+
+      const lostResponse = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            items: Array<{
+              domain_from: string;
+              url_from: string;
+              last_seen: string;
+            }>;
+          }>;
+        }>;
+      }>("/backlinks/backlinks/live", "POST", [{
+        target: targetUrl,
+        limit: 100,
+        order_by: ["last_seen,desc"],
+        filters: [
+          ["is_lost", "=", true],
+          ["last_seen", ">=", dateFromStr]
+        ],
+        include_subdomains: false,
+      }]);
+
+      const lostItems = lostResponse.tasks?.[0]?.result?.[0]?.items || [];
+      for (const item of lostItems) {
+        lostBacklinks.push({
+          sourceUrl: item.url_from || '',
+          sourceDomain: item.domain_from || '',
+          lostDate: new Date(item.last_seen),
+        });
+      }
+
+      console.log(`[DataForSEO] Found ${newBacklinks.length} new and ${lostBacklinks.length} lost backlinks for ${targetUrl}`);
+      return { newBacklinks, lostBacklinks };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching new/lost backlinks:`, error);
+      return { newBacklinks: [], lostBacklinks: [] };
+    }
+  }
+
   calculateOpportunityScore(
     position: number,
     searchVolume: number,
