@@ -22,6 +22,7 @@ Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
 - **CompetitorBacklinksDrawer**: Full-featured drawer with filter-aware derived stats, opportunity toggle ("All Links" / "Opportunities"), top opportunities list, link type breakdown, and spam distribution
 - **Competitor Integration**: Backlinks count column added to Competitors table with drawer integration for gap analysis
 - **Backlink Gap Analysis**: Compares competitor backlinks against project backlinks to identify domains linking to competitors but not to you. Priority scoring: DA≥40 + ≥2 competitors linking + spam≤30% = high priority. GET `/api/competitor-backlinks/gap-analysis` endpoint returns gaps sorted by priority with summary metrics
+- **Gap-to-Outreach Promotion**: One-click promotion of gap opportunities to SEO Recommendations. POST `/api/recommendations/promote-gap` creates "backlink_outreach" type recommendations with domain, DA, spam score, and competitor data stored in sourceSignals field. UI shows "Added" confirmation and prevents duplicate promotions within session
 
 ### Completed: PHASE 1 - Foundation ✅
 - **CSV/XLSX Export**: Reusable ExportButton component with export-utils.ts for all data tables
