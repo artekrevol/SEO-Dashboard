@@ -25,10 +25,12 @@ import {
   AlertTriangle,
   Link2,
   FileCode,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
+import { BacklinkDetailDrawer } from "@/components/backlink-detail-drawer";
 
 interface PageData {
   url: string;
@@ -54,6 +56,7 @@ interface PageData {
 interface PagesTableProps {
   data: PageData[];
   isLoading?: boolean;
+  projectId: string | null;
 }
 
 const pageExportColumns: ExportColumn<PageData>[] = [
@@ -76,8 +79,10 @@ const pageExportColumns: ExportColumn<PageData>[] = [
   { header: "Content Gap Score", accessor: "contentGapScore" },
 ];
 
-export function PagesTable({ data, isLoading }: PagesTableProps) {
+export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
   const [search, setSearch] = useState("");
+  const [backlinkDrawerOpen, setBacklinkDrawerOpen] = useState(false);
+  const [selectedPageUrl, setSelectedPageUrl] = useState<string | null>(null);
 
   const filteredData = data.filter((item) =>
     item.url.toLowerCase().includes(search.toLowerCase())
@@ -221,10 +226,22 @@ export function PagesTable({ data, isLoading }: PagesTableProps) {
                     <TableCell className="text-center">
                       {item.backlinksCount > 0 ? (
                         <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center gap-1">
-                            <Link2 className="h-3 w-3 text-muted-foreground" />
-                            <span className="font-mono text-sm">{item.backlinksCount.toLocaleString()}</span>
-                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-auto p-1 hover:bg-muted"
+                            onClick={() => {
+                              setSelectedPageUrl(item.url);
+                              setBacklinkDrawerOpen(true);
+                            }}
+                            data-testid={`button-view-backlinks-${index}`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <Link2 className="h-3 w-3 text-muted-foreground" />
+                              <span className="font-mono text-sm">{item.backlinksCount.toLocaleString()}</span>
+                              <Eye className="h-3 w-3 ml-1 text-primary" />
+                            </div>
+                          </Button>
                           <span className="text-xs text-muted-foreground">
                             {item.referringDomains} domains
                           </span>
@@ -324,6 +341,16 @@ export function PagesTable({ data, isLoading }: PagesTableProps) {
           </Table>
         </div>
       </CardContent>
+
+      {projectId && (
+        <BacklinkDetailDrawer
+          open={backlinkDrawerOpen}
+          onOpenChange={setBacklinkDrawerOpen}
+          projectId={projectId}
+          targetUrl={selectedPageUrl || undefined}
+          pageTitle={selectedPageUrl?.replace(/^https?:\/\//, "") || ""}
+        />
+      )}
     </Card>
   );
 }

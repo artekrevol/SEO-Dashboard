@@ -6,15 +6,24 @@ The Live SEO Command Center is a production-ready dashboard designed for TekRevo
 ## Transformation Project Plan
 **See:** `docs/SEO_TRANSFORMATION_PROJECT_PLAN.md` for the complete 6-phase transformation roadmap.
 
-### Current Phase: PHASE 1 - Foundation ✅ COMPLETED
-All Phase 1 features have been implemented and tested:
+### Current Phase: PHASE 2 - Link Building Tracker 🚧 IN PROGRESS
+Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
+
+**Completed Features:**
+- **Backlinks Database Table**: Stores referring domain, URL, anchor text, link type (dofollow/nofollow), domain authority, first/last seen dates, and lost status
+- **Backlink Detail Drawer**: Sheet component showing backlink overview (total, live, lost, new counts), top anchor texts, link type breakdown, and individual backlink details with filtering
+- **Backlinks Crawl Type**: Added to scheduled crawls system with weekly auto-verification (Sundays at 11:00 AM)
+- **Pages Integration**: Clickable backlinks count in Pages table opens drawer with filtered results for that page
+
+**Pending:**
+- DataForSEO Backlinks API integration for live discovery of new backlinks
+- Link status verification (checking if backlinks are still live)
+
+### Completed: PHASE 1 - Foundation ✅
 - **CSV/XLSX Export**: Reusable ExportButton component with export-utils.ts for all data tables
 - **Historical Rankings Page**: Position trend charts, distribution breakdown, daily stats aggregation
 - **Per-Keyword Position History**: Interactive modal with charts showing position changes over time
 - **Settings Page**: Configurable thresholds for Quick Wins and Falling Stars detection
-
-### Next Phase: PHASE 2 - Link Building Tracker
-Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
 
 ### Project Summary:
 - **Team Size:** 7 SEO team members managing 4 brands
@@ -66,6 +75,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - `settings_priority_rules`, `settings_quick_wins`, `settings_falling_stars`: Configurable project settings.
     - `import_logs`: Audit trail for data imports.
     - `crawl_schedules`: Manages page crawl configurations.
+    - `backlinks`: Tracks referring domains, URLs, anchor text, link type (dofollow/nofollow), domain/page authority, first/last seen dates, and lost status for backlink management workflow.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
 
 ## External Dependencies

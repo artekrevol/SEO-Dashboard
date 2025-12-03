@@ -387,6 +387,46 @@ export const insertPageMetricsSchema = createInsertSchema(pageMetrics).omit({
 export type InsertPageMetrics = z.infer<typeof insertPageMetricsSchema>;
 export type PageMetrics = typeof pageMetrics.$inferSelect;
 
+export const backlinks = pgTable("backlinks", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  targetUrl: text("target_url").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  sourceDomain: text("source_domain").notNull(),
+  anchorText: text("anchor_text"),
+  linkType: text("link_type").default("dofollow").notNull(),
+  isLive: boolean("is_live").default(true).notNull(),
+  domainAuthority: integer("domain_authority"),
+  pageAuthority: integer("page_authority"),
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  lostAt: timestamp("lost_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("backlinks_project_id_idx").on(table.projectId),
+  targetUrlIdx: index("backlinks_target_url_idx").on(table.targetUrl),
+  sourceDomainIdx: index("backlinks_source_domain_idx").on(table.sourceDomain),
+  isLiveIdx: index("backlinks_is_live_idx").on(table.isLive),
+  firstSeenAtIdx: index("backlinks_first_seen_at_idx").on(table.firstSeenAt),
+}));
+
+export const backlinksRelations = relations(backlinks, ({ one }) => ({
+  project: one(projects, {
+    fields: [backlinks.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertBacklinkSchema = createInsertSchema(backlinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBacklink = z.infer<typeof insertBacklinkSchema>;
+export type Backlink = typeof backlinks.$inferSelect;
+
 export const seoRecommendations = pgTable("seo_recommendations", {
   id: serial("id").primaryKey(),
   projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
@@ -516,8 +556,11 @@ export type Intent = z.infer<typeof intentEnum>;
 export const healthStatusEnum = z.enum(["healthy", "at_risk", "declining"]);
 export type HealthStatus = z.infer<typeof healthStatusEnum>;
 
-export const crawlTypeEnum = z.enum(["keyword_ranks", "competitors", "pages_health", "deep_discovery"]);
+export const crawlTypeEnum = z.enum(["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks"]);
 export type CrawlType = z.infer<typeof crawlTypeEnum>;
+
+export const backlinkTypeEnum = z.enum(["dofollow", "nofollow", "ugc", "sponsored"]);
+export type BacklinkType = z.infer<typeof backlinkTypeEnum>;
 
 export const crawlFrequencyEnum = z.enum(["daily", "twice_weekly", "weekly", "monthly", "custom"]);
 export type CrawlFrequency = z.infer<typeof crawlFrequencyEnum>;

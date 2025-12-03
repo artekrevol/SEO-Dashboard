@@ -298,7 +298,7 @@ export function PagesPage({ projectId }: PagesPageProps) {
         </Card>
       </div>
 
-      <PagesTable data={pageItems} isLoading={isLoading} />
+      <PagesTable data={pageItems} isLoading={isLoading} projectId={projectId} />
     </div>
   );
 }

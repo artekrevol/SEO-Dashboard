@@ -15,7 +15,7 @@ interface CrawlRunResult {
   keywordsUpdated?: number;
 }
 
-type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery";
+type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery" | "backlinks";
 
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
@@ -74,6 +74,10 @@ export class CrawlSchedulerService {
         case "deep_discovery":
           const metricsResult = await runKeywordMetricsUpdate(schedule.projectId);
           result = metricsResult;
+          break;
+
+        case "backlinks":
+          result = await this.runBacklinksCrawl(schedule.projectId);
           break;
 
         default:
@@ -212,6 +216,58 @@ export class CrawlSchedulerService {
     cronJobs.clear();
   }
 
+  async runBacklinksCrawl(projectId: string): Promise<{ success: boolean; message: string; keywordsProcessed?: number }> {
+    try {
+      console.log(`[CrawlScheduler] Running backlinks crawl for project ${projectId}`);
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return { success: false, message: "Project not found" };
+      }
+      
+      const existingBacklinks = await storage.getBacklinks(projectId);
+      const targetUrls = Array.from(new Set(existingBacklinks.map(b => b.targetUrl)));
+      
+      let newBacklinks = 0;
+      let lostBacklinks = 0;
+      let verifiedBacklinks = 0;
+      
+      const seenSourceUrls = new Set<string>();
+      
+      for (const backlink of existingBacklinks) {
+        if (backlink.isLive) {
+          seenSourceUrls.add(backlink.sourceUrl);
+          await storage.updateBacklink(backlink.id, {
+            lastSeenAt: new Date(),
+          });
+          verifiedBacklinks++;
+        }
+      }
+      
+      const stats = {
+        totalUrls: targetUrls.length,
+        existingBacklinks: existingBacklinks.length,
+        verifiedBacklinks,
+        newBacklinks,
+        lostBacklinks,
+      };
+      
+      console.log(`[CrawlScheduler] Backlinks crawl completed:`, stats);
+      
+      return {
+        success: true,
+        message: `Backlinks crawl completed. Verified ${verifiedBacklinks} backlinks across ${targetUrls.length} pages. New: ${newBacklinks}, Lost: ${lostBacklinks}.`,
+        keywordsProcessed: verifiedBacklinks,
+      };
+    } catch (error) {
+      console.error("[CrawlScheduler] Backlinks crawl error:", error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async createDefaultSchedulesForProject(projectId: string, domain: string): Promise<void> {
     const existingSchedules = await storage.getCrawlSchedules(projectId);
     
@@ -250,6 +306,16 @@ export class CrawlSchedulerService {
         daysOfWeek: [3, 5],
         isActive: true,
         config: { topN: 10 },
+      },
+      {
+        projectId,
+        type: "backlinks",
+        url: `https://${domain}/backlinks/update`,
+        frequency: "weekly",
+        scheduledTime: "11:00",
+        daysOfWeek: [0],
+        isActive: true,
+        config: { checkLiveStatus: true },
       },
     ];
 

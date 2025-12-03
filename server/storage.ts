@@ -31,6 +31,8 @@ import {
   type InsertSettingsFallingStars,
   type ImportLog,
   type InsertImportLog,
+  type Backlink,
+  type InsertBacklink,
   users,
   projects,
   keywords,
@@ -48,6 +50,7 @@ import {
   settingsQuickWins,
   settingsFallingStars,
   importLogs,
+  backlinks,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -157,6 +160,31 @@ export interface IStorage {
   createCrawlResult(result: InsertCrawlResult): Promise<CrawlResult>;
   updateCrawlResult(id: number, updates: Partial<CrawlResult>): Promise<CrawlResult | undefined>;
   getRunningCrawls(projectId: string): Promise<CrawlResult[]>;
+  
+  getBacklinks(projectId: string, targetUrl?: string): Promise<Backlink[]>;
+  getBacklink(id: number): Promise<Backlink | undefined>;
+  createBacklink(backlink: InsertBacklink): Promise<Backlink>;
+  upsertBacklink(projectId: string, sourceUrl: string, targetUrl: string, data: Partial<InsertBacklink>): Promise<Backlink>;
+  updateBacklink(id: number, updates: Partial<InsertBacklink>): Promise<Backlink | undefined>;
+  deleteBacklink(id: number): Promise<void>;
+  markBacklinkLost(id: number): Promise<Backlink | undefined>;
+  getBacklinkAggregations(projectId: string, targetUrl?: string, days?: number): Promise<{
+    totalBacklinks: number;
+    liveBacklinks: number;
+    lostBacklinks: number;
+    newBacklinks: number;
+    referringDomains: number;
+    topAnchors: { anchor: string; count: number }[];
+    linkTypeBreakdown: { type: string; count: number }[];
+  }>;
+  getBacklinksByDomain(projectId: string, targetUrl?: string): Promise<{
+    domain: string;
+    backlinks: number;
+    liveLinks: number;
+    firstSeen: Date;
+    lastSeen: Date;
+    avgDomainAuthority: number | null;
+  }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1256,6 +1284,227 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(desc(crawlResults.startedAt));
+  }
+
+  async getBacklinks(projectId: string, targetUrl?: string): Promise<Backlink[]> {
+    let conditions = [eq(backlinks.projectId, projectId)];
+    if (targetUrl) {
+      conditions.push(eq(backlinks.targetUrl, targetUrl));
+    }
+    return await db
+      .select()
+      .from(backlinks)
+      .where(and(...conditions))
+      .orderBy(desc(backlinks.lastSeenAt));
+  }
+
+  async getBacklink(id: number): Promise<Backlink | undefined> {
+    const [backlink] = await db.select().from(backlinks).where(eq(backlinks.id, id));
+    return backlink || undefined;
+  }
+
+  async createBacklink(backlink: InsertBacklink): Promise<Backlink> {
+    const [created] = await db.insert(backlinks).values(backlink as typeof backlinks.$inferInsert).returning();
+    return created;
+  }
+
+  async upsertBacklink(projectId: string, sourceUrl: string, targetUrl: string, data: Partial<InsertBacklink>): Promise<Backlink> {
+    const existing = await db
+      .select()
+      .from(backlinks)
+      .where(
+        and(
+          eq(backlinks.projectId, projectId),
+          eq(backlinks.sourceUrl, sourceUrl),
+          eq(backlinks.targetUrl, targetUrl)
+        )
+      );
+    
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(backlinks)
+        .set({
+          ...data,
+          lastSeenAt: new Date(),
+          isLive: true,
+          lostAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(backlinks.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const extractDomain = (url: string): string => {
+      try {
+        return new URL(url).hostname.replace(/^www\./, '');
+      } catch {
+        return url;
+      }
+    };
+    
+    const [created] = await db
+      .insert(backlinks)
+      .values({
+        projectId,
+        sourceUrl,
+        targetUrl,
+        sourceDomain: data.sourceDomain || extractDomain(sourceUrl),
+        anchorText: data.anchorText || null,
+        linkType: data.linkType || 'dofollow',
+        isLive: true,
+        domainAuthority: data.domainAuthority || null,
+        pageAuthority: data.pageAuthority || null,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      } as typeof backlinks.$inferInsert)
+      .returning();
+    return created;
+  }
+
+  async updateBacklink(id: number, updates: Partial<InsertBacklink>): Promise<Backlink | undefined> {
+    const [updated] = await db
+      .update(backlinks)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(backlinks.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteBacklink(id: number): Promise<void> {
+    await db.delete(backlinks).where(eq(backlinks.id, id));
+  }
+
+  async markBacklinkLost(id: number): Promise<Backlink | undefined> {
+    const [updated] = await db
+      .update(backlinks)
+      .set({ isLive: false, lostAt: new Date(), updatedAt: new Date() })
+      .where(eq(backlinks.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getBacklinkAggregations(projectId: string, targetUrl?: string, days: number = 30): Promise<{
+    totalBacklinks: number;
+    liveBacklinks: number;
+    lostBacklinks: number;
+    newBacklinks: number;
+    referringDomains: number;
+    topAnchors: { anchor: string; count: number }[];
+    linkTypeBreakdown: { type: string; count: number }[];
+  }> {
+    let conditions = [eq(backlinks.projectId, projectId)];
+    if (targetUrl) {
+      conditions.push(eq(backlinks.targetUrl, targetUrl));
+    }
+    
+    const allBacklinks = await db
+      .select()
+      .from(backlinks)
+      .where(and(...conditions));
+    
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    
+    const totalBacklinks = allBacklinks.length;
+    const liveBacklinks = allBacklinks.filter(b => b.isLive).length;
+    const lostBacklinks = allBacklinks.filter(b => !b.isLive).length;
+    const newBacklinks = allBacklinks.filter(b => b.firstSeenAt >= cutoffDate).length;
+    
+    const uniqueDomains = new Set(allBacklinks.filter(b => b.isLive).map(b => b.sourceDomain));
+    const referringDomains = uniqueDomains.size;
+    
+    const anchorCounts = new Map<string, number>();
+    allBacklinks.filter(b => b.isLive && b.anchorText).forEach(b => {
+      const anchor = b.anchorText || '(no anchor)';
+      anchorCounts.set(anchor, (anchorCounts.get(anchor) || 0) + 1);
+    });
+    const topAnchors = Array.from(anchorCounts.entries())
+      .map(([anchor, count]) => ({ anchor, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    
+    const typeCounts = new Map<string, number>();
+    allBacklinks.filter(b => b.isLive).forEach(b => {
+      typeCounts.set(b.linkType, (typeCounts.get(b.linkType) || 0) + 1);
+    });
+    const linkTypeBreakdown = Array.from(typeCounts.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+    
+    return {
+      totalBacklinks,
+      liveBacklinks,
+      lostBacklinks,
+      newBacklinks,
+      referringDomains,
+      topAnchors,
+      linkTypeBreakdown,
+    };
+  }
+
+  async getBacklinksByDomain(projectId: string, targetUrl?: string): Promise<{
+    domain: string;
+    backlinks: number;
+    liveLinks: number;
+    firstSeen: Date;
+    lastSeen: Date;
+    avgDomainAuthority: number | null;
+  }[]> {
+    let conditions = [eq(backlinks.projectId, projectId)];
+    if (targetUrl) {
+      conditions.push(eq(backlinks.targetUrl, targetUrl));
+    }
+    
+    const allBacklinks = await db
+      .select()
+      .from(backlinks)
+      .where(and(...conditions));
+    
+    const domainMap = new Map<string, {
+      domain: string;
+      backlinks: number;
+      liveLinks: number;
+      firstSeen: Date;
+      lastSeen: Date;
+      daSum: number;
+      daCount: number;
+    }>();
+    
+    allBacklinks.forEach(b => {
+      const existing = domainMap.get(b.sourceDomain);
+      if (existing) {
+        existing.backlinks++;
+        if (b.isLive) existing.liveLinks++;
+        if (b.firstSeenAt < existing.firstSeen) existing.firstSeen = b.firstSeenAt;
+        if (b.lastSeenAt > existing.lastSeen) existing.lastSeen = b.lastSeenAt;
+        if (b.domainAuthority) {
+          existing.daSum += b.domainAuthority;
+          existing.daCount++;
+        }
+      } else {
+        domainMap.set(b.sourceDomain, {
+          domain: b.sourceDomain,
+          backlinks: 1,
+          liveLinks: b.isLive ? 1 : 0,
+          firstSeen: b.firstSeenAt,
+          lastSeen: b.lastSeenAt,
+          daSum: b.domainAuthority || 0,
+          daCount: b.domainAuthority ? 1 : 0,
+        });
+      }
+    });
+    
+    return Array.from(domainMap.values())
+      .map(d => ({
+        domain: d.domain,
+        backlinks: d.backlinks,
+        liveLinks: d.liveLinks,
+        firstSeen: d.firstSeen,
+        lastSeen: d.lastSeen,
+        avgDomainAuthority: d.daCount > 0 ? Math.round(d.daSum / d.daCount) : null,
+      }))
+      .sort((a, b) => b.liveLinks - a.liveLinks);
   }
 }
 

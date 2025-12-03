@@ -1541,6 +1541,133 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/backlinks", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const targetUrl = req.query.targetUrl as string | undefined;
+      const backlinks = await storage.getBacklinks(projectId, targetUrl);
+      res.json({ backlinks });
+    } catch (error) {
+      console.error("Error fetching backlinks:", error);
+      res.status(500).json({ error: "Failed to fetch backlinks" });
+    }
+  });
+
+  app.get("/api/backlinks/aggregations", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const targetUrl = req.query.targetUrl as string | undefined;
+      const days = req.query.days ? parseInt(req.query.days as string, 10) : 30;
+      const aggregations = await storage.getBacklinkAggregations(projectId, targetUrl, days);
+      res.json(aggregations);
+    } catch (error) {
+      console.error("Error fetching backlink aggregations:", error);
+      res.status(500).json({ error: "Failed to fetch backlink aggregations" });
+    }
+  });
+
+  app.get("/api/backlinks/by-domain", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const targetUrl = req.query.targetUrl as string | undefined;
+      const domains = await storage.getBacklinksByDomain(projectId, targetUrl);
+      res.json({ domains });
+    } catch (error) {
+      console.error("Error fetching backlinks by domain:", error);
+      res.status(500).json({ error: "Failed to fetch backlinks by domain" });
+    }
+  });
+
+  app.get("/api/backlinks/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const backlink = await storage.getBacklink(id);
+      if (!backlink) {
+        return res.status(404).json({ error: "Backlink not found" });
+      }
+      res.json(backlink);
+    } catch (error) {
+      console.error("Error fetching backlink:", error);
+      res.status(500).json({ error: "Failed to fetch backlink" });
+    }
+  });
+
+  app.post("/api/backlinks", async (req, res) => {
+    try {
+      const { projectId, sourceUrl, targetUrl, sourceDomain, anchorText, linkType, domainAuthority, pageAuthority } = req.body;
+      if (!projectId || !sourceUrl || !targetUrl) {
+        return res.status(400).json({ error: "projectId, sourceUrl, and targetUrl are required" });
+      }
+      const backlink = await storage.upsertBacklink(projectId, sourceUrl, targetUrl, {
+        sourceDomain,
+        anchorText,
+        linkType,
+        domainAuthority,
+        pageAuthority,
+      });
+      res.json(backlink);
+    } catch (error) {
+      console.error("Error creating backlink:", error);
+      res.status(500).json({ error: "Failed to create backlink" });
+    }
+  });
+
+  app.patch("/api/backlinks/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const { anchorText, linkType, domainAuthority, pageAuthority, isLive } = req.body;
+      const updates: Record<string, unknown> = {};
+      if (anchorText !== undefined) updates.anchorText = anchorText;
+      if (linkType !== undefined) updates.linkType = linkType;
+      if (domainAuthority !== undefined) updates.domainAuthority = domainAuthority;
+      if (pageAuthority !== undefined) updates.pageAuthority = pageAuthority;
+      if (isLive !== undefined) updates.isLive = isLive;
+      
+      const backlink = await storage.updateBacklink(id, updates);
+      if (!backlink) {
+        return res.status(404).json({ error: "Backlink not found" });
+      }
+      res.json(backlink);
+    } catch (error) {
+      console.error("Error updating backlink:", error);
+      res.status(500).json({ error: "Failed to update backlink" });
+    }
+  });
+
+  app.patch("/api/backlinks/:id/lost", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const backlink = await storage.markBacklinkLost(id);
+      if (!backlink) {
+        return res.status(404).json({ error: "Backlink not found" });
+      }
+      res.json(backlink);
+    } catch (error) {
+      console.error("Error marking backlink as lost:", error);
+      res.status(500).json({ error: "Failed to mark backlink as lost" });
+    }
+  });
+
+  app.delete("/api/backlinks/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      await storage.deleteBacklink(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting backlink:", error);
+      res.status(500).json({ error: "Failed to delete backlink" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;
