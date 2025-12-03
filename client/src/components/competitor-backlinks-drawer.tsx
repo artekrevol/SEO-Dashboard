@@ -220,7 +220,7 @@ export function CompetitorBacklinksDrawer({
 
   const promoteMutation = useMutation({
     mutationFn: async (gap: GapAnalysisItem) => {
-      const res = await apiRequest("POST", "/api/competitor-backlinks/promote-gap", {
+      const res = await apiRequest("POST", "/api/recommendations/promote-gap", {
         projectId,
         sourceDomain: gap.sourceDomain,
         domainAuthority: gap.avgDomainAuthority,
