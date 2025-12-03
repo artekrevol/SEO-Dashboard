@@ -67,6 +67,7 @@ interface BacklinkAggregations {
   referringDomains: number;
   topAnchors: { anchor: string; count: number }[];
   linkTypeBreakdown: { type: string; count: number }[];
+  spamDistribution: { safe: number; review: number; toxic: number; unknown: number };
 }
 
 interface DomainGroup {
@@ -325,6 +326,90 @@ export function BacklinkDetailDrawer({
                             </Badge>
                           ))}
                         </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {aggregations?.spamDistribution && (aggregations.spamDistribution.safe + aggregations.spamDistribution.review + aggregations.spamDistribution.toxic + aggregations.spamDistribution.unknown) > 0 && (
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4" />
+                          Spam Score Distribution
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {(() => {
+                          const spam = aggregations.spamDistribution;
+                          const total = spam.safe + spam.review + spam.toxic + spam.unknown;
+                          return (
+                            <>
+                              <div className="space-y-2" data-testid="spam-distribution">
+                                <div className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle className="h-4 w-4 text-green-600" />
+                                    <span>Safe (≤30%)</span>
+                                  </div>
+                                  <Badge variant="secondary" className="bg-green-500/10 text-green-600">
+                                    {spam.safe}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                    <span>Review (31-60%)</span>
+                                  </div>
+                                  <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600">
+                                    {spam.review}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <Shield className="h-4 w-4 text-red-600" />
+                                    <span>Toxic (&gt;60%)</span>
+                                  </div>
+                                  <Badge variant="secondary" className="bg-red-500/10 text-red-600">
+                                    {spam.toxic}
+                                  </Badge>
+                                </div>
+                                {spam.unknown > 0 && (
+                                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                    <span>Unknown</span>
+                                    <Badge variant="secondary">{spam.unknown}</Badge>
+                                  </div>
+                                )}
+                              </div>
+                              {total > 0 && (
+                                <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden flex">
+                                  {spam.safe > 0 && (
+                                    <div
+                                      className="bg-green-500 h-full"
+                                      style={{ width: `${(spam.safe / total) * 100}%` }}
+                                    />
+                                  )}
+                                  {spam.review > 0 && (
+                                    <div
+                                      className="bg-yellow-500 h-full"
+                                      style={{ width: `${(spam.review / total) * 100}%` }}
+                                    />
+                                  )}
+                                  {spam.toxic > 0 && (
+                                    <div
+                                      className="bg-red-500 h-full"
+                                      style={{ width: `${(spam.toxic / total) * 100}%` }}
+                                    />
+                                  )}
+                                  {spam.unknown > 0 && (
+                                    <div
+                                      className="bg-muted-foreground/30 h-full"
+                                      style={{ width: `${(spam.unknown / total) * 100}%` }}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </CardContent>
                     </Card>
                   )}

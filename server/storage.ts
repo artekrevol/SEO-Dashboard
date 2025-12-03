@@ -179,6 +179,7 @@ export interface IStorage {
     referringDomains: number;
     topAnchors: { anchor: string; count: number }[];
     linkTypeBreakdown: { type: string; count: number }[];
+    spamDistribution: { safe: number; review: number; toxic: number; unknown: number };
   }>;
   getBacklinksByDomain(projectId: string, targetUrl?: string): Promise<{
     domain: string;
@@ -1395,6 +1396,7 @@ export class DatabaseStorage implements IStorage {
     referringDomains: number;
     topAnchors: { anchor: string; count: number }[];
     linkTypeBreakdown: { type: string; count: number }[];
+    spamDistribution: { safe: number; review: number; toxic: number; unknown: number };
   }> {
     let conditions = [eq(backlinks.projectId, projectId)];
     if (targetUrl) {
@@ -1435,6 +1437,13 @@ export class DatabaseStorage implements IStorage {
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => b.count - a.count);
     
+    const spamDistribution = {
+      safe: allBacklinks.filter(b => b.spamScore !== null && b.spamScore <= 30).length,
+      review: allBacklinks.filter(b => b.spamScore !== null && b.spamScore > 30 && b.spamScore <= 60).length,
+      toxic: allBacklinks.filter(b => b.spamScore !== null && b.spamScore > 60).length,
+      unknown: allBacklinks.filter(b => b.spamScore === null).length,
+    };
+    
     return {
       totalBacklinks,
       liveBacklinks,
@@ -1443,6 +1452,7 @@ export class DatabaseStorage implements IStorage {
       referringDomains,
       topAnchors,
       linkTypeBreakdown,
+      spamDistribution,
     };
   }
 
