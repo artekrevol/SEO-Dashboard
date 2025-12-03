@@ -45,6 +45,9 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
   const [filterIntent, setFilterIntent] = useState<string>("all");
   const [newPageUrl, setNewPageUrl] = useState<string>("");
   const [competitorSearch, setCompetitorSearch] = useState<string>("");
+  const [newKeyword, setNewKeyword] = useState<string>("");
+  const [newKeywordUrl, setNewKeywordUrl] = useState<string>("");
+  const [newCompetitorDomain, setNewCompetitorDomain] = useState<string>("");
 
   const { data: keywords, isLoading: keywordsLoading } = useQuery({
     queryKey: ["/api/dashboard/keywords", { projectId }],
@@ -197,6 +200,55 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
       toast({
         title: "Error",
         description: "Failed to add page. Make sure it's a valid URL.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const addKeywordMutation = useMutation({
+    mutationFn: async ({ keyword, targetUrl }: { keyword: string; targetUrl?: string }) => {
+      return await apiRequest("POST", "/api/keywords", { 
+        projectId, 
+        keyword,
+        targetUrl: targetUrl || null,
+        isActive: true,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/keywords", { projectId }] });
+      setNewKeyword("");
+      setNewKeywordUrl("");
+      toast({
+        title: "Keyword added",
+        description: "The keyword has been added for tracking.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add keyword.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const addCompetitorMutation = useMutation({
+    mutationFn: async (domain: string) => {
+      return await apiRequest("POST", "/api/competitors", { projectId, domain });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/competitors/summary", { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/competitors", { projectId }] });
+      setNewCompetitorDomain("");
+      toast({
+        title: "Competitor added",
+        description: "The competitor has been added for tracking.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add competitor. Make sure the domain is valid.",
         variant: "destructive",
       });
     },
@@ -361,6 +413,54 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
             </div>
           ) : (
             <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">Add New Keyword</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (newKeyword.trim()) {
+                        addKeywordMutation.mutate({ 
+                          keyword: newKeyword.trim(), 
+                          targetUrl: newKeywordUrl.trim() || undefined 
+                        });
+                      }
+                    }} 
+                    className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                  >
+                    <div className="flex-1">
+                      <label className="text-xs text-muted-foreground">Keyword</label>
+                      <Input
+                        placeholder="Enter keyword to track..."
+                        value={newKeyword}
+                        onChange={(e) => setNewKeyword(e.target.value)}
+                        data-testid="input-new-keyword"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs text-muted-foreground">Target URL (optional)</label>
+                      <Input
+                        type="url"
+                        placeholder="https://www.example.com/page"
+                        value={newKeywordUrl}
+                        onChange={(e) => setNewKeywordUrl(e.target.value)}
+                        data-testid="input-new-keyword-url"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={addKeywordMutation.isPending || !newKeyword.trim()}
+                      data-testid="button-add-keyword"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Keyword
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium">Filters</CardTitle>
@@ -682,6 +782,39 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
             </div>
           ) : (
             <>
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium">Add New Competitor</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (newCompetitorDomain.trim()) {
+                        addCompetitorMutation.mutate(newCompetitorDomain.trim());
+                      }
+                    }} 
+                    className="flex gap-2"
+                  >
+                    <Input
+                      placeholder="competitor.com"
+                      value={newCompetitorDomain}
+                      onChange={(e) => setNewCompetitorDomain(e.target.value)}
+                      className="flex-1"
+                      data-testid="input-new-competitor"
+                    />
+                    <Button
+                      type="submit"
+                      disabled={addCompetitorMutation.isPending || !newCompetitorDomain.trim()}
+                      data-testid="button-add-competitor"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Competitor
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-medium">Search Competitors</CardTitle>

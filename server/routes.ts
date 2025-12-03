@@ -510,6 +510,39 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/competitors", async (req, res) => {
+    try {
+      const { projectId, domain } = req.body;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+
+      const normalizedDomain = domain.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '');
+      
+      const today = new Date().toISOString().split('T')[0];
+      const competitor = await storage.createCompetitorMetrics({
+        projectId,
+        competitorDomain: normalizedDomain,
+        date: today,
+        sharedKeywords: 0,
+        aboveUsKeywords: 0,
+      });
+      
+      res.status(201).json({ 
+        success: true,
+        competitor,
+        message: `Added ${normalizedDomain} as a competitor`
+      });
+    } catch (error) {
+      console.error("Error adding competitor:", error);
+      res.status(500).json({ error: "Failed to add competitor" });
+    }
+  });
+
   app.delete("/api/competitors/:domain", async (req, res) => {
     try {
       const { domain } = req.params;

@@ -204,7 +204,7 @@ export function BacklinkDetailDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-hidden flex flex-col">
+      <SheetContent className="w-full sm:max-w-3xl lg:max-w-4xl overflow-hidden flex flex-col">
         <SheetHeader className="shrink-0">
           <SheetTitle className="flex items-center gap-2" data-testid="drawer-title">
             <Link2 className="h-5 w-5" />

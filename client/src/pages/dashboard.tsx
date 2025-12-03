@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { KpiCard } from "@/components/kpi-card";
 import { SeoHealthChart } from "@/components/seo-health-chart";
 import { KeywordsTable } from "@/components/keywords-table";
@@ -6,9 +6,11 @@ import { RecommendationsList } from "@/components/recommendations-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { format, formatDistanceToNow } from "date-fns";
 
 interface DashboardProps {
   projectId: string | null;
@@ -45,6 +47,35 @@ export function Dashboard({ projectId }: DashboardProps) {
       return res.json();
     },
     enabled: !!projectId,
+  });
+
+  const refreshDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/jobs/snapshot?projectId=${projectId}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error("Failed to refresh data");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/overview", { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/keywords", { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recommendations", { projectId }] });
+      toast({
+        title: "Data refreshed",
+        description: "Dashboard data has been updated with the latest rankings.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Refresh failed",
+        description: "Failed to refresh data. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleStatusChange = async (id: number, status: string) => {
@@ -105,15 +136,37 @@ export function Dashboard({ projectId }: DashboardProps) {
     return "declining";
   };
 
+  const lastUpdated = latestSnapshot?.date ? new Date(latestSnapshot.date) : null;
+
   return (
     <div className="space-y-6 p-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">
-          SEO Dashboard
-        </h1>
-        <p className="text-muted-foreground">
-          Overview of your website's SEO performance and health.
-        </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">
+            SEO Dashboard
+          </h1>
+          <p className="text-muted-foreground">
+            Overview of your website's SEO performance and health.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {lastUpdated && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground" data-testid="text-last-updated">
+              <Clock className="h-4 w-4" />
+              <span>Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}</span>
+            </div>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => refreshDataMutation.mutate()}
+            disabled={refreshDataMutation.isPending}
+            data-testid="button-refresh-data"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshDataMutation.isPending ? 'animate-spin' : ''}`} />
+            {refreshDataMutation.isPending ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
