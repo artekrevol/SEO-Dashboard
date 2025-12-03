@@ -28,6 +28,8 @@ import {
   Loader2,
   RefreshCw,
   Star,
+  Plus,
+  CheckCheck,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -205,6 +207,38 @@ export function CompetitorBacklinksDrawer({
       toast({
         title: "Fetch Failed",
         description: error instanceof Error ? error.message : "Failed to fetch competitor backlinks",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [promotedDomains, setPromotedDomains] = useState<Set<string>>(new Set());
+
+  const promoteMutation = useMutation({
+    mutationFn: async (gap: GapAnalysisItem) => {
+      const res = await apiRequest("POST", "/api/recommendations/promote-gap", {
+        projectId,
+        sourceDomain: gap.sourceDomain,
+        domainAuthority: gap.avgDomainAuthority,
+        linkType: gap.linkType,
+        spamScore: gap.avgSpamScore,
+        competitors: gap.competitors,
+        competitorCount: gap.competitorCount,
+      });
+      return res.json();
+    },
+    onSuccess: (_, gap) => {
+      setPromotedDomains(prev => new Set(prev).add(gap.sourceDomain));
+      toast({
+        title: "Added to Recommendations",
+        description: `${gap.sourceDomain} has been added to your outreach recommendations.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recommendations"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Promote",
+        description: error instanceof Error ? error.message : "Failed to add to recommendations",
         variant: "destructive",
       });
     },
@@ -666,7 +700,7 @@ export function CompetitorBacklinksDrawer({
                                   </Badge>
                                 </div>
                               </div>
-                              <div className="flex items-center justify-between text-xs">
+                              <div className="flex items-center justify-between text-xs mt-2">
                                 <div className="flex flex-wrap gap-1">
                                   {gap.competitors.slice(0, 3).map((comp, j) => (
                                     <Badge key={j} variant="outline" className="text-xs font-mono">
@@ -679,21 +713,51 @@ export function CompetitorBacklinksDrawer({
                                     </Badge>
                                   )}
                                 </div>
-                                {gap.avgSpamScore !== null && (
-                                  <Badge 
-                                    variant="secondary" 
-                                    className={cn(
-                                      "text-xs",
-                                      gap.avgSpamScore <= 30 
-                                        ? "bg-green-500/10 text-green-600" 
-                                        : gap.avgSpamScore <= 60 
-                                          ? "bg-yellow-500/10 text-yellow-600" 
-                                          : "bg-red-500/10 text-red-600"
-                                    )}
-                                  >
-                                    Spam {gap.avgSpamScore}%
-                                  </Badge>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {gap.avgSpamScore !== null && (
+                                    <Badge 
+                                      variant="secondary" 
+                                      className={cn(
+                                        "text-xs",
+                                        gap.avgSpamScore <= 30 
+                                          ? "bg-green-500/10 text-green-600" 
+                                          : gap.avgSpamScore <= 60 
+                                            ? "bg-yellow-500/10 text-yellow-600" 
+                                            : "bg-red-500/10 text-red-600"
+                                      )}
+                                    >
+                                      Spam {gap.avgSpamScore}%
+                                    </Badge>
+                                  )}
+                                  {promotedDomains.has(gap.sourceDomain) ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled
+                                      className="h-7 text-green-600"
+                                      data-testid={`button-promoted-${i}`}
+                                    >
+                                      <CheckCheck className="h-3 w-3 mr-1" />
+                                      Added
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7"
+                                      onClick={() => promoteMutation.mutate(gap)}
+                                      disabled={promoteMutation.isPending}
+                                      data-testid={`button-promote-${i}`}
+                                    >
+                                      {promoteMutation.isPending ? (
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      ) : (
+                                        <Plus className="h-3 w-3 mr-1" />
+                                      )}
+                                      Outreach
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             </CardContent>
                           </Card>

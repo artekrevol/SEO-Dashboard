@@ -1849,6 +1849,74 @@ export async function registerRoutes(
     }
   });
 
+  // Promote gap opportunity to recommendations for outreach
+  app.post("/api/recommendations/promote-gap", async (req, res) => {
+    try {
+      const promoteSchema = z.object({
+        projectId: z.string(),
+        sourceDomain: z.string(),
+        domainAuthority: z.number().optional(),
+        linkType: z.string().optional(),
+        spamScore: z.number().nullable().optional(),
+        competitors: z.array(z.string()).optional(),
+        competitorCount: z.number().optional(),
+      });
+
+      const parsed = promoteSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+      }
+
+      const { projectId, sourceDomain, domainAuthority, linkType, spamScore, competitors, competitorCount } = parsed.data;
+
+      // Check if recommendation already exists for this domain
+      const existingRecs = await storage.getSeoRecommendations(projectId, {
+        type: "backlink_outreach",
+        status: "open",
+      });
+      
+      const alreadyExists = existingRecs.some(r => {
+        const signals = r.sourceSignals as { sourceDomain?: string } | null;
+        return signals?.sourceDomain === sourceDomain;
+      });
+
+      if (alreadyExists) {
+        return res.status(409).json({ error: "Outreach recommendation already exists for this domain" });
+      }
+
+      // Determine severity based on DA and competitor count
+      let severity: "high" | "medium" | "low" = "medium";
+      if ((domainAuthority && domainAuthority >= 50) || (competitorCount && competitorCount >= 3)) {
+        severity = "high";
+      } else if (domainAuthority && domainAuthority < 40) {
+        severity = "low";
+      }
+
+      const recommendation = await storage.createSeoRecommendation({
+        projectId,
+        type: "backlink_outreach",
+        severity,
+        title: `Outreach: ${sourceDomain}`,
+        description: `High-potential backlink opportunity. Domain Authority: ${domainAuthority || 'N/A'}. ${linkType === 'dofollow' ? 'Dofollow link.' : ''} Links to ${competitorCount || 0} competitor(s): ${competitors?.slice(0, 3).join(', ') || 'Unknown'}${(competitors?.length || 0) > 3 ? '...' : ''}.`,
+        status: "open",
+        sourceSignals: {
+          sourceDomain,
+          domainAuthority,
+          linkType,
+          spamScore,
+          competitors,
+          competitorCount,
+          promotedAt: new Date().toISOString(),
+        },
+      });
+
+      res.json({ success: true, recommendation });
+    } catch (error) {
+      console.error("Error promoting gap to recommendation:", error);
+      res.status(500).json({ error: "Failed to promote gap to recommendation" });
+    }
+  });
+
   app.post("/api/competitor-backlinks/crawl", async (req, res) => {
     try {
       const { projectId, competitorDomain, limit = 100 } = req.body;
