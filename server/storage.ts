@@ -33,6 +33,8 @@ import {
   type InsertImportLog,
   type Backlink,
   type InsertBacklink,
+  type CompetitorBacklink,
+  type InsertCompetitorBacklink,
   users,
   projects,
   keywords,
@@ -51,6 +53,7 @@ import {
   settingsFallingStars,
   importLogs,
   backlinks,
+  competitorBacklinks,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -1505,6 +1508,398 @@ export class DatabaseStorage implements IStorage {
         avgDomainAuthority: d.daCount > 0 ? Math.round(d.daSum / d.daCount) : null,
       }))
       .sort((a, b) => b.liveLinks - a.liveLinks);
+  }
+
+  async updateBacklinkSpamScores(projectId: string, spamScoreMap: Map<string, number>): Promise<number> {
+    let updated = 0;
+    const allBacklinks = await db
+      .select()
+      .from(backlinks)
+      .where(eq(backlinks.projectId, projectId));
+    
+    for (const backlink of allBacklinks) {
+      const spamScore = spamScoreMap.get(backlink.sourceDomain.toLowerCase());
+      if (spamScore !== undefined && backlink.spamScore !== spamScore) {
+        await db
+          .update(backlinks)
+          .set({ spamScore, updatedAt: new Date() })
+          .where(eq(backlinks.id, backlink.id));
+        updated++;
+      }
+    }
+    
+    return updated;
+  }
+
+  async getCompetitorBacklinks(projectId: string, competitorDomain?: string): Promise<CompetitorBacklink[]> {
+    let conditions = [eq(competitorBacklinks.projectId, projectId)];
+    if (competitorDomain) {
+      conditions.push(eq(competitorBacklinks.competitorDomain, competitorDomain));
+    }
+    return await db
+      .select()
+      .from(competitorBacklinks)
+      .where(and(...conditions))
+      .orderBy(desc(competitorBacklinks.domainAuthority));
+  }
+
+  async getCompetitorBacklink(id: number): Promise<CompetitorBacklink | undefined> {
+    const [backlink] = await db.select().from(competitorBacklinks).where(eq(competitorBacklinks.id, id));
+    return backlink || undefined;
+  }
+
+  async upsertCompetitorBacklink(
+    projectId: string,
+    competitorDomain: string,
+    sourceUrl: string,
+    targetUrl: string,
+    data: Partial<InsertCompetitorBacklink>
+  ): Promise<CompetitorBacklink> {
+    const existing = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(
+        and(
+          eq(competitorBacklinks.projectId, projectId),
+          eq(competitorBacklinks.competitorDomain, competitorDomain),
+          eq(competitorBacklinks.sourceUrl, sourceUrl),
+          eq(competitorBacklinks.targetUrl, targetUrl)
+        )
+      );
+    
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(competitorBacklinks)
+        .set({
+          ...data,
+          lastSeenAt: new Date(),
+          isLive: true,
+          lostAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(competitorBacklinks.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const extractDomain = (url: string): string => {
+      try {
+        return new URL(url).hostname.replace(/^www\./, '');
+      } catch {
+        return url;
+      }
+    };
+    
+    const [created] = await db
+      .insert(competitorBacklinks)
+      .values({
+        projectId,
+        competitorDomain,
+        sourceUrl,
+        targetUrl,
+        sourceDomain: data.sourceDomain || extractDomain(sourceUrl),
+        anchorText: data.anchorText || null,
+        linkType: data.linkType || 'dofollow',
+        isLive: true,
+        domainAuthority: data.domainAuthority || null,
+        pageAuthority: data.pageAuthority || null,
+        spamScore: data.spamScore || null,
+        isOpportunity: data.isOpportunity || false,
+        opportunityScore: data.opportunityScore || null,
+        firstSeenAt: new Date(),
+        lastSeenAt: new Date(),
+      } as typeof competitorBacklinks.$inferInsert)
+      .returning();
+    return created;
+  }
+
+  async deleteCompetitorBacklink(id: number): Promise<void> {
+    await db.delete(competitorBacklinks).where(eq(competitorBacklinks.id, id));
+  }
+
+  async getCompetitorBacklinkAggregations(projectId: string, competitorDomain?: string): Promise<{
+    totalBacklinks: number;
+    liveBacklinks: number;
+    referringDomains: number;
+    dofollowCount: number;
+    avgDomainAuthority: number | null;
+    opportunities: number;
+    topOpportunities: { sourceDomain: string; domainAuthority: number; opportunityScore: number }[];
+    linkTypeBreakdown: { type: string; count: number }[];
+  }> {
+    let conditions = [eq(competitorBacklinks.projectId, projectId)];
+    if (competitorDomain) {
+      conditions.push(eq(competitorBacklinks.competitorDomain, competitorDomain));
+    }
+    
+    const allBacklinks = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(and(...conditions));
+    
+    const totalBacklinks = allBacklinks.length;
+    const liveBacklinks = allBacklinks.filter(b => b.isLive).length;
+    const uniqueDomains = new Set(allBacklinks.filter(b => b.isLive).map(b => b.sourceDomain));
+    const referringDomains = uniqueDomains.size;
+    const dofollowCount = allBacklinks.filter(b => b.isLive && b.linkType === 'dofollow').length;
+    
+    const daValues = allBacklinks.filter(b => b.isLive && b.domainAuthority).map(b => b.domainAuthority!);
+    const avgDomainAuthority = daValues.length > 0 
+      ? Math.round(daValues.reduce((a, b) => a + b, 0) / daValues.length) 
+      : null;
+    
+    const opportunities = allBacklinks.filter(b => b.isOpportunity).length;
+    
+    const topOpportunities = allBacklinks
+      .filter(b => b.isOpportunity && b.isLive)
+      .sort((a, b) => (Number(b.opportunityScore) || 0) - (Number(a.opportunityScore) || 0))
+      .slice(0, 10)
+      .map(b => ({
+        sourceDomain: b.sourceDomain,
+        domainAuthority: b.domainAuthority || 0,
+        opportunityScore: Number(b.opportunityScore) || 0,
+      }));
+    
+    const typeCounts = new Map<string, number>();
+    allBacklinks.filter(b => b.isLive).forEach(b => {
+      typeCounts.set(b.linkType, (typeCounts.get(b.linkType) || 0) + 1);
+    });
+    const linkTypeBreakdown = Array.from(typeCounts.entries())
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count);
+    
+    return {
+      totalBacklinks,
+      liveBacklinks,
+      referringDomains,
+      dofollowCount,
+      avgDomainAuthority,
+      opportunities,
+      topOpportunities,
+      linkTypeBreakdown,
+    };
+  }
+
+  async findLinkOpportunities(projectId: string, competitorDomain: string): Promise<{
+    domain: string;
+    competitorLinks: number;
+    ourLinks: number;
+    isOpportunity: boolean;
+    avgDomainAuthority: number;
+    avgSpamScore: number | null;
+  }[]> {
+    const ourDomains = new Set<string>();
+    const allOurBacklinks = await db
+      .select()
+      .from(backlinks)
+      .where(and(eq(backlinks.projectId, projectId), eq(backlinks.isLive, true)));
+    
+    allOurBacklinks.forEach(b => ourDomains.add(b.sourceDomain.toLowerCase()));
+    
+    const competitorLinks = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(
+        and(
+          eq(competitorBacklinks.projectId, projectId),
+          eq(competitorBacklinks.competitorDomain, competitorDomain),
+          eq(competitorBacklinks.isLive, true)
+        )
+      );
+    
+    const domainMap = new Map<string, {
+      domain: string;
+      competitorLinks: number;
+      ourLinks: number;
+      daSum: number;
+      daCount: number;
+      spamSum: number;
+      spamCount: number;
+    }>();
+    
+    competitorLinks.forEach(b => {
+      const domain = b.sourceDomain.toLowerCase();
+      const existing = domainMap.get(domain);
+      const ourLinkCount = ourDomains.has(domain) ? 1 : 0;
+      
+      if (existing) {
+        existing.competitorLinks++;
+        if (b.domainAuthority) {
+          existing.daSum += b.domainAuthority;
+          existing.daCount++;
+        }
+        if (b.spamScore !== null) {
+          existing.spamSum += b.spamScore;
+          existing.spamCount++;
+        }
+      } else {
+        domainMap.set(domain, {
+          domain,
+          competitorLinks: 1,
+          ourLinks: ourLinkCount,
+          daSum: b.domainAuthority || 0,
+          daCount: b.domainAuthority ? 1 : 0,
+          spamSum: b.spamScore || 0,
+          spamCount: b.spamScore !== null ? 1 : 0,
+        });
+      }
+    });
+    
+    return Array.from(domainMap.values())
+      .map(d => ({
+        domain: d.domain,
+        competitorLinks: d.competitorLinks,
+        ourLinks: d.ourLinks,
+        isOpportunity: d.ourLinks === 0 && d.daCount > 0 && (d.daSum / d.daCount) >= 30,
+        avgDomainAuthority: d.daCount > 0 ? Math.round(d.daSum / d.daCount) : 0,
+        avgSpamScore: d.spamCount > 0 ? Math.round(d.spamSum / d.spamCount) : null,
+      }))
+      .filter(d => d.isOpportunity)
+      .sort((a, b) => b.avgDomainAuthority - a.avgDomainAuthority);
+  }
+
+  async updateCompetitorBacklinkOpportunities(projectId: string, competitorDomain: string): Promise<number> {
+    const ourDomains = new Set<string>();
+    const allOurBacklinks = await db
+      .select()
+      .from(backlinks)
+      .where(and(eq(backlinks.projectId, projectId), eq(backlinks.isLive, true)));
+    
+    allOurBacklinks.forEach(b => ourDomains.add(b.sourceDomain.toLowerCase()));
+    
+    const competitorLinks = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(
+        and(
+          eq(competitorBacklinks.projectId, projectId),
+          eq(competitorBacklinks.competitorDomain, competitorDomain)
+        )
+      );
+    
+    let updated = 0;
+    for (const link of competitorLinks) {
+      const isOpp = !ourDomains.has(link.sourceDomain.toLowerCase()) && 
+                    link.domainAuthority !== null && 
+                    link.domainAuthority >= 30 &&
+                    link.isLive;
+      
+      let oppScore = 0;
+      if (isOpp && link.domainAuthority) {
+        oppScore = link.domainAuthority >= 80 ? 100 :
+                   link.domainAuthority >= 60 ? 80 :
+                   link.domainAuthority >= 40 ? 60 :
+                   link.domainAuthority >= 30 ? 40 : 20;
+        
+        if (link.linkType === 'dofollow') oppScore += 10;
+        if (link.spamScore !== null && link.spamScore <= 30) oppScore += 10;
+        else if (link.spamScore !== null && link.spamScore > 60) oppScore -= 20;
+      }
+      
+      if (link.isOpportunity !== isOpp || Number(link.opportunityScore) !== oppScore) {
+        await db
+          .update(competitorBacklinks)
+          .set({ 
+            isOpportunity: isOpp, 
+            opportunityScore: oppScore.toString(),
+            updatedAt: new Date() 
+          })
+          .where(eq(competitorBacklinks.id, link.id));
+        updated++;
+      }
+    }
+    
+    return updated;
+  }
+
+  async getCompetitorBacklinksByDomain(projectId: string, competitorDomain: string): Promise<{
+    domain: string;
+    backlinks: number;
+    liveLinks: number;
+    isOpportunity: boolean;
+    avgDomainAuthority: number | null;
+    avgSpamScore: number | null;
+  }[]> {
+    const allBacklinks = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(
+        and(
+          eq(competitorBacklinks.projectId, projectId),
+          eq(competitorBacklinks.competitorDomain, competitorDomain)
+        )
+      );
+    
+    const domainMap = new Map<string, {
+      domain: string;
+      backlinks: number;
+      liveLinks: number;
+      isOpportunity: boolean;
+      daSum: number;
+      daCount: number;
+      spamSum: number;
+      spamCount: number;
+    }>();
+    
+    allBacklinks.forEach(b => {
+      const existing = domainMap.get(b.sourceDomain);
+      if (existing) {
+        existing.backlinks++;
+        if (b.isLive) existing.liveLinks++;
+        if (b.isOpportunity) existing.isOpportunity = true;
+        if (b.domainAuthority) {
+          existing.daSum += b.domainAuthority;
+          existing.daCount++;
+        }
+        if (b.spamScore !== null) {
+          existing.spamSum += b.spamScore;
+          existing.spamCount++;
+        }
+      } else {
+        domainMap.set(b.sourceDomain, {
+          domain: b.sourceDomain,
+          backlinks: 1,
+          liveLinks: b.isLive ? 1 : 0,
+          isOpportunity: b.isOpportunity || false,
+          daSum: b.domainAuthority || 0,
+          daCount: b.domainAuthority ? 1 : 0,
+          spamSum: b.spamScore || 0,
+          spamCount: b.spamScore !== null ? 1 : 0,
+        });
+      }
+    });
+    
+    return Array.from(domainMap.values())
+      .map(d => ({
+        domain: d.domain,
+        backlinks: d.backlinks,
+        liveLinks: d.liveLinks,
+        isOpportunity: d.isOpportunity,
+        avgDomainAuthority: d.daCount > 0 ? Math.round(d.daSum / d.daCount) : null,
+        avgSpamScore: d.spamCount > 0 ? Math.round(d.spamSum / d.spamCount) : null,
+      }))
+      .sort((a, b) => (b.avgDomainAuthority || 0) - (a.avgDomainAuthority || 0));
+  }
+
+  async getCompetitorBacklinkCounts(projectId: string): Promise<Record<string, { total: number; opportunities: number }>> {
+    const allBacklinks = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(eq(competitorBacklinks.projectId, projectId));
+    
+    const countsMap: Record<string, { total: number; opportunities: number }> = {};
+    
+    allBacklinks.forEach(b => {
+      if (!countsMap[b.competitorDomain]) {
+        countsMap[b.competitorDomain] = { total: 0, opportunities: 0 };
+      }
+      countsMap[b.competitorDomain].total++;
+      if (b.isOpportunity) {
+        countsMap[b.competitorDomain].opportunities++;
+      }
+    });
+    
+    return countsMap;
   }
 }
 

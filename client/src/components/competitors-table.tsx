@@ -29,10 +29,11 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
+import { CompetitorBacklinksDrawer } from "@/components/competitor-backlinks-drawer";
 
 interface CompetitorData {
   competitorDomain: string;
@@ -80,6 +81,18 @@ const competitorExportColumns: ExportColumn<CompetitorData>[] = [
 export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTableProps) {
   const [search, setSearch] = useState("");
   const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
+  const [backlinksDrawerDomain, setBacklinksDrawerDomain] = useState<string | null>(null);
+
+  const { data: backlinkCounts = {} } = useQuery<Record<string, { total: number; opportunities: number }>>({
+    queryKey: ["/api/competitor-backlinks/counts", projectId],
+    queryFn: async () => {
+      if (!projectId) return {};
+      const res = await fetch(`/api/competitor-backlinks/counts?projectId=${projectId}`);
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
 
   const { data: keywordDetails, isLoading: loadingDetails } = useQuery({
     queryKey: ["/api/competitors", selectedCompetitor, "keywords", projectId],
@@ -238,6 +251,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                   <TableHead className="text-center">Shared KWs</TableHead>
                   <TableHead className="text-center">Above Us</TableHead>
                   <TableHead className="text-center">Avg Pos (Us vs Them)</TableHead>
+                  <TableHead className="text-center">Backlinks</TableHead>
                   <TableHead className="text-center">Traffic Threat</TableHead>
                   <TableHead className="w-[180px]">Pressure</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
@@ -246,7 +260,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-32 text-center">
+                    <TableCell colSpan={8} className="h-32 text-center">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <Search className="h-8 w-8" />
                         <p>No competitors found</p>
@@ -299,6 +313,37 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                           <span className="text-muted-foreground">vs</span>
                           <span className="font-semibold">{item.avgTheirPosition?.toFixed(1) || '-'}</span>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const counts = backlinkCounts[item.competitorDomain];
+                          return (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 font-mono"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (projectId) {
+                                  setBacklinksDrawerDomain(item.competitorDomain);
+                                }
+                              }}
+                              disabled={!projectId}
+                              data-testid={`button-backlinks-${item.competitorDomain}`}
+                            >
+                              <Link2 className="h-3 w-3" />
+                              {counts?.total || 0}
+                              {counts?.opportunities ? (
+                                <Badge 
+                                  variant="secondary" 
+                                  className="ml-1 bg-green-500/10 text-green-600 text-xs px-1"
+                                >
+                                  {counts.opportunities}
+                                </Badge>
+                              ) : null}
+                            </Button>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge
@@ -474,6 +519,15 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
           </div>
         </DialogContent>
       </Dialog>
+
+      {projectId && (
+        <CompetitorBacklinksDrawer
+          open={!!backlinksDrawerDomain}
+          onOpenChange={(open) => !open && setBacklinksDrawerDomain(null)}
+          projectId={projectId}
+          competitorDomain={backlinksDrawerDomain || ""}
+        />
+      )}
     </div>
   );
 }

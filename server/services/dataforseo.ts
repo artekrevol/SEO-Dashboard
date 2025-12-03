@@ -1122,6 +1122,195 @@ export class DataForSEOService {
     return Math.min(100, Math.max(0, score));
   }
 
+  async getBulkSpamScores(domains: string[]): Promise<Map<string, number>> {
+    const results = new Map<string, number>();
+    
+    if (domains.length === 0) {
+      return results;
+    }
+
+    const batchSize = 1000;
+    console.log(`[DataForSEO] Fetching spam scores for ${domains.length} domains`);
+
+    for (let i = 0; i < domains.length; i += batchSize) {
+      const batch = domains.slice(i, i + batchSize);
+      
+      try {
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            status_code: number;
+            result: Array<{
+              items: Array<{
+                target: string;
+                spam_score: number;
+              }>;
+            }>;
+          }>;
+        }>("/backlinks/bulk_spam_score/live", "POST", [{
+          targets: batch,
+        }]);
+
+        const items = response.tasks?.[0]?.result?.[0]?.items || [];
+        for (const item of items) {
+          if (item.target && item.spam_score !== undefined) {
+            results.set(item.target.toLowerCase(), item.spam_score);
+          }
+        }
+      } catch (error) {
+        console.error(`[DataForSEO] Error fetching bulk spam scores:`, error);
+      }
+
+      if (i + batchSize < domains.length) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+
+    console.log(`[DataForSEO] Retrieved spam scores for ${results.size}/${domains.length} domains`);
+    return results;
+  }
+
+  async getCompetitorBacklinks(competitorDomain: string, limit: number = 100): Promise<{
+    backlinks: Array<{
+      sourceUrl: string;
+      sourceDomain: string;
+      targetUrl: string;
+      anchorText: string;
+      linkType: 'dofollow' | 'nofollow' | 'ugc' | 'sponsored';
+      domainAuthority: number;
+      pageAuthority: number;
+      firstSeen: Date;
+      lastSeen: Date;
+      isLive: boolean;
+    }>;
+    totalCount: number;
+  }> {
+    try {
+      console.log(`[DataForSEO] Fetching backlinks for competitor: ${competitorDomain}`);
+      
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            total_count: number;
+            items: Array<{
+              domain_from: string;
+              url_from: string;
+              url_to: string;
+              anchor: string;
+              dofollow: boolean;
+              is_lost: boolean;
+              first_seen: string;
+              last_seen: string;
+              rank: number;
+              page_from_rank: number;
+              attr?: string[];
+            }>;
+          }>;
+        }>;
+      }>("/backlinks/backlinks/live", "POST", [{
+        target: competitorDomain,
+        limit,
+        order_by: ["rank,desc"],
+        include_subdomains: true,
+      }]);
+
+      const result = response.tasks?.[0]?.result?.[0];
+      if (!result) {
+        return { backlinks: [], totalCount: 0 };
+      }
+
+      const backlinks = (result.items || []).map(item => {
+        let linkType: 'dofollow' | 'nofollow' | 'ugc' | 'sponsored' = item.dofollow ? 'dofollow' : 'nofollow';
+        if (item.attr?.includes('ugc')) linkType = 'ugc';
+        if (item.attr?.includes('sponsored')) linkType = 'sponsored';
+
+        return {
+          sourceUrl: item.url_from || '',
+          sourceDomain: item.domain_from || '',
+          targetUrl: item.url_to || '',
+          anchorText: item.anchor || '',
+          linkType,
+          domainAuthority: item.rank || 0,
+          pageAuthority: item.page_from_rank || 0,
+          firstSeen: new Date(item.first_seen),
+          lastSeen: new Date(item.last_seen),
+          isLive: !item.is_lost,
+        };
+      });
+
+      console.log(`[DataForSEO] Found ${backlinks.length} backlinks (total: ${result.total_count}) for ${competitorDomain}`);
+      return { backlinks, totalCount: result.total_count || 0 };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching competitor backlinks for ${competitorDomain}:`, error);
+      return { backlinks: [], totalCount: 0 };
+    }
+  }
+
+  async getCompetitorBacklinksSummary(competitorDomain: string): Promise<{
+    totalBacklinks: number;
+    referringDomains: number;
+    dofollowLinks: number;
+    domainRank: number;
+  } | null> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            backlinks: number;
+            referring_domains: number;
+            dofollow: number;
+            rank: number;
+          }>;
+        }>;
+      }>("/backlinks/summary/live", "POST", [{
+        target: competitorDomain,
+        include_subdomains: true,
+      }]);
+
+      const result = response.tasks?.[0]?.result?.[0];
+      if (!result) return null;
+
+      return {
+        totalBacklinks: result.backlinks || 0,
+        referringDomains: result.referring_domains || 0,
+        dofollowLinks: result.dofollow || 0,
+        domainRank: result.rank || 0,
+      };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching competitor backlinks summary:`, error);
+      return null;
+    }
+  }
+
+  calculateBacklinkOpportunityScore(
+    domainAuthority: number,
+    isDofollow: boolean,
+    spamScore: number | null
+  ): number {
+    let score = 0;
+    
+    if (domainAuthority >= 80) score += 40;
+    else if (domainAuthority >= 60) score += 30;
+    else if (domainAuthority >= 40) score += 20;
+    else if (domainAuthority >= 20) score += 10;
+    else score += 5;
+    
+    if (isDofollow) score += 30;
+    else score += 10;
+    
+    if (spamScore !== null) {
+      if (spamScore <= 10) score += 30;
+      else if (spamScore <= 30) score += 20;
+      else if (spamScore <= 60) score += 10;
+      else score += 0;
+    } else {
+      score += 15;
+    }
+    
+    return Math.min(100, Math.max(0, score));
+  }
+
   static isConfigured(): boolean {
     return !!(process.env.DATAFORSEO_API_LOGIN && process.env.DATAFORSEO_API_PASSWORD);
   }

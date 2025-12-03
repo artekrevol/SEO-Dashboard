@@ -28,6 +28,7 @@ import {
   XCircle,
   ArrowUpRight,
   Shield,
+  AlertTriangle,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -43,11 +44,19 @@ interface Backlink {
   isLive: boolean;
   domainAuthority: number | null;
   pageAuthority: number | null;
+  spamScore: number | null;
   firstSeenAt: string;
   lastSeenAt: string;
   lostAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+function getSpamScoreBadge(score: number | null) {
+  if (score === null) return { label: "Unknown", variant: "secondary" as const, className: "", icon: null };
+  if (score <= 30) return { label: "Safe", variant: "secondary" as const, className: "bg-green-500/10 text-green-600", icon: CheckCircle };
+  if (score <= 60) return { label: "Review", variant: "secondary" as const, className: "bg-yellow-500/10 text-yellow-600", icon: AlertTriangle };
+  return { label: "Toxic", variant: "destructive" as const, className: "bg-red-500/10 text-red-600", icon: Shield };
 }
 
 interface BacklinkAggregations {
@@ -383,7 +392,7 @@ export function BacklinkDetailDrawer({
                           <CardContent className="py-3">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
                                   <span className="font-medium truncate" data-testid={`domain-${backlink.id}`}>
                                     {backlink.sourceDomain}
@@ -391,6 +400,20 @@ export function BacklinkDetailDrawer({
                                   {backlink.domainAuthority && (
                                     <Badge variant="outline" className="text-xs shrink-0">
                                       DA: {backlink.domainAuthority}
+                                    </Badge>
+                                  )}
+                                  {backlink.spamScore !== null && (
+                                    <Badge
+                                      variant={getSpamScoreBadge(backlink.spamScore).variant}
+                                      className={cn("text-xs shrink-0", getSpamScoreBadge(backlink.spamScore).className)}
+                                      data-testid={`spam-score-${backlink.id}`}
+                                    >
+                                      {(() => {
+                                        const spamBadge = getSpamScoreBadge(backlink.spamScore);
+                                        const IconComponent = spamBadge.icon;
+                                        return IconComponent ? <IconComponent className="h-3 w-3 mr-1" /> : null;
+                                      })()}
+                                      Spam: {backlink.spamScore}%
                                     </Badge>
                                   )}
                                 </div>

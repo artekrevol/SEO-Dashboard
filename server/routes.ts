@@ -1686,6 +1686,187 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/backlinks/spam-scores", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      const dataForSeoService = DataForSEOService.fromEnv();
+      if (!dataForSeoService) {
+        return res.status(503).json({ error: "DataForSEO API not configured" });
+      }
+      
+      const backlinks = await storage.getBacklinks(projectId);
+      const uniqueDomains = Array.from(new Set(backlinks.map(b => b.sourceDomain.toLowerCase())));
+      
+      console.log(`[API] Fetching spam scores for ${uniqueDomains.length} domains`);
+      const spamScoreMap = await dataForSeoService.getBulkSpamScores(uniqueDomains);
+      const updated = await storage.updateBacklinkSpamScores(projectId, spamScoreMap);
+      
+      res.json({ 
+        success: true, 
+        domainsChecked: uniqueDomains.length,
+        scoresFound: spamScoreMap.size,
+        backlinksUpdated: updated 
+      });
+    } catch (error) {
+      console.error("Error fetching spam scores:", error);
+      res.status(500).json({ error: "Failed to fetch spam scores" });
+    }
+  });
+
+  app.get("/api/competitor-backlinks", async (req, res) => {
+    try {
+      const { projectId, competitorDomain } = req.query;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const backlinks = await storage.getCompetitorBacklinks(
+        projectId as string,
+        competitorDomain as string | undefined
+      );
+      res.json(backlinks);
+    } catch (error) {
+      console.error("Error fetching competitor backlinks:", error);
+      res.status(500).json({ error: "Failed to fetch competitor backlinks" });
+    }
+  });
+
+  app.get("/api/competitor-backlinks/aggregations", async (req, res) => {
+    try {
+      const { projectId, competitorDomain } = req.query;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const aggregations = await storage.getCompetitorBacklinkAggregations(
+        projectId as string,
+        competitorDomain as string | undefined
+      );
+      res.json(aggregations);
+    } catch (error) {
+      console.error("Error fetching competitor backlink aggregations:", error);
+      res.status(500).json({ error: "Failed to fetch competitor backlink aggregations" });
+    }
+  });
+
+  app.get("/api/competitor-backlinks/by-domain", async (req, res) => {
+    try {
+      const { projectId, competitorDomain } = req.query;
+      if (!projectId || !competitorDomain) {
+        return res.status(400).json({ error: "projectId and competitorDomain are required" });
+      }
+      const domains = await storage.getCompetitorBacklinksByDomain(
+        projectId as string,
+        competitorDomain as string
+      );
+      res.json(domains);
+    } catch (error) {
+      console.error("Error fetching competitor backlinks by domain:", error);
+      res.status(500).json({ error: "Failed to fetch competitor backlinks by domain" });
+    }
+  });
+
+  app.get("/api/competitor-backlinks/opportunities", async (req, res) => {
+    try {
+      const { projectId, competitorDomain } = req.query;
+      if (!projectId || !competitorDomain) {
+        return res.status(400).json({ error: "projectId and competitorDomain are required" });
+      }
+      const opportunities = await storage.findLinkOpportunities(
+        projectId as string,
+        competitorDomain as string
+      );
+      res.json(opportunities);
+    } catch (error) {
+      console.error("Error finding link opportunities:", error);
+      res.status(500).json({ error: "Failed to find link opportunities" });
+    }
+  });
+
+  app.get("/api/competitor-backlinks/counts", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const counts = await storage.getCompetitorBacklinkCounts(projectId as string);
+      res.json(counts);
+    } catch (error) {
+      console.error("Error fetching competitor backlink counts:", error);
+      res.status(500).json({ error: "Failed to fetch competitor backlink counts" });
+    }
+  });
+
+  app.post("/api/competitor-backlinks/crawl", async (req, res) => {
+    try {
+      const { projectId, competitorDomain, limit = 100 } = req.body;
+      if (!projectId || !competitorDomain) {
+        return res.status(400).json({ error: "projectId and competitorDomain are required" });
+      }
+      
+      const dataForSeoService = DataForSEOService.fromEnv();
+      if (!dataForSeoService) {
+        return res.status(503).json({ error: "DataForSEO API not configured" });
+      }
+      
+      console.log(`[API] Starting competitor backlinks crawl for ${competitorDomain}`);
+      const { backlinks, totalCount } = await dataForSeoService.getCompetitorBacklinks(competitorDomain, limit);
+      
+      let inserted = 0;
+      for (const backlink of backlinks) {
+        await storage.upsertCompetitorBacklink(
+          projectId,
+          competitorDomain,
+          backlink.sourceUrl,
+          backlink.targetUrl,
+          {
+            sourceDomain: backlink.sourceDomain,
+            anchorText: backlink.anchorText,
+            linkType: backlink.linkType,
+            domainAuthority: backlink.domainAuthority,
+            pageAuthority: backlink.pageAuthority,
+          }
+        );
+        inserted++;
+      }
+      
+      const uniqueDomains = Array.from(new Set(backlinks.map(b => b.sourceDomain.toLowerCase())));
+      const spamScoreMap = await dataForSeoService.getBulkSpamScores(uniqueDomains);
+      
+      for (const backlink of backlinks) {
+        const spamScore = spamScoreMap.get(backlink.sourceDomain.toLowerCase());
+        if (spamScore !== undefined) {
+          const existing = await storage.getCompetitorBacklinks(projectId, competitorDomain);
+          const match = existing.find(b => b.sourceUrl === backlink.sourceUrl && b.targetUrl === backlink.targetUrl);
+          if (match) {
+            await storage.upsertCompetitorBacklink(
+              projectId,
+              competitorDomain,
+              match.sourceUrl,
+              match.targetUrl,
+              { spamScore }
+            );
+          }
+        }
+      }
+      
+      const opportunitiesUpdated = await storage.updateCompetitorBacklinkOpportunities(projectId, competitorDomain);
+      
+      res.json({ 
+        success: true, 
+        totalAvailable: totalCount,
+        backlinksProcessed: inserted,
+        spamScoresFound: spamScoreMap.size,
+        opportunitiesIdentified: opportunitiesUpdated
+      });
+    } catch (error) {
+      console.error("Error crawling competitor backlinks:", error);
+      res.status(500).json({ error: "Failed to crawl competitor backlinks" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;

@@ -398,6 +398,7 @@ export const backlinks = pgTable("backlinks", {
   isLive: boolean("is_live").default(true).notNull(),
   domainAuthority: integer("domain_authority"),
   pageAuthority: integer("page_authority"),
+  spamScore: integer("spam_score"),
   firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
   lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
   lostAt: timestamp("lost_at"),
@@ -409,6 +410,7 @@ export const backlinks = pgTable("backlinks", {
   sourceDomainIdx: index("backlinks_source_domain_idx").on(table.sourceDomain),
   isLiveIdx: index("backlinks_is_live_idx").on(table.isLive),
   firstSeenAtIdx: index("backlinks_first_seen_at_idx").on(table.firstSeenAt),
+  spamScoreIdx: index("backlinks_spam_score_idx").on(table.spamScore),
 }));
 
 export const backlinksRelations = relations(backlinks, ({ one }) => ({
@@ -426,6 +428,50 @@ export const insertBacklinkSchema = createInsertSchema(backlinks).omit({
 
 export type InsertBacklink = z.infer<typeof insertBacklinkSchema>;
 export type Backlink = typeof backlinks.$inferSelect;
+
+export const competitorBacklinks = pgTable("competitor_backlinks", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  competitorDomain: text("competitor_domain").notNull(),
+  targetUrl: text("target_url").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  sourceDomain: text("source_domain").notNull(),
+  anchorText: text("anchor_text"),
+  linkType: text("link_type").default("dofollow").notNull(),
+  isLive: boolean("is_live").default(true).notNull(),
+  domainAuthority: integer("domain_authority"),
+  pageAuthority: integer("page_authority"),
+  spamScore: integer("spam_score"),
+  isOpportunity: boolean("is_opportunity").default(false),
+  opportunityScore: numeric("opportunity_score", { precision: 5, scale: 2 }),
+  firstSeenAt: timestamp("first_seen_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  lostAt: timestamp("lost_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("competitor_backlinks_project_id_idx").on(table.projectId),
+  competitorDomainIdx: index("competitor_backlinks_competitor_domain_idx").on(table.competitorDomain),
+  sourceDomainIdx: index("competitor_backlinks_source_domain_idx").on(table.sourceDomain),
+  isOpportunityIdx: index("competitor_backlinks_is_opportunity_idx").on(table.isOpportunity),
+  domainAuthorityIdx: index("competitor_backlinks_domain_authority_idx").on(table.domainAuthority),
+}));
+
+export const competitorBacklinksRelations = relations(competitorBacklinks, ({ one }) => ({
+  project: one(projects, {
+    fields: [competitorBacklinks.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertCompetitorBacklinkSchema = createInsertSchema(competitorBacklinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertCompetitorBacklink = z.infer<typeof insertCompetitorBacklinkSchema>;
+export type CompetitorBacklink = typeof competitorBacklinks.$inferSelect;
 
 export const seoRecommendations = pgTable("seo_recommendations", {
   id: serial("id").primaryKey(),
@@ -556,7 +602,7 @@ export type Intent = z.infer<typeof intentEnum>;
 export const healthStatusEnum = z.enum(["healthy", "at_risk", "declining"]);
 export type HealthStatus = z.infer<typeof healthStatusEnum>;
 
-export const crawlTypeEnum = z.enum(["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks"]);
+export const crawlTypeEnum = z.enum(["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks", "competitor_backlinks"]);
 export type CrawlType = z.infer<typeof crawlTypeEnum>;
 
 export const backlinkTypeEnum = z.enum(["dofollow", "nofollow", "ugc", "sponsored"]);

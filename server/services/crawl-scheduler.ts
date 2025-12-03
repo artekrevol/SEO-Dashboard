@@ -16,7 +16,7 @@ interface CrawlRunResult {
   keywordsUpdated?: number;
 }
 
-type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery" | "backlinks";
+type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery" | "backlinks" | "competitor_backlinks";
 
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
@@ -79,6 +79,10 @@ export class CrawlSchedulerService {
 
         case "backlinks":
           result = await this.runBacklinksCrawl(schedule.projectId);
+          break;
+
+        case "competitor_backlinks":
+          result = await this.runCompetitorBacklinksCrawl(schedule.projectId);
           break;
 
         default:
@@ -327,6 +331,107 @@ export class CrawlSchedulerService {
     }
   }
 
+  async runCompetitorBacklinksCrawl(projectId: string): Promise<{ success: boolean; message: string; keywordsProcessed?: number }> {
+    try {
+      console.log(`[CrawlScheduler] Running competitor backlinks crawl for project ${projectId}`);
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return { success: false, message: "Project not found" };
+      }
+
+      const dataForSEOService = createDataForSEOService();
+      if (!dataForSEOService) {
+        console.warn("[CrawlScheduler] DataForSEO not configured, skipping competitor backlinks fetch");
+        return { success: false, message: "DataForSEO API not configured" };
+      }
+      
+      const competitorMetrics = await storage.getCompetitorMetrics(projectId);
+      const competitorDomains = competitorMetrics
+        .filter(cm => cm.competitorDomain)
+        .map(cm => cm.competitorDomain)
+        .slice(0, 5);
+      
+      if (competitorDomains.length === 0) {
+        return { success: true, message: "No competitors found to analyze backlinks" };
+      }
+      
+      let totalBacklinksIngested = 0;
+      let totalOpportunities = 0;
+      
+      for (const competitorDomain of competitorDomains) {
+        try {
+          console.log(`[CrawlScheduler] Fetching backlinks for competitor: ${competitorDomain}`);
+          
+          const { backlinks, totalCount } = await dataForSEOService.getCompetitorBacklinks(competitorDomain, 100);
+          
+          for (const backlink of backlinks) {
+            await storage.upsertCompetitorBacklink(
+              projectId,
+              competitorDomain,
+              backlink.sourceUrl,
+              backlink.targetUrl,
+              {
+                sourceDomain: backlink.sourceDomain,
+                anchorText: backlink.anchorText,
+                linkType: backlink.linkType,
+                domainAuthority: backlink.domainAuthority,
+                pageAuthority: backlink.pageAuthority,
+              }
+            );
+            totalBacklinksIngested++;
+          }
+          
+          const uniqueDomains = Array.from(new Set(backlinks.map(b => b.sourceDomain.toLowerCase())));
+          if (uniqueDomains.length > 0) {
+            const spamScoreMap = await dataForSEOService.getBulkSpamScores(uniqueDomains);
+            
+            const existingBacklinks = await storage.getCompetitorBacklinks(projectId, competitorDomain);
+            for (const existing of existingBacklinks) {
+              const spamScore = spamScoreMap.get(existing.sourceDomain.toLowerCase());
+              if (spamScore !== undefined) {
+                await storage.upsertCompetitorBacklink(
+                  projectId,
+                  competitorDomain,
+                  existing.sourceUrl,
+                  existing.targetUrl,
+                  { spamScore }
+                );
+              }
+            }
+          }
+          
+          const oppsUpdated = await storage.updateCompetitorBacklinkOpportunities(projectId, competitorDomain);
+          totalOpportunities += oppsUpdated;
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch (domainError) {
+          console.error(`[CrawlScheduler] Error fetching competitor backlinks for ${competitorDomain}:`, domainError);
+        }
+      }
+      
+      const stats = {
+        competitorsAnalyzed: competitorDomains.length,
+        totalBacklinksIngested,
+        totalOpportunities,
+      };
+      
+      console.log(`[CrawlScheduler] Competitor backlinks crawl completed:`, stats);
+      
+      return {
+        success: true,
+        message: `Competitor backlinks crawl completed. Analyzed ${competitorDomains.length} competitors. Ingested: ${totalBacklinksIngested}, Opportunities: ${totalOpportunities}.`,
+        keywordsProcessed: totalBacklinksIngested,
+      };
+    } catch (error) {
+      console.error("[CrawlScheduler] Competitor backlinks crawl error:", error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async createDefaultSchedulesForProject(projectId: string, domain: string): Promise<void> {
     const existingSchedules = await storage.getCrawlSchedules(projectId);
     
@@ -375,6 +480,16 @@ export class CrawlSchedulerService {
         daysOfWeek: [0],
         isActive: true,
         config: { checkLiveStatus: true },
+      },
+      {
+        projectId,
+        type: "competitor_backlinks",
+        url: `https://${domain}/competitor-backlinks/crawl`,
+        frequency: "biweekly",
+        scheduledTime: "12:00",
+        daysOfWeek: [1, 4],
+        isActive: true,
+        config: { limit: 100 },
       },
     ];
 
