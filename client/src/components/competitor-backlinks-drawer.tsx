@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Sheet,
   SheetContent,
@@ -214,9 +214,13 @@ export function CompetitorBacklinksDrawer({
 
   const [promotedDomains, setPromotedDomains] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    setPromotedDomains(new Set());
+  }, [projectId, competitorDomain]);
+
   const promoteMutation = useMutation({
     mutationFn: async (gap: GapAnalysisItem) => {
-      const res = await apiRequest("POST", "/api/recommendations/promote-gap", {
+      const res = await apiRequest("POST", "/api/competitor-backlinks/promote-gap", {
         projectId,
         sourceDomain: gap.sourceDomain,
         domainAuthority: gap.avgDomainAuthority,
