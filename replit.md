@@ -21,6 +21,7 @@ Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
 - **Competitor Backlinks Table**: Stores competitor backlink data with opportunity scoring (DA-weighted + link type bonus - spam penalty)
 - **CompetitorBacklinksDrawer**: Full-featured drawer with filter-aware derived stats, opportunity toggle ("All Links" / "Opportunities"), top opportunities list, link type breakdown, and spam distribution
 - **Competitor Integration**: Backlinks count column added to Competitors table with drawer integration for gap analysis
+- **Backlink Gap Analysis**: Compares competitor backlinks against project backlinks to identify domains linking to competitors but not to you. Priority scoring: DA≥40 + ≥2 competitors linking + spam≤30% = high priority. GET `/api/competitor-backlinks/gap-analysis` endpoint returns gaps sorted by priority with summary metrics
 
 ### Completed: PHASE 1 - Foundation ✅
 - **CSV/XLSX Export**: Reusable ExportButton component with export-utils.ts for all data tables
