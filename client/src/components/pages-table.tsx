@@ -27,6 +27,8 @@ import {
   FileCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ExportButton } from "@/components/export-button";
+import type { ExportColumn } from "@/lib/export-utils";
 
 interface PageData {
   url: string;
@@ -53,6 +55,26 @@ interface PagesTableProps {
   data: PageData[];
   isLoading?: boolean;
 }
+
+const pageExportColumns: ExportColumn<PageData>[] = [
+  { header: "URL", accessor: "url" },
+  { header: "Avg Position", accessor: "avgPosition", format: (v) => v > 0 ? Number(v).toFixed(1) : "-" },
+  { header: "Best Position", accessor: "bestPosition" },
+  { header: "Keywords in Top 10", accessor: "keywordsInTop10" },
+  { header: "Keywords in Top 3", accessor: "keywordsInTop3" },
+  { header: "Total Keywords", accessor: "totalKeywords" },
+  { header: "Ranked Keywords", accessor: "rankedKeywords" },
+  { header: "Backlinks", accessor: "backlinksCount" },
+  { header: "Referring Domains", accessor: "referringDomains" },
+  { header: "New Links (7d)", accessor: "newLinks7d" },
+  { header: "Lost Links (7d)", accessor: "lostLinks7d" },
+  { header: "Has Schema", accessor: (row) => row.hasSchema ? "Yes" : "No" },
+  { header: "Indexable", accessor: (row) => row.isIndexable ? "Yes" : "No" },
+  { header: "Duplicate Content", accessor: (row) => row.duplicateContent ? "Yes" : "No" },
+  { header: "CWV OK", accessor: (row) => row.coreWebVitalsOk ? "Yes" : "No" },
+  { header: "Tech Risk Score", accessor: "techRiskScore" },
+  { header: "Content Gap Score", accessor: "contentGapScore" },
+];
 
 export function PagesTable({ data, isLoading }: PagesTableProps) {
   const [search, setSearch] = useState("");
@@ -96,14 +118,22 @@ export function PagesTable({ data, isLoading }: PagesTableProps) {
     <Card data-testid="pages-table">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 pb-4">
         <CardTitle className="text-lg font-medium">Page Analytics</CardTitle>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search URLs..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-80 pl-9"
-            data-testid="input-page-search"
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search URLs..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-80 pl-9"
+              data-testid="input-page-search"
+            />
+          </div>
+          <ExportButton
+            data={filteredData}
+            columns={pageExportColumns}
+            filename="pages"
+            sheetName="Pages"
           />
         </div>
       </CardHeader>

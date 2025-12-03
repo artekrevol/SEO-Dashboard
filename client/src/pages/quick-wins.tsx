@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ExportButton } from "@/components/export-button";
+import type { ExportColumn } from "@/lib/export-utils";
 
 interface QuickWinKeyword {
   keywordId: number;
@@ -16,6 +18,18 @@ interface QuickWinKeyword {
   opportunityScore: number;
   targetUrl: string;
 }
+
+const quickWinExportColumns: ExportColumn<QuickWinKeyword>[] = [
+  { header: "Keyword", accessor: "keyword" },
+  { header: "Position", accessor: "currentPosition" },
+  { header: "Search Volume", accessor: "searchVolume" },
+  { header: "Difficulty", accessor: "difficulty", format: (v) => Math.round(v) },
+  { header: "Intent", accessor: "intent" },
+  { header: "Opportunity Score", accessor: "opportunityScore", format: (v) => Math.round(v) },
+  { header: "Cluster", accessor: "cluster" },
+  { header: "Location", accessor: "location" },
+  { header: "Target URL", accessor: "targetUrl" },
+];
 
 export function QuickWinsPage({ projectId }: { projectId: string }) {
   const { data: quickWins = [], isLoading } = useQuery<QuickWinKeyword[]>({
@@ -52,8 +66,14 @@ export function QuickWinsPage({ projectId }: { projectId: string }) {
       </p>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
           <CardTitle>{quickWins.length} opportunities found</CardTitle>
+          <ExportButton
+            data={quickWins}
+            columns={quickWinExportColumns}
+            filename="quick-wins"
+            sheetName="Quick Wins"
+          />
         </CardHeader>
         <CardContent>
           {quickWins.length === 0 ? (

@@ -31,6 +31,8 @@ import {
 } from "recharts";
 import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ExportButton } from "@/components/export-button";
+import type { ExportColumn } from "@/lib/export-utils";
 
 interface CompetitorData {
   competitorDomain: string;
@@ -62,6 +64,18 @@ interface CompetitorsTableProps {
   isLoading?: boolean;
   projectId?: string | null;
 }
+
+const competitorExportColumns: ExportColumn<CompetitorData>[] = [
+  { header: "Competitor Domain", accessor: "competitorDomain" },
+  { header: "Shared Keywords", accessor: "sharedKeywords" },
+  { header: "Above Us", accessor: "aboveUsKeywords" },
+  { header: "Their Avg Position", accessor: "avgTheirPosition", format: (v) => v ? Number(v).toFixed(1) : "-" },
+  { header: "Our Avg Position", accessor: "avgOurPosition", format: (v) => v ? Number(v).toFixed(1) : "-" },
+  { header: "Avg Gap", accessor: "avgGap", format: (v) => v ? Number(v).toFixed(1) : "-" },
+  { header: "Total Volume", accessor: "totalVolume" },
+  { header: "Pressure Index", accessor: "pressureIndex", format: (v) => Math.round(v) },
+  { header: "Traffic Threat", accessor: "trafficThreat" },
+];
 
 export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTableProps) {
   const [search, setSearch] = useState("");
@@ -196,14 +210,22 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
       <Card data-testid="competitors-table">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 pb-4">
           <CardTitle className="text-lg font-medium">Organic Search Competitors</CardTitle>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search competitors..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-64 pl-9"
-              data-testid="input-competitor-search"
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search competitors..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-64 pl-9"
+                data-testid="input-competitor-search"
+              />
+            </div>
+            <ExportButton
+              data={sortedData}
+              columns={competitorExportColumns}
+              filename="competitors"
+              sheetName="Competitors"
             />
           </div>
         </CardHeader>

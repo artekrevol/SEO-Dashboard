@@ -3,6 +3,20 @@
 ## Overview
 The Live SEO Command Center is a production-ready dashboard designed for TekRevol to provide comprehensive SEO analytics, keyword tracking, competitor analysis, and actionable recommendations. Its purpose is to transform into a full "SEO Operating System" with historical ranking, automated crawls, per-project strategies, and advanced scoring.
 
+## Transformation Project Plan
+**See:** `docs/SEO_TRANSFORMATION_PROJECT_PLAN.md` for the complete 6-phase transformation roadmap.
+
+### Current Phase: PHASE 1 - Foundation
+- CSV/XLSX Export on all tables
+- Historical Rankings Page (replace placeholder)
+- Per-Keyword Position History Charts
+- Settings Page (basic configuration)
+
+### Project Summary:
+- **Team Size:** 7 SEO team members managing 4 brands
+- **Total Estimated Savings:** ~643 hrs/month, ~$118K/year
+- **Total Development Time:** ~348 hours across 6 phases (16 weeks)
+
 ## User Preferences
 I prefer detailed explanations. Ask before making major changes. I want iterative development. I prefer simple language. I like functional programming.
 

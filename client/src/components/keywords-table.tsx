@@ -25,8 +25,11 @@ import {
 } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import { ArrowUp, ArrowDown, Minus, Search, ExternalLink, TrendingUp, Filter, X, ChevronDown } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Search, ExternalLink, TrendingUp, Filter, X, ChevronDown, History } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ExportButton } from "@/components/export-button";
+import { KeywordHistoryModal } from "@/components/keyword-history-modal";
+import type { ExportColumn } from "@/lib/export-utils";
 
 interface KeywordData {
   keywordId: number;
@@ -78,6 +81,19 @@ const positionBrackets = [
 type OpportunityPreset = "high" | "medium" | null;
 type DifficultyPreset = "easy" | "medium" | "hard" | null;
 
+const keywordExportColumns: ExportColumn<KeywordData>[] = [
+  { header: "Keyword", accessor: "keyword" },
+  { header: "Cluster", accessor: "cluster" },
+  { header: "Position", accessor: "currentPosition" },
+  { header: "Position Change", accessor: "positionDelta" },
+  { header: "Search Volume", accessor: "searchVolume" },
+  { header: "Difficulty", accessor: "difficulty", format: (v) => Math.round(v) },
+  { header: "Intent", accessor: "intent" },
+  { header: "Opportunity Score", accessor: "opportunityScore", format: (v) => Math.round(v) },
+  { header: "SERP Features", accessor: (row) => row.serpFeatures?.join(", ") || "" },
+  { header: "Target URL", accessor: "url" },
+];
+
 export function KeywordsTable({ data, isLoading, onFilteredDataChange }: KeywordsTableProps) {
   const [search, setSearch] = useState("");
   const [intentFilter, setIntentFilter] = useState<string>("all");
@@ -90,6 +106,7 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
   const [volumeMin, setVolumeMin] = useState<number>(0);
   const [opportunityPreset, setOpportunityPreset] = useState<OpportunityPreset>(null);
   const [difficultyPreset, setDifficultyPreset] = useState<DifficultyPreset>(null);
+  const [historyModalKeyword, setHistoryModalKeyword] = useState<{ id: number; name: string } | null>(null);
 
   const uniqueClusters = useMemo(() => {
     const clusters = new Set<string>();
@@ -353,6 +370,12 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
                 <SelectItem value="difficulty">Difficulty</SelectItem>
               </SelectContent>
             </Select>
+            <ExportButton
+              data={filteredData}
+              columns={keywordExportColumns}
+              filename="keywords"
+              sheetName="Keywords"
+            />
           </div>
         </div>
 
@@ -743,12 +766,13 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
                 <TableHead>Intent</TableHead>
                 <TableHead className="text-center">Opportunity</TableHead>
                 <TableHead>SERP Features</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center">
+                  <TableCell colSpan={9} className="h-32 text-center">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Search className="h-8 w-8" />
                       <p>No keywords match your filters</p>
@@ -858,6 +882,17 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
                         )}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setHistoryModalKeyword({ id: item.keywordId, name: item.keyword })}
+                        title="View position history"
+                        data-testid={`button-history-${item.keywordId}`}
+                      >
+                        <History className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -865,6 +900,13 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
           </Table>
         </div>
       </CardContent>
+
+      <KeywordHistoryModal
+        open={historyModalKeyword !== null}
+        onOpenChange={(open) => !open && setHistoryModalKeyword(null)}
+        keywordId={historyModalKeyword?.id ?? 0}
+        keywordName={historyModalKeyword?.name ?? ""}
+      />
     </Card>
   );
 }

@@ -1344,7 +1344,7 @@ export async function registerRoutes(
     }
   });
 
-  // Rankings History API
+  // Rankings History API - per keyword
   app.get("/api/rankings-history/:keywordId", async (req, res) => {
     try {
       const keywordId = parseInt(req.params.keywordId);
@@ -1354,6 +1354,190 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching rankings history:", error);
       res.status(500).json({ error: "Failed to fetch rankings history" });
+    }
+  });
+
+  // Rankings History API - project level with aggregations
+  app.get("/api/project-rankings-history", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      const history = await storage.getRankingsHistoryByProject(projectId, startDate, endDate);
+      
+      // Get keywords for enrichment
+      const keywords = await storage.getKeywords(projectId);
+      const keywordMap = new Map(keywords.map(k => [k.id, k]));
+      
+      // Enrich history with keyword details
+      const enrichedHistory = history.map(h => ({
+        ...h,
+        keyword: keywordMap.get(h.keywordId)?.keyword || 'Unknown',
+        cluster: keywordMap.get(h.keywordId)?.cluster || null,
+      }));
+      
+      // Calculate daily aggregations
+      const dailyAggregations = new Map<string, { 
+        date: string; 
+        avgPosition: number; 
+        totalKeywords: number;
+        top3: number;
+        top10: number;
+        top20: number;
+        top100: number;
+        notRanking: number;
+      }>();
+      
+      for (const item of history) {
+        const date = item.date;
+        if (!dailyAggregations.has(date)) {
+          dailyAggregations.set(date, {
+            date,
+            avgPosition: 0,
+            totalKeywords: 0,
+            top3: 0,
+            top10: 0,
+            top20: 0,
+            top100: 0,
+            notRanking: 0,
+          });
+        }
+        
+        const agg = dailyAggregations.get(date)!;
+        agg.totalKeywords++;
+        
+        if (item.position !== null && item.position > 0) {
+          agg.avgPosition += item.position;
+          if (item.position <= 3) agg.top3++;
+          else if (item.position <= 10) agg.top10++;
+          else if (item.position <= 20) agg.top20++;
+          else if (item.position <= 100) agg.top100++;
+        } else {
+          agg.notRanking++;
+        }
+      }
+      
+      // Finalize averages
+      const dailyStats = Array.from(dailyAggregations.values()).map(agg => ({
+        ...agg,
+        avgPosition: agg.totalKeywords > agg.notRanking 
+          ? Number((agg.avgPosition / (agg.totalKeywords - agg.notRanking)).toFixed(1))
+          : null,
+      })).sort((a, b) => a.date.localeCompare(b.date));
+      
+      res.json({
+        history: enrichedHistory,
+        dailyStats,
+        totalRecords: history.length,
+      });
+    } catch (error) {
+      console.error("Error fetching project rankings history:", error);
+      res.status(500).json({ error: "Failed to fetch project rankings history" });
+    }
+  });
+
+  // Settings API - Quick Wins
+  app.get("/api/settings/quick-wins", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const settings = await storage.getSettingsQuickWins(projectId);
+      if (!settings) {
+        return res.json({
+          projectId,
+          minPosition: 6,
+          maxPosition: 20,
+          minVolume: 50,
+          maxDifficulty: 70,
+          validIntents: ["commercial", "transactional"],
+          enabled: true,
+        });
+      }
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching quick wins settings:", error);
+      res.status(500).json({ error: "Failed to fetch quick wins settings" });
+    }
+  });
+
+  app.post("/api/settings/quick-wins", async (req, res) => {
+    try {
+      const projectId = req.body.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      const { minPosition, maxPosition, minVolume, maxDifficulty, validIntents, enabled } = req.body;
+      
+      const sanitizedSettings: Record<string, unknown> = {};
+      if (typeof minPosition === 'number') sanitizedSettings.minPosition = Math.max(1, minPosition);
+      if (typeof maxPosition === 'number') sanitizedSettings.maxPosition = Math.max(1, maxPosition);
+      if (typeof minVolume === 'number') sanitizedSettings.minVolume = Math.max(0, minVolume);
+      if (typeof maxDifficulty === 'number') sanitizedSettings.maxDifficulty = Math.min(100, Math.max(0, maxDifficulty));
+      if (Array.isArray(validIntents)) sanitizedSettings.validIntents = validIntents.filter((i: unknown) => typeof i === 'string');
+      if (typeof enabled === 'boolean') sanitizedSettings.enabled = enabled;
+      
+      const settings = await storage.upsertSettingsQuickWins(projectId, sanitizedSettings);
+      res.json(settings);
+    } catch (error) {
+      console.error("Error saving quick wins settings:", error);
+      res.status(500).json({ error: "Failed to save quick wins settings" });
+    }
+  });
+
+  // Settings API - Falling Stars
+  app.get("/api/settings/falling-stars", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const settings = await storage.getSettingsFallingStars(projectId);
+      if (!settings) {
+        return res.json({
+          projectId,
+          windowDays: 7,
+          minDropPositions: 5,
+          minPreviousPosition: 10,
+          minVolume: 0,
+          enabled: true,
+        });
+      }
+      res.json(settings);
+    } catch (error) {
+      console.error("Error fetching falling stars settings:", error);
+      res.status(500).json({ error: "Failed to fetch falling stars settings" });
+    }
+  });
+
+  app.post("/api/settings/falling-stars", async (req, res) => {
+    try {
+      const projectId = req.body.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      const { windowDays, minDropPositions, minPreviousPosition, minVolume, enabled } = req.body;
+      
+      const sanitizedSettings: Record<string, unknown> = {};
+      if (typeof windowDays === 'number') sanitizedSettings.windowDays = Math.min(30, Math.max(1, windowDays));
+      if (typeof minDropPositions === 'number') sanitizedSettings.minDropPositions = Math.max(1, minDropPositions);
+      if (typeof minPreviousPosition === 'number') sanitizedSettings.minPreviousPosition = Math.max(1, minPreviousPosition);
+      if (typeof minVolume === 'number') sanitizedSettings.minVolume = Math.max(0, minVolume);
+      if (typeof enabled === 'boolean') sanitizedSettings.enabled = enabled;
+      
+      const settings = await storage.upsertSettingsFallingStars(projectId, sanitizedSettings);
+      res.json(settings);
+    } catch (error) {
+      console.error("Error saving falling stars settings:", error);
+      res.status(500).json({ error: "Failed to save falling stars settings" });
     }
   });
 

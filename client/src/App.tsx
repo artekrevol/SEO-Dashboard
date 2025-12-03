@@ -19,6 +19,8 @@ import { DataManagementPage } from "@/pages/data-management";
 import { ScheduledCrawlsPage } from "@/pages/scheduled-crawls";
 import { QuickWinsPage } from "@/pages/quick-wins";
 import { FallingStarsPage } from "@/pages/falling-stars";
+import { RankingsPage } from "@/pages/rankings";
+import { SettingsPage } from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -130,14 +132,7 @@ function AppContent() {
                 <FallingStarsPage projectId={selectedProjectId || ""} />
               </Route>
               <Route path="/rankings">
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center">
-                    <h2 className="text-xl font-semibold">Rankings</h2>
-                    <p className="mt-2 text-muted-foreground">
-                      Historical rank tracking coming soon.
-                    </p>
-                  </div>
-                </div>
+                <RankingsPage projectId={selectedProjectId} />
               </Route>
               <Route path="/reports">
                 <div className="flex h-full items-center justify-center">
@@ -150,14 +145,7 @@ function AppContent() {
                 </div>
               </Route>
               <Route path="/settings">
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center">
-                    <h2 className="text-xl font-semibold">Settings</h2>
-                    <p className="mt-2 text-muted-foreground">
-                      Project and API settings coming soon.
-                    </p>
-                  </div>
-                </div>
+                <SettingsPage projectId={selectedProjectId} />
               </Route>
               <Route component={NotFound} />
             </Switch>

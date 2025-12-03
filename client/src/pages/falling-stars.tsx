@@ -3,6 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TrendingDown, AlertTriangle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ExportButton } from "@/components/export-button";
+import type { ExportColumn } from "@/lib/export-utils";
 
 interface FallingStarKeyword {
   keywordId: number;
@@ -17,6 +19,19 @@ interface FallingStarKeyword {
   targetUrl: string;
   isCoreKeyword: boolean;
 }
+
+const fallingStarExportColumns: ExportColumn<FallingStarKeyword>[] = [
+  { header: "Keyword", accessor: "keyword" },
+  { header: "Current Position", accessor: "currentPosition" },
+  { header: "Position Drop", accessor: "positionDelta" },
+  { header: "Search Volume", accessor: "searchVolume" },
+  { header: "Difficulty", accessor: "difficulty", format: (v) => Math.round(v) },
+  { header: "Intent", accessor: "intent" },
+  { header: "Core Keyword", accessor: (row) => row.isCoreKeyword ? "Yes" : "No" },
+  { header: "Cluster", accessor: "cluster" },
+  { header: "Location", accessor: "location" },
+  { header: "Target URL", accessor: "targetUrl" },
+];
 
 export function FallingStarsPage({ projectId }: { projectId: string }) {
   const { data: fallingStars = [], isLoading } = useQuery<FallingStarKeyword[]>({
@@ -53,11 +68,17 @@ export function FallingStarsPage({ projectId }: { projectId: string }) {
       </p>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
           <CardTitle className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-red-600" />
             {fallingStars.length} keywords at risk
           </CardTitle>
+          <ExportButton
+            data={fallingStars}
+            columns={fallingStarExportColumns}
+            filename="falling-stars"
+            sheetName="Falling Stars"
+          />
         </CardHeader>
         <CardContent>
           {fallingStars.length === 0 ? (
