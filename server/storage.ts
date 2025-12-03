@@ -1520,12 +1520,17 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => b.liveLinks - a.liveLinks);
   }
 
-  async updateBacklinkSpamScores(projectId: string, spamScoreMap: Map<string, number>): Promise<number> {
+  async updateBacklinkSpamScores(projectId: string, spamScoreMap: Map<string, number>, targetUrl?: string): Promise<number> {
     let updated = 0;
+    let conditions = [eq(backlinks.projectId, projectId)];
+    if (targetUrl) {
+      conditions.push(eq(backlinks.targetUrl, targetUrl));
+    }
+    
     const allBacklinks = await db
       .select()
       .from(backlinks)
-      .where(eq(backlinks.projectId, projectId));
+      .where(and(...conditions));
     
     for (const backlink of allBacklinks) {
       const spamScore = spamScoreMap.get(backlink.sourceDomain.toLowerCase());

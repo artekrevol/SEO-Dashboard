@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   Sheet,
@@ -29,9 +29,13 @@ import {
   ArrowUpRight,
   Shield,
   AlertTriangle,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface Backlink {
   id: number;
@@ -113,8 +117,33 @@ export function BacklinkDetailDrawer({
   const [searchQuery, setSearchQuery] = useState("");
   const [linkTypeFilter, setLinkTypeFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "live" | "lost">("all");
+  const { toast } = useToast();
 
-  const { data: backlinks = [], isLoading: isLoadingBacklinks } = useQuery<Backlink[]>({
+  const spamScoreMutation = useMutation({
+    mutationFn: async () => {
+      const payload: { projectId: string; targetUrl?: string } = { projectId };
+      if (targetUrl) payload.targetUrl = targetUrl;
+      const res = await apiRequest("POST", "/api/backlinks/spam-scores", payload);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/backlinks", projectId, targetUrl] });
+      queryClient.invalidateQueries({ queryKey: ["/api/backlinks/aggregations", projectId, targetUrl] });
+      toast({
+        title: "Spam scores fetched",
+        description: `Updated ${data.updated} backlinks with spam scores`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error fetching spam scores",
+        description: error instanceof Error ? error.message : "Failed to fetch spam scores",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const { data: backlinks = [], isLoading: isLoadingBacklinks, refetch: refetchBacklinks } = useQuery<Backlink[]>({
     queryKey: ["/api/backlinks", projectId, targetUrl],
     queryFn: async () => {
       const params = new URLSearchParams({ projectId });
@@ -202,11 +231,27 @@ export function BacklinkDetailDrawer({
             </div>
           ) : (
             <Tabs defaultValue="overview" className="flex flex-col h-full">
-              <TabsList className="mx-4 mt-4 shrink-0" data-testid="tabs-list">
-                <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-                <TabsTrigger value="all" data-testid="tab-all">All Links ({backlinks.length})</TabsTrigger>
-                <TabsTrigger value="domains" data-testid="tab-domains">By Domain ({domainGroups.length})</TabsTrigger>
-              </TabsList>
+              <div className="flex items-center justify-between gap-2 mx-4 mt-4">
+                <TabsList className="shrink-0" data-testid="tabs-list">
+                  <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+                  <TabsTrigger value="all" data-testid="tab-all">All Links ({backlinks.length})</TabsTrigger>
+                  <TabsTrigger value="domains" data-testid="tab-domains">By Domain ({domainGroups.length})</TabsTrigger>
+                </TabsList>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => spamScoreMutation.mutate()}
+                  disabled={spamScoreMutation.isPending || backlinks.length === 0}
+                  data-testid="button-fetch-spam-scores"
+                >
+                  {spamScoreMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <Shield className="h-4 w-4 mr-1" />
+                  )}
+                  {spamScoreMutation.isPending ? "Fetching..." : "Fetch Spam Scores"}
+                </Button>
+              </div>
 
               <TabsContent value="overview" className="flex-1 overflow-auto mt-4 px-4">
                 <div className="space-y-6">
@@ -456,8 +501,8 @@ export function BacklinkDetailDrawer({
                   </div>
                 </div>
 
-                <ScrollArea className="flex-1">
-                  <div className="space-y-3">
+                <ScrollArea className="flex-1 w-full">
+                  <div className="space-y-3 pr-4">
                     {filteredBacklinks.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-backlinks">
                         {backlinks.length === 0
@@ -572,8 +617,8 @@ export function BacklinkDetailDrawer({
               </TabsContent>
 
               <TabsContent value="domains" className="flex-1 overflow-hidden flex flex-col mt-4 px-4 pb-4">
-                <ScrollArea className="flex-1">
-                  <div className="space-y-3">
+                <ScrollArea className="flex-1 w-full">
+                  <div className="space-y-3 pr-4">
                     {domainGroups.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-domains">
                         No referring domains found.

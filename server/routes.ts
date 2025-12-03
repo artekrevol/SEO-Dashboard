@@ -1688,7 +1688,7 @@ export async function registerRoutes(
 
   app.post("/api/backlinks/spam-scores", async (req, res) => {
     try {
-      const { projectId } = req.body;
+      const { projectId, targetUrl } = req.body;
       if (!projectId) {
         return res.status(400).json({ error: "projectId is required" });
       }
@@ -1698,18 +1698,18 @@ export async function registerRoutes(
         return res.status(503).json({ error: "DataForSEO API not configured" });
       }
       
-      const backlinks = await storage.getBacklinks(projectId);
+      const backlinks = await storage.getBacklinks(projectId, targetUrl);
       const uniqueDomains = Array.from(new Set(backlinks.map(b => b.sourceDomain.toLowerCase())));
       
-      console.log(`[API] Fetching spam scores for ${uniqueDomains.length} domains`);
+      console.log(`[API] Fetching spam scores for ${uniqueDomains.length} domains${targetUrl ? ` (page: ${targetUrl})` : ''}`);
       const spamScoreMap = await dataForSeoService.getBulkSpamScores(uniqueDomains);
-      const updated = await storage.updateBacklinkSpamScores(projectId, spamScoreMap);
+      const updated = await storage.updateBacklinkSpamScores(projectId, spamScoreMap, targetUrl);
       
       res.json({ 
         success: true, 
         domainsChecked: uniqueDomains.length,
         scoresFound: spamScoreMap.size,
-        backlinksUpdated: updated 
+        updated 
       });
     } catch (error) {
       console.error("Error fetching spam scores:", error);
