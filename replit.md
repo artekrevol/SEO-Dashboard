@@ -10,13 +10,17 @@ The Live SEO Command Center is a production-ready dashboard designed for TekRevo
 Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
 
 **Completed Features:**
-- **Backlinks Database Table**: Stores referring domain, URL, anchor text, link type (dofollow/nofollow), domain authority, first/last seen dates, and lost status
-- **Backlink Detail Drawer**: Sheet component showing backlink overview (total, live, lost, new counts), top anchor texts, link type breakdown, and individual backlink details with filtering
+- **Backlinks Database Table**: Stores referring domain, URL, anchor text, link type (dofollow/nofollow), domain authority, first/last seen dates, lost status, and spam score
+- **Spam Score Detection**: Bulk spam score lookup via DataForSEO `/v3/backlinks/bulk_spam_score/live` endpoint with color-coded indicators (Safe ≤30%, Review 31-60%, Toxic >60%)
+- **Backlink Detail Drawer**: Sheet component showing backlink overview (total, live, lost, new counts), top anchor texts, link type breakdown, spam distribution, and individual backlink details with filtering
 - **Backlinks Crawl Type**: Added to scheduled crawls system with weekly auto-verification (Sundays at 11:00 AM)
 - **Pages Integration**: Clickable backlinks count in Pages table opens drawer with filtered results for that page
 - **DataForSEO Backlinks API Integration**: Live discovery of new backlinks using `/backlinks/backlinks/live` endpoint
 - **Link Status Tracking**: Automatic detection of lost backlinks during crawls
 - **Manual Crawl Trigger**: POST `/api/backlinks/crawl` endpoint for on-demand backlink fetching
+- **Competitor Backlinks Table**: Stores competitor backlink data with opportunity scoring (DA-weighted + link type bonus - spam penalty)
+- **CompetitorBacklinksDrawer**: Full-featured drawer with filter-aware derived stats, opportunity toggle ("All Links" / "Opportunities"), top opportunities list, link type breakdown, and spam distribution
+- **Competitor Integration**: Backlinks count column added to Competitors table with drawer integration for gap analysis
 
 ### Completed: PHASE 1 - Foundation ✅
 - **CSV/XLSX Export**: Reusable ExportButton component with export-utils.ts for all data tables
