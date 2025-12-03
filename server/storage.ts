@@ -1916,6 +1916,135 @@ export class DatabaseStorage implements IStorage {
     
     return countsMap;
   }
+
+  async getBacklinkGapAnalysis(projectId: string, competitorDomain?: string): Promise<{
+    gaps: {
+      sourceDomain: string;
+      competitorCount: number;
+      competitors: string[];
+      avgDomainAuthority: number;
+      avgSpamScore: number | null;
+      bestOpportunityScore: number;
+      linkType: string;
+      isHighPriority: boolean;
+    }[];
+    summary: {
+      totalGaps: number;
+      highPriorityGaps: number;
+      avgGapDA: number;
+      ourBacklinkDomains: number;
+      competitorBacklinkDomains: number;
+    };
+  }> {
+    const ourDomains = new Set<string>();
+    const allOurBacklinks = await db
+      .select()
+      .from(backlinks)
+      .where(and(eq(backlinks.projectId, projectId), eq(backlinks.isLive, true)));
+    
+    allOurBacklinks.forEach(b => ourDomains.add(b.sourceDomain.toLowerCase()));
+    
+    let conditions = [
+      eq(competitorBacklinks.projectId, projectId),
+      eq(competitorBacklinks.isLive, true)
+    ];
+    if (competitorDomain) {
+      conditions.push(eq(competitorBacklinks.competitorDomain, competitorDomain));
+    }
+    
+    const allCompetitorBacklinks = await db
+      .select()
+      .from(competitorBacklinks)
+      .where(and(...conditions));
+    
+    const competitorDomainSet = new Set(allCompetitorBacklinks.map(b => b.sourceDomain.toLowerCase()));
+    
+    const gapMap = new Map<string, {
+      sourceDomain: string;
+      competitors: Set<string>;
+      daSum: number;
+      daCount: number;
+      spamSum: number;
+      spamCount: number;
+      bestOpportunityScore: number;
+      linkTypes: Map<string, number>;
+    }>();
+    
+    allCompetitorBacklinks.forEach(b => {
+      const domain = b.sourceDomain.toLowerCase();
+      if (ourDomains.has(domain)) return;
+      
+      const existing = gapMap.get(domain);
+      const oppScore = Number(b.opportunityScore) || 0;
+      
+      if (existing) {
+        existing.competitors.add(b.competitorDomain);
+        if (b.domainAuthority) {
+          existing.daSum += b.domainAuthority;
+          existing.daCount++;
+        }
+        if (b.spamScore !== null) {
+          existing.spamSum += b.spamScore;
+          existing.spamCount++;
+        }
+        if (oppScore > existing.bestOpportunityScore) {
+          existing.bestOpportunityScore = oppScore;
+        }
+        existing.linkTypes.set(b.linkType, (existing.linkTypes.get(b.linkType) || 0) + 1);
+      } else {
+        const linkTypes = new Map<string, number>();
+        linkTypes.set(b.linkType, 1);
+        gapMap.set(domain, {
+          sourceDomain: domain,
+          competitors: new Set([b.competitorDomain]),
+          daSum: b.domainAuthority || 0,
+          daCount: b.domainAuthority ? 1 : 0,
+          spamSum: b.spamScore || 0,
+          spamCount: b.spamScore !== null ? 1 : 0,
+          bestOpportunityScore: oppScore,
+          linkTypes,
+        });
+      }
+    });
+    
+    const gaps = Array.from(gapMap.values())
+      .map(g => {
+        const avgDA = g.daCount > 0 ? Math.round(g.daSum / g.daCount) : 0;
+        const avgSpam = g.spamCount > 0 ? Math.round(g.spamSum / g.spamCount) : null;
+        const dominantLinkType = Array.from(g.linkTypes.entries())
+          .sort((a, b) => b[1] - a[1])[0]?.[0] || 'dofollow';
+        
+        return {
+          sourceDomain: g.sourceDomain,
+          competitorCount: g.competitors.size,
+          competitors: Array.from(g.competitors),
+          avgDomainAuthority: avgDA,
+          avgSpamScore: avgSpam,
+          bestOpportunityScore: g.bestOpportunityScore,
+          linkType: dominantLinkType,
+          isHighPriority: avgDA >= 40 && g.competitors.size >= 2 && (avgSpam === null || avgSpam <= 30),
+        };
+      })
+      .sort((a, b) => {
+        if (a.isHighPriority !== b.isHighPriority) return a.isHighPriority ? -1 : 1;
+        if (a.competitorCount !== b.competitorCount) return b.competitorCount - a.competitorCount;
+        return b.avgDomainAuthority - a.avgDomainAuthority;
+      });
+    
+    const highPriorityGaps = gaps.filter(g => g.isHighPriority);
+    const daValues = gaps.filter(g => g.avgDomainAuthority > 0).map(g => g.avgDomainAuthority);
+    
+    return {
+      gaps,
+      summary: {
+        totalGaps: gaps.length,
+        highPriorityGaps: highPriorityGaps.length,
+        avgGapDA: daValues.length > 0 ? Math.round(daValues.reduce((a, b) => a + b, 0) / daValues.length) : 0,
+        ourBacklinkDomains: ourDomains.size,
+        competitorBacklinkDomains: competitorDomainSet.size,
+      },
+    };
+  }
 }
 
 export const storage = new DatabaseStorage();

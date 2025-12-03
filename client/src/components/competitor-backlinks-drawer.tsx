@@ -73,6 +73,28 @@ interface DomainGroup {
   avgSpamScore: number | null;
 }
 
+interface GapAnalysisItem {
+  sourceDomain: string;
+  competitorCount: number;
+  competitors: string[];
+  avgDomainAuthority: number;
+  avgSpamScore: number | null;
+  bestOpportunityScore: number;
+  linkType: string;
+  isHighPriority: boolean;
+}
+
+interface GapAnalysis {
+  gaps: GapAnalysisItem[];
+  summary: {
+    totalGaps: number;
+    highPriorityGaps: number;
+    avgGapDA: number;
+    ourBacklinkDomains: number;
+    competitorBacklinkDomains: number;
+  };
+}
+
 interface CompetitorBacklinksDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -152,6 +174,17 @@ export function CompetitorBacklinksDrawer({
     enabled: open && !!projectId && !!competitorDomain,
   });
 
+  const { data: gapAnalysis, isLoading: isLoadingGaps } = useQuery<GapAnalysis>({
+    queryKey: ["/api/competitor-backlinks/gap-analysis", projectId, competitorDomain],
+    queryFn: async () => {
+      const params = new URLSearchParams({ projectId, competitorDomain });
+      const res = await fetch(`/api/competitor-backlinks/gap-analysis?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch gap analysis");
+      return res.json();
+    },
+    enabled: open && !!projectId && !!competitorDomain,
+  });
+
   const crawlMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/competitor-backlinks/crawl", {
@@ -192,7 +225,7 @@ export function CompetitorBacklinksDrawer({
     });
   }, [backlinks, searchQuery, opportunityFilter]);
 
-  const isLoading = isLoadingBacklinks || isLoadingAggregations || isLoadingDomains;
+  const isLoading = isLoadingBacklinks || isLoadingAggregations || isLoadingDomains || isLoadingGaps;
   const [overviewFilter, setOverviewFilter] = useState<"all" | "opportunities">("all");
 
   const derivedStats = useMemo(() => {
@@ -294,6 +327,9 @@ export function CompetitorBacklinksDrawer({
               <div className="flex items-center justify-between mx-4 mt-4">
                 <TabsList data-testid="competitor-tabs-list">
                   <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+                  <TabsTrigger value="gap" data-testid="tab-gap" className="text-orange-600">
+                    Gap ({gapAnalysis?.summary.totalGaps || 0})
+                  </TabsTrigger>
                   <TabsTrigger value="opportunities" data-testid="tab-opportunities">
                     Opportunities ({opportunityBacklinks.length})
                   </TabsTrigger>
@@ -514,6 +550,163 @@ export function CompetitorBacklinksDrawer({
                     </Card>
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="gap" className="flex-1 overflow-hidden mt-4 px-4">
+                <ScrollArea className="h-full">
+                  <div className="space-y-4 pb-4">
+                    {gapAnalysis?.summary && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <Card className="border-orange-500/30 bg-orange-500/5">
+                          <CardContent className="pt-4">
+                            <div className="flex items-center gap-2 text-orange-600 mb-1">
+                              <Target className="h-4 w-4" />
+                              <span className="text-xs uppercase tracking-wider">Gap Domains</span>
+                            </div>
+                            <div className="text-2xl font-bold text-orange-600" data-testid="stat-gap-total">
+                              {gapAnalysis.summary.totalGaps}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card className="border-green-500/30 bg-green-500/5">
+                          <CardContent className="pt-4">
+                            <div className="flex items-center gap-2 text-green-600 mb-1">
+                              <Star className="h-4 w-4" />
+                              <span className="text-xs uppercase tracking-wider">High Priority</span>
+                            </div>
+                            <div className="text-2xl font-bold text-green-600" data-testid="stat-high-priority">
+                              {gapAnalysis.summary.highPriorityGaps}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-4">
+                            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                              <TrendingUp className="h-4 w-4" />
+                              <span className="text-xs uppercase tracking-wider">Avg Gap DA</span>
+                            </div>
+                            <div className="text-2xl font-bold" data-testid="stat-gap-da">
+                              {gapAnalysis.summary.avgGapDA}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-4">
+                            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                              <Globe className="h-4 w-4" />
+                              <span className="text-xs uppercase tracking-wider">Our Domains</span>
+                            </div>
+                            <div className="text-2xl font-bold" data-testid="stat-our-domains">
+                              {gapAnalysis.summary.ourBacklinkDomains}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
+
+                    <div className="text-sm text-muted-foreground bg-orange-500/10 rounded-md p-3">
+                      <span className="font-medium text-orange-600">Gap Analysis:</span> These are domains that link to <span className="font-mono text-xs">{competitorDomain}</span> but don't link to you. High priority gaps have DA 40+ and link to multiple competitors.
+                    </div>
+
+                    {gapAnalysis?.gaps.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No gaps found</p>
+                        <p className="text-xs mt-1">
+                          All competitor backlink domains also link to you, or no competitor backlinks tracked yet
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {gapAnalysis?.gaps.slice(0, 50).map((gap, i) => (
+                          <Card 
+                            key={i} 
+                            className={cn(
+                              gap.isHighPriority && "border-green-500/30 bg-green-500/5"
+                            )} 
+                            data-testid={`gap-card-${i}`}
+                          >
+                            <CardContent className="pt-4">
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    {gap.isHighPriority && (
+                                      <Star className="h-4 w-4 text-green-600 shrink-0" />
+                                    )}
+                                    <span className="font-medium text-sm truncate" title={gap.sourceDomain}>
+                                      {gap.sourceDomain}
+                                    </span>
+                                    <a
+                                      href={`https://${gap.sourceDomain}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-muted-foreground hover:text-foreground shrink-0"
+                                    >
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Links to {gap.competitorCount} competitor{gap.competitorCount > 1 ? 's' : ''}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-2">
+                                  <Badge variant="secondary" className="text-xs">
+                                    DA {gap.avgDomainAuthority}
+                                  </Badge>
+                                  <Badge 
+                                    variant="secondary" 
+                                    className={cn(
+                                      "text-xs",
+                                      gap.linkType === "dofollow" 
+                                        ? "bg-green-500/10 text-green-600" 
+                                        : "bg-muted"
+                                    )}
+                                  >
+                                    {gap.linkType}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex flex-wrap gap-1">
+                                  {gap.competitors.slice(0, 3).map((comp, j) => (
+                                    <Badge key={j} variant="outline" className="text-xs font-mono">
+                                      {comp.length > 20 ? comp.slice(0, 20) + '...' : comp}
+                                    </Badge>
+                                  ))}
+                                  {gap.competitors.length > 3 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{gap.competitors.length - 3} more
+                                    </Badge>
+                                  )}
+                                </div>
+                                {gap.avgSpamScore !== null && (
+                                  <Badge 
+                                    variant="secondary" 
+                                    className={cn(
+                                      "text-xs",
+                                      gap.avgSpamScore <= 30 
+                                        ? "bg-green-500/10 text-green-600" 
+                                        : gap.avgSpamScore <= 60 
+                                          ? "bg-yellow-500/10 text-yellow-600" 
+                                          : "bg-red-500/10 text-red-600"
+                                    )}
+                                  >
+                                    Spam {gap.avgSpamScore}%
+                                  </Badge>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                        {(gapAnalysis?.gaps.length || 0) > 50 && (
+                          <p className="text-xs text-muted-foreground text-center">
+                            Showing top 50 of {gapAnalysis?.gaps.length} gap opportunities
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
               </TabsContent>
 
               <TabsContent value="opportunities" className="flex-1 overflow-hidden mt-4 px-4">

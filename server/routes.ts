@@ -1832,6 +1832,23 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/competitor-backlinks/gap-analysis", async (req, res) => {
+    try {
+      const { projectId, competitorDomain } = req.query;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const analysis = await storage.getBacklinkGapAnalysis(
+        projectId as string,
+        competitorDomain as string | undefined
+      );
+      res.json(analysis);
+    } catch (error) {
+      console.error("Error getting backlink gap analysis:", error);
+      res.status(500).json({ error: "Failed to get backlink gap analysis" });
+    }
+  });
+
   app.post("/api/competitor-backlinks/crawl", async (req, res) => {
     try {
       const { projectId, competitorDomain, limit = 100 } = req.body;
