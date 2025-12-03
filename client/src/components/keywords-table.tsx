@@ -43,6 +43,9 @@ interface KeywordData {
   opportunityScore: number;
   serpFeatures: string[];
   url: string;
+  priority?: string;
+  location?: string;
+  locationId?: string;
 }
 
 interface KeywordsTableProps {
@@ -56,6 +59,18 @@ const intentColors: Record<string, string> = {
   commercial: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   transactional: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   navigational: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+};
+
+const priorityColors: Record<string, string> = {
+  P1: "bg-red-500/10 text-red-600 dark:text-red-400",
+  P2: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  P3: "bg-slate-500/10 text-slate-600 dark:text-slate-400",
+};
+
+const priorityLabels: Record<string, string> = {
+  P1: "High Priority",
+  P2: "Medium Priority",
+  P3: "Low Priority",
 };
 
 const serpFeatureLabels: Record<string, string> = {
@@ -84,6 +99,8 @@ type DifficultyPreset = "easy" | "medium" | "hard" | null;
 const keywordExportColumns: ExportColumn<KeywordData>[] = [
   { header: "Keyword", accessor: "keyword" },
   { header: "Cluster", accessor: "cluster" },
+  { header: "Location", accessor: "location" },
+  { header: "Priority", accessor: "priority" },
   { header: "Position", accessor: "currentPosition" },
   { header: "Position Change", accessor: "positionDelta" },
   { header: "Search Volume", accessor: "searchVolume" },
@@ -101,6 +118,8 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
   const [selectedSerpFeatures, setSelectedSerpFeatures] = useState<string[]>([]);
   const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [selectedPriorities, setSelectedPriorities] = useState<string[]>([]);
   const [opportunityRange, setOpportunityRange] = useState<[number, number]>([0, 100]);
   const [difficultyRange, setDifficultyRange] = useState<[number, number]>([0, 100]);
   const [volumeMin, setVolumeMin] = useState<number>(0);
@@ -114,6 +133,22 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
       if (item.cluster) clusters.add(item.cluster);
     });
     return Array.from(clusters).sort();
+  }, [data]);
+
+  const uniqueLocations = useMemo(() => {
+    const locs = new Set<string>();
+    data.forEach((item) => {
+      if (item.location) locs.add(item.location);
+    });
+    return Array.from(locs).sort();
+  }, [data]);
+
+  const uniquePriorities = useMemo(() => {
+    const priorities = new Set<string>();
+    data.forEach((item) => {
+      if (item.priority) priorities.add(item.priority);
+    });
+    return Array.from(priorities).sort();
   }, [data]);
 
   const allSerpFeatures = useMemo(() => {
@@ -171,6 +206,20 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
         onRemove: () => setSelectedClusters((prev) => prev.filter((c) => c !== cluster)) 
       });
     });
+    selectedLocations.forEach((location) => {
+      filters.push({ 
+        type: "location", 
+        label: `Location: ${location}`, 
+        onRemove: () => setSelectedLocations((prev) => prev.filter((l) => l !== location)) 
+      });
+    });
+    selectedPriorities.forEach((priority) => {
+      filters.push({ 
+        type: "priority", 
+        label: priorityLabels[priority] || priority, 
+        onRemove: () => setSelectedPriorities((prev) => prev.filter((p) => p !== priority)) 
+      });
+    });
     if (volumeMin > 0) {
       filters.push({ 
         type: "volume", 
@@ -180,7 +229,7 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
     }
     
     return filters;
-  }, [search, intentFilter, selectedPositions, opportunityRange, difficultyRange, selectedSerpFeatures, selectedClusters, volumeMin]);
+  }, [search, intentFilter, selectedPositions, opportunityRange, difficultyRange, selectedSerpFeatures, selectedClusters, selectedLocations, selectedPriorities, volumeMin]);
 
   const hasActiveFilters = activeFilters.length > 0;
 
@@ -190,6 +239,8 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
     setSelectedPositions([]);
     setSelectedSerpFeatures([]);
     setSelectedClusters([]);
+    setSelectedLocations([]);
+    setSelectedPriorities([]);
     setOpportunityRange([0, 100]);
     setDifficultyRange([0, 100]);
     setVolumeMin(0);
@@ -218,6 +269,22 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
       prev.includes(cluster)
         ? prev.filter((c) => c !== cluster)
         : [...prev, cluster]
+    );
+  };
+
+  const toggleLocation = (location: string) => {
+    setSelectedLocations((prev) =>
+      prev.includes(location)
+        ? prev.filter((l) => l !== location)
+        : [...prev, location]
+    );
+  };
+
+  const togglePriority = (priority: string) => {
+    setSelectedPriorities((prev) =>
+      prev.includes(priority)
+        ? prev.filter((p) => p !== priority)
+        : [...prev, priority]
     );
   };
 
@@ -262,6 +329,14 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
           selectedClusters.length === 0 ||
           (item.cluster && selectedClusters.includes(item.cluster));
 
+        const matchesLocation =
+          selectedLocations.length === 0 ||
+          (item.location && selectedLocations.includes(item.location));
+
+        const matchesPriority =
+          selectedPriorities.length === 0 ||
+          (item.priority && selectedPriorities.includes(item.priority));
+
         const matchesOpportunity =
           item.opportunityScore >= opportunityRange[0] &&
           item.opportunityScore <= opportunityRange[1];
@@ -278,6 +353,8 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
           matchesPosition &&
           matchesSerpFeatures &&
           matchesCluster &&
+          matchesLocation &&
+          matchesPriority &&
           matchesOpportunity &&
           matchesDifficulty &&
           matchesVolume
@@ -303,7 +380,7 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
     }
     
     return result;
-  }, [data, search, intentFilter, selectedPositions, selectedSerpFeatures, selectedClusters, opportunityRange, difficultyRange, volumeMin, sortBy, onFilteredDataChange]);
+  }, [data, search, intentFilter, selectedPositions, selectedSerpFeatures, selectedClusters, selectedLocations, selectedPriorities, opportunityRange, difficultyRange, volumeMin, sortBy, onFilteredDataChange]);
 
   const getDifficultyColor = (difficulty: number) => {
     if (difficulty < 30) return "text-emerald-600 dark:text-emerald-400";
@@ -647,6 +724,101 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
                           data-testid={`checkbox-cluster-${cluster}`}
                         />
                         <span className="text-sm capitalize">{cluster}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {uniqueLocations.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="default"
+                  className={cn(
+                    "gap-1",
+                    selectedLocations.length > 0 && "border-primary bg-primary/5"
+                  )}
+                  data-testid="button-location-filter"
+                >
+                  Location
+                  {selectedLocations.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1">
+                      {selectedLocations.length}
+                    </Badge>
+                  )}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56" align="start" data-testid="popover-location-filter">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Geographic Location</p>
+                  <div className="max-h-64 overflow-y-auto">
+                    {uniqueLocations.map((location) => (
+                      <label
+                        key={location}
+                        className="flex cursor-pointer items-center gap-2 rounded-md p-2 hover-elevate"
+                        data-testid={`label-location-${location.replace(/\s+/g, '-')}`}
+                      >
+                        <Checkbox
+                          checked={selectedLocations.includes(location)}
+                          onCheckedChange={() => toggleLocation(location)}
+                          data-testid={`checkbox-location-${location.replace(/\s+/g, '-')}`}
+                        />
+                        <span className="text-sm">{location}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          {uniquePriorities.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="default"
+                  className={cn(
+                    "gap-1",
+                    selectedPriorities.length > 0 && "border-primary bg-primary/5"
+                  )}
+                  data-testid="button-priority-filter"
+                >
+                  Priority
+                  {selectedPriorities.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 min-w-5 px-1">
+                      {selectedPriorities.length}
+                    </Badge>
+                  )}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56" align="start" data-testid="popover-priority-filter">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Priority Level</p>
+                  <div className="max-h-64 overflow-y-auto">
+                    {uniquePriorities.map((priority) => (
+                      <label
+                        key={priority}
+                        className="flex cursor-pointer items-center gap-2 rounded-md p-2 hover-elevate"
+                        data-testid={`label-priority-${priority}`}
+                      >
+                        <Checkbox
+                          checked={selectedPriorities.includes(priority)}
+                          onCheckedChange={() => togglePriority(priority)}
+                          data-testid={`checkbox-priority-${priority}`}
+                        />
+                        <Badge className={cn("text-xs", priorityColors[priority])}>
+                          {priority}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">
+                          {priorityLabels[priority]?.replace("Priority", "").trim()}
+                        </span>
                       </label>
                     ))}
                   </div>

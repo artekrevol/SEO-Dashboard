@@ -253,6 +253,13 @@ export class DatabaseStorage implements IStorage {
     const projectKeywords = await this.getKeywords(projectId);
     if (projectKeywords.length === 0) return [];
 
+    // Get all locations for this project's keywords
+    const allLocations = await db.select().from(locations);
+    const locationMap = new Map<string, string>();
+    for (const loc of allLocations) {
+      locationMap.set(loc.id, loc.name);
+    }
+
     // Get latest rankings for each keyword from rankings_history
     const allKeywordsWithRankings = await db
       .select({
@@ -328,6 +335,9 @@ export class DatabaseStorage implements IStorage {
         intent: kw.intentHint || "informational",
         serpFeatures: latestRanking?.serpFeatures || [],
         opportunityScore: opportunityScore,
+        priority: kw.priority || "P3",
+        locationId: kw.locationId,
+        location: kw.locationId ? locationMap.get(kw.locationId) || "Unknown" : "Global",
       });
     }
 
