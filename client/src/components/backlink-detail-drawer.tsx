@@ -461,7 +461,7 @@ export function BacklinkDetailDrawer({
                 </div>
               </TabsContent>
 
-              <TabsContent value="all" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4 pb-4">
+              <TabsContent value="all" className="flex-1 min-h-0 mt-4 px-4 pb-4">
                 <div className="flex flex-wrap gap-2 mb-4 shrink-0">
                   <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -501,8 +501,8 @@ export function BacklinkDetailDrawer({
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0 flex flex-col" data-testid="scroll-container-all-links">
-                  <ScrollArea className="flex-1 min-h-0" data-testid="scroll-area-all-links">
+                <div className="flex-1 min-h-0" data-testid="scroll-container-all-links">
+                  <ScrollArea className="h-full" data-testid="scroll-area-all-links">
                     <div className="space-y-3 pr-4">
                     {filteredBacklinks.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-backlinks">
@@ -618,9 +618,9 @@ export function BacklinkDetailDrawer({
                 </div>
               </TabsContent>
 
-              <TabsContent value="domains" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4 pb-4">
-                <div className="flex-1 min-h-0 flex flex-col" data-testid="scroll-container-domains">
-                  <ScrollArea className="flex-1 min-h-0" data-testid="scroll-area-domains">
+              <TabsContent value="domains" className="flex-1 min-h-0 mt-4 px-4 pb-4">
+                <div className="flex-1 min-h-0" data-testid="scroll-container-domains">
+                  <ScrollArea className="h-full" data-testid="scroll-area-domains">
                     <div className="space-y-3 pr-4">
                     {domainGroups.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-domains">

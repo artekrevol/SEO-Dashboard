@@ -590,9 +590,9 @@ export function CompetitorBacklinksDrawer({
                 </div>
               </TabsContent>
 
-              <TabsContent value="gap" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4">
-                <div className="flex-1 min-h-0 flex flex-col">
-                  <ScrollArea className="flex-1 min-h-0">
+              <TabsContent value="gap" className="flex-1 min-h-0 mt-4 px-4">
+                <div className="flex-1 min-h-0">
+                  <ScrollArea className="h-full">
                     <div className="space-y-4 pb-4">
                     {gapAnalysis?.summary && (
                       <div className="grid grid-cols-2 gap-3">
@@ -779,9 +779,9 @@ export function CompetitorBacklinksDrawer({
                 </div>
               </TabsContent>
 
-              <TabsContent value="opportunities" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4">
-                <div className="flex-1 min-h-0 flex flex-col">
-                  <ScrollArea className="flex-1 min-h-0">
+              <TabsContent value="opportunities" className="flex-1 min-h-0 mt-4 px-4">
+                <div className="flex-1 min-h-0">
+                  <ScrollArea className="h-full">
                     <div className="space-y-3 pb-4">
                     {opportunityBacklinks.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground">
@@ -877,8 +877,8 @@ export function CompetitorBacklinksDrawer({
                 </div>
               </TabsContent>
 
-              <TabsContent value="all" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4">
-                <div className="px-4 mb-4 shrink-0">
+              <TabsContent value="all" className="flex-1 min-h-0 mt-4 px-4">
+                <div className="mb-4 shrink-0">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -890,8 +890,8 @@ export function CompetitorBacklinksDrawer({
                     />
                   </div>
                 </div>
-                <div className="flex-1 min-h-0 px-4 flex flex-col">
-                  <ScrollArea className="flex-1 min-h-0">
+                <div className="flex-1 min-h-0">
+                  <ScrollArea className="h-full">
                     <div className="space-y-2 pb-4">
                     {filteredBacklinks.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground">
