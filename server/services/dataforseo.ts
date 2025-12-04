@@ -1093,6 +1093,450 @@ export class DataForSEOService {
     }
   }
 
+  // Comprehensive OnPage API Methods for Technical SEO Suite
+  async startTechAuditCrawl(domain: string, options?: {
+    maxPages?: number;
+    enableJavascript?: boolean;
+    checkSpell?: boolean;
+    calculateKeywordDensity?: boolean;
+    customUserAgent?: string;
+  }): Promise<{ taskId: string | null; error?: string }> {
+    try {
+      const targetDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+      console.log(`[DataForSEO] Starting technical audit crawl for ${targetDomain}`);
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          id: string;
+          status_code: number;
+          status_message: string;
+        }>;
+      }>("/on_page/task_post", "POST", [{
+        target: targetDomain,
+        max_crawl_pages: options?.maxPages ?? 500,
+        load_resources: true,
+        enable_javascript: options?.enableJavascript ?? false,
+        store_raw_html: false,
+        check_spell: options?.checkSpell ?? false,
+        calculate_keyword_density: options?.calculateKeywordDensity ?? false,
+        custom_user_agent: options?.customUserAgent,
+        enable_browser_rendering: false,
+        disable_cookie_popup: true,
+      }]);
+
+      const task = response.tasks?.[0];
+      if (task?.id) {
+        console.log(`[DataForSEO] Technical audit crawl queued for ${targetDomain}, task ID: ${task.id}`);
+        return { taskId: task.id };
+      }
+
+      return { taskId: null, error: task?.status_message || 'Unknown error' };
+    } catch (error) {
+      console.error(`[DataForSEO] Error starting technical audit crawl:`, error);
+      return { taskId: null, error: String(error) };
+    }
+  }
+
+  async getTechAuditSummary(taskId: string): Promise<{
+    status: 'queued' | 'running' | 'completed' | 'failed';
+    domain: string;
+    pagesCrawled: number;
+    maxPages: number;
+    onpageScore: number;
+    issuesSummary: {
+      critical: number;
+      warnings: number;
+      opportunities: number;
+    };
+    pagesByStatusCode: Record<string, number>;
+    checkCounts: Record<string, number>;
+  } | null> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            crawl_progress: string;
+            crawl_status: {
+              pages_crawled: number;
+              max_crawl_pages: number;
+            };
+            domain_info: {
+              name: string;
+              checks?: Record<string, unknown>;
+            };
+            page_metrics: {
+              onpage_score: number;
+              checks: Record<string, number>;
+            };
+            pages_with_errors?: number;
+            pages_with_warnings?: number;
+          }>;
+        }>;
+      }>(`/on_page/summary/${taskId}`, "GET");
+
+      const task = response.tasks?.[0];
+      if (!task?.result?.[0]) return null;
+
+      const result = task.result[0];
+      const progress = result.crawl_progress;
+      
+      let status: 'queued' | 'running' | 'completed' | 'failed';
+      if (progress === 'finished') status = 'completed';
+      else if (progress === 'in_progress') status = 'running';
+      else if (progress === 'failed') status = 'failed';
+      else status = 'queued';
+
+      const checks = result.page_metrics?.checks || {};
+      const criticalCount = (checks.no_content || 0) + 
+        (checks.is_4xx_code || 0) + 
+        (checks.is_5xx_code || 0) + 
+        (checks.is_broken || 0) +
+        (checks.no_index_page || 0);
+      
+      const warningsCount = (checks.duplicate_title || 0) + 
+        (checks.duplicate_description || 0) +
+        (checks.duplicate_content || 0) +
+        (checks.title_too_long || 0) +
+        (checks.title_too_short || 0) +
+        (checks.low_content_rate || 0) +
+        (checks.has_redirect || 0) +
+        (checks.is_redirect || 0);
+
+      const pagesByStatusCode: Record<string, number> = {};
+      for (const [key, value] of Object.entries(checks)) {
+        if (key.startsWith('is_') && key.endsWith('xx_code')) {
+          const code = key.replace('is_', '').replace('xx_code', 'xx');
+          pagesByStatusCode[code] = value as number;
+        }
+      }
+
+      return {
+        status,
+        domain: result.domain_info?.name || '',
+        pagesCrawled: result.crawl_status?.pages_crawled || 0,
+        maxPages: result.crawl_status?.max_crawl_pages || 0,
+        onpageScore: result.page_metrics?.onpage_score || 0,
+        issuesSummary: {
+          critical: criticalCount,
+          warnings: warningsCount,
+          opportunities: 0,
+        },
+        pagesByStatusCode,
+        checkCounts: checks,
+      };
+    } catch (error) {
+      console.error(`[DataForSEO] Error getting tech audit summary:`, error);
+      return null;
+    }
+  }
+
+  async getTechAuditPages(taskId: string, limit: number = 1000, offset: number = 0): Promise<{
+    pages: Array<{
+      url: string;
+      statusCode: number;
+      onpageScore: number;
+      meta: {
+        title: string;
+        titleLength: number;
+        description: string;
+        descriptionLength: number;
+        canonicalUrl: string | null;
+      };
+      content: {
+        wordCount: number;
+        h1Count: number;
+        h2Count: number;
+        readabilityScore: number;
+        contentRate: number;
+      };
+      performance: {
+        pageSizeKb: number;
+        loadTimeMs: number;
+        lcpMs: number | null;
+        clsScore: number | null;
+        tbtMs: number | null;
+        fidMs: number | null;
+      };
+      links: {
+        internalCount: number;
+        externalCount: number;
+        brokenCount: number;
+      };
+      images: {
+        count: number;
+        withoutAlt: number;
+      };
+      schema: {
+        hasSchema: boolean;
+        types: string[];
+      };
+      indexability: {
+        isIndexable: boolean;
+        reason: string | null;
+      };
+      structure: {
+        clickDepth: number | null;
+        isOrphanPage: boolean;
+      };
+      checks: Record<string, boolean>;
+      rawData: Record<string, unknown>;
+    }>;
+    totalCount: number;
+  }> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            items_count: number;
+            items: Array<{
+              url: string;
+              status_code: number;
+              onpage_score: number;
+              meta?: {
+                title?: string;
+                description?: string;
+                canonical?: string;
+              };
+              page_timing?: {
+                time_to_interactive?: number;
+                dom_complete?: number;
+                largest_contentful_paint?: number;
+                first_input_delay?: number;
+                cumulative_layout_shift?: number;
+                total_blocking_time?: number;
+              };
+              content?: {
+                plain_text_word_count?: number;
+                automated_readability_index?: number;
+                content_rate?: number;
+              };
+              total_dom_size?: number;
+              internal_links_count?: number;
+              external_links_count?: number;
+              broken_links?: number;
+              images_count?: number;
+              images_without_alt?: number;
+              h1?: { count?: number };
+              h2?: { count?: number };
+              schema_types?: string[];
+              checks?: Record<string, boolean>;
+              click_depth?: number;
+              is_orphan_page?: boolean;
+              indexation?: {
+                status?: string;
+                reason?: string;
+              };
+            }>;
+          }>;
+        }>;
+      }>(`/on_page/pages`, "POST", [{
+        id: taskId,
+        limit,
+        offset,
+        order_by: ["onpage_score,asc"],
+        filters: null,
+      }]);
+
+      const result = response.tasks?.[0]?.result?.[0];
+      if (!result) {
+        return { pages: [], totalCount: 0 };
+      }
+
+      const pages = (result.items || []).map(item => {
+        const meta = item.meta || {};
+        const content = item.content || {};
+        const timing = item.page_timing || {};
+        const checks = item.checks || {};
+        const indexation = item.indexation || {};
+
+        const isIndexable = !checks.no_index_page && 
+          !checks.is_redirect && 
+          indexation.status !== 'non_indexable';
+
+        let indexabilityReason: string | null = null;
+        if (!isIndexable) {
+          if (checks.no_index_page) indexabilityReason = 'noindex';
+          else if (checks.is_redirect) indexabilityReason = 'redirect';
+          else if (indexation.reason) indexabilityReason = indexation.reason;
+        }
+
+        return {
+          url: item.url || '',
+          statusCode: item.status_code || 0,
+          onpageScore: item.onpage_score || 0,
+          meta: {
+            title: meta.title || '',
+            titleLength: (meta.title || '').length,
+            description: meta.description || '',
+            descriptionLength: (meta.description || '').length,
+            canonicalUrl: meta.canonical || null,
+          },
+          content: {
+            wordCount: content.plain_text_word_count || 0,
+            h1Count: item.h1?.count || 0,
+            h2Count: item.h2?.count || 0,
+            readabilityScore: content.automated_readability_index || 0,
+            contentRate: content.content_rate || 0,
+          },
+          performance: {
+            pageSizeKb: (item.total_dom_size || 0) / 1024,
+            loadTimeMs: timing.dom_complete || 0,
+            lcpMs: timing.largest_contentful_paint || null,
+            clsScore: timing.cumulative_layout_shift || null,
+            tbtMs: timing.total_blocking_time || null,
+            fidMs: timing.first_input_delay || null,
+          },
+          links: {
+            internalCount: item.internal_links_count || 0,
+            externalCount: item.external_links_count || 0,
+            brokenCount: item.broken_links || 0,
+          },
+          images: {
+            count: item.images_count || 0,
+            withoutAlt: item.images_without_alt || 0,
+          },
+          schema: {
+            hasSchema: (item.schema_types?.length || 0) > 0,
+            types: item.schema_types || [],
+          },
+          indexability: {
+            isIndexable,
+            reason: indexabilityReason,
+          },
+          structure: {
+            clickDepth: item.click_depth || null,
+            isOrphanPage: item.is_orphan_page || false,
+          },
+          checks,
+          rawData: item as Record<string, unknown>,
+        };
+      });
+
+      return { pages, totalCount: result.items_count || pages.length };
+    } catch (error) {
+      console.error(`[DataForSEO] Error getting tech audit pages:`, error);
+      return { pages: [], totalCount: 0 };
+    }
+  }
+
+  async getTechAuditNonIndexable(taskId: string, limit: number = 100): Promise<{
+    pages: Array<{
+      url: string;
+      reason: string;
+      statusCode: number;
+    }>;
+    totalCount: number;
+  }> {
+    try {
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          result: Array<{
+            items_count: number;
+            items: Array<{
+              url: string;
+              reason: string;
+              status_code: number;
+            }>;
+          }>;
+        }>;
+      }>(`/on_page/non_indexable`, "POST", [{
+        id: taskId,
+        limit,
+      }]);
+
+      const result = response.tasks?.[0]?.result?.[0];
+      if (!result) {
+        return { pages: [], totalCount: 0 };
+      }
+
+      return {
+        pages: (result.items || []).map(item => ({
+          url: item.url || '',
+          reason: item.reason || 'unknown',
+          statusCode: item.status_code || 0,
+        })),
+        totalCount: result.items_count || 0,
+      };
+    } catch (error) {
+      console.error(`[DataForSEO] Error getting non-indexable pages:`, error);
+      return { pages: [], totalCount: 0 };
+    }
+  }
+
+  // Issue classification helper for Technical SEO Suite
+  classifyOnPageIssue(checkKey: string, checkValue: boolean | number): {
+    code: string;
+    label: string;
+    severity: 'critical' | 'warning' | 'info';
+    category: 'indexability' | 'content' | 'links' | 'performance' | 'html' | 'images' | 'security' | 'other';
+  } | null {
+    if (!checkValue) return null;
+
+    const issueMap: Record<string, { label: string; severity: 'critical' | 'warning' | 'info'; category: 'indexability' | 'content' | 'links' | 'performance' | 'html' | 'images' | 'security' | 'other' }> = {
+      // Critical - Indexability
+      no_index_page: { label: 'Page has noindex tag', severity: 'critical', category: 'indexability' },
+      is_4xx_code: { label: '4xx HTTP status code', severity: 'critical', category: 'indexability' },
+      is_5xx_code: { label: '5xx HTTP status code', severity: 'critical', category: 'indexability' },
+      is_broken: { label: 'Page is broken', severity: 'critical', category: 'indexability' },
+      no_content: { label: 'Page has no content', severity: 'critical', category: 'content' },
+      
+      // Warning - Content
+      duplicate_title: { label: 'Duplicate title tag', severity: 'warning', category: 'content' },
+      duplicate_description: { label: 'Duplicate meta description', severity: 'warning', category: 'content' },
+      duplicate_content: { label: 'Duplicate page content', severity: 'warning', category: 'content' },
+      title_too_long: { label: 'Title tag too long (>70 chars)', severity: 'warning', category: 'content' },
+      title_too_short: { label: 'Title tag too short (<30 chars)', severity: 'warning', category: 'content' },
+      no_title: { label: 'Missing title tag', severity: 'warning', category: 'content' },
+      no_description: { label: 'Missing meta description', severity: 'warning', category: 'content' },
+      description_too_long: { label: 'Meta description too long', severity: 'warning', category: 'content' },
+      description_too_short: { label: 'Meta description too short', severity: 'warning', category: 'content' },
+      low_content_rate: { label: 'Low content-to-code ratio', severity: 'warning', category: 'content' },
+      low_readability_rate: { label: 'Low readability score', severity: 'info', category: 'content' },
+      no_h1_tag: { label: 'Missing H1 heading', severity: 'warning', category: 'content' },
+      has_several_h1_tags: { label: 'Multiple H1 headings', severity: 'warning', category: 'html' },
+      
+      // Warning - Links
+      has_redirect: { label: 'Page redirects', severity: 'info', category: 'links' },
+      is_redirect: { label: 'Page is a redirect', severity: 'info', category: 'links' },
+      has_redirect_chain: { label: 'Redirect chain detected', severity: 'warning', category: 'links' },
+      has_redirect_loop: { label: 'Redirect loop detected', severity: 'critical', category: 'links' },
+      is_orphan_page: { label: 'Orphan page (no internal links)', severity: 'warning', category: 'links' },
+      has_links_to_redirects: { label: 'Links to redirected pages', severity: 'info', category: 'links' },
+      is_link_relation_conflict: { label: 'Link relation conflict', severity: 'warning', category: 'links' },
+      
+      // Warning - Performance
+      large_page_size: { label: 'Large page size', severity: 'warning', category: 'performance' },
+      high_loading_time: { label: 'High loading time', severity: 'warning', category: 'performance' },
+      high_waiting_time: { label: 'High server response time', severity: 'warning', category: 'performance' },
+      
+      // Warning - HTML
+      deprecated_html_tags: { label: 'Uses deprecated HTML tags', severity: 'info', category: 'html' },
+      is_http: { label: 'Uses HTTP instead of HTTPS', severity: 'warning', category: 'security' },
+      
+      // Warning - Images
+      no_image_alt: { label: 'Images missing alt text', severity: 'warning', category: 'images' },
+      no_image_title: { label: 'Images missing title', severity: 'info', category: 'images' },
+      seo_friendly_url: { label: 'Non-SEO friendly URL', severity: 'info', category: 'other' },
+      
+      // Info - Canonical
+      canonical_to_broken: { label: 'Canonical points to broken page', severity: 'critical', category: 'indexability' },
+      canonical_to_redirect: { label: 'Canonical points to redirect', severity: 'warning', category: 'indexability' },
+      has_canonical_tag: { label: 'Has canonical tag', severity: 'info', category: 'indexability' },
+      no_canonical_tag: { label: 'Missing canonical tag', severity: 'info', category: 'indexability' },
+    };
+
+    const issue = issueMap[checkKey];
+    if (!issue) return null;
+
+    return {
+      code: checkKey,
+      ...issue,
+    };
+  }
+
   calculateOpportunityScore(
     position: number,
     searchVolume: number,
