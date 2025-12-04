@@ -2379,25 +2379,7 @@ export async function registerRoutes(
     }
   });
 
-  // Get a specific page audit
-  app.get("/api/page-audits/:id", async (req, res) => {
-    try {
-      const audit = await storage.getPageAudit(Number(req.params.id));
-      if (!audit) {
-        return res.status(404).json({ error: "Page audit not found" });
-      }
-      
-      // Also get issues for this audit
-      const issues = await storage.getPageIssues(audit.id);
-      
-      res.json({ audit, issues });
-    } catch (error) {
-      console.error("Error fetching page audit:", error);
-      res.status(500).json({ error: "Failed to fetch page audit" });
-    }
-  });
-
-  // Get page audit by URL
+  // Get page audit by URL (must be before :id route to avoid matching "by-url" as id)
   app.get("/api/page-audits/by-url", async (req, res) => {
     try {
       const { projectId, url, techCrawlId } = req.query;
@@ -2424,6 +2406,24 @@ export async function registerRoutes(
       res.json({ audit, issues });
     } catch (error) {
       console.error("Error fetching page audit by URL:", error);
+      res.status(500).json({ error: "Failed to fetch page audit" });
+    }
+  });
+
+  // Get a specific page audit by ID
+  app.get("/api/page-audits/:id", async (req, res) => {
+    try {
+      const audit = await storage.getPageAudit(Number(req.params.id));
+      if (!audit) {
+        return res.status(404).json({ error: "Page audit not found" });
+      }
+      
+      // Also get issues for this audit
+      const issues = await storage.getPageIssues(audit.id);
+      
+      res.json({ audit, issues });
+    } catch (error) {
+      console.error("Error fetching page audit:", error);
       res.status(500).json({ error: "Failed to fetch page audit" });
     }
   });
