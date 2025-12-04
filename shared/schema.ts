@@ -602,7 +602,7 @@ export type Intent = z.infer<typeof intentEnum>;
 export const healthStatusEnum = z.enum(["healthy", "at_risk", "declining"]);
 export type HealthStatus = z.infer<typeof healthStatusEnum>;
 
-export const crawlTypeEnum = z.enum(["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks", "competitor_backlinks"]);
+export const crawlTypeEnum = z.enum(["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks", "competitor_backlinks", "tech_audit"]);
 export type CrawlType = z.infer<typeof crawlTypeEnum>;
 
 export const backlinkTypeEnum = z.enum(["dofollow", "nofollow", "ugc", "sponsored"]);
@@ -692,3 +692,158 @@ export const insertCrawlResultSchema = createInsertSchema(crawlResults).omit({
 
 export type InsertCrawlResult = z.infer<typeof insertCrawlResultSchema>;
 export type CrawlResult = typeof crawlResults.$inferSelect;
+
+// Technical SEO Suite - OnPage Crawl Tracking
+export const techCrawlStatusEnum = z.enum(["queued", "running", "completed", "failed"]);
+export type TechCrawlStatus = z.infer<typeof techCrawlStatusEnum>;
+
+export const techCrawls = pgTable("tech_crawls", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  onpageTaskId: text("onpage_task_id"),
+  targetDomain: text("target_domain").notNull(),
+  maxPages: integer("max_pages").default(500),
+  status: text("status").default("queued").notNull(),
+  pagesCrawled: integer("pages_crawled").default(0),
+  pagesWithIssues: integer("pages_with_issues").default(0),
+  criticalIssuesCount: integer("critical_issues_count").default(0),
+  warningsCount: integer("warnings_count").default(0),
+  avgOnpageScore: numeric("avg_onpage_score", { precision: 5, scale: 2 }),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("tech_crawls_project_id_idx").on(table.projectId),
+  statusIdx: index("tech_crawls_status_idx").on(table.status),
+  startedAtIdx: index("tech_crawls_started_at_idx").on(table.startedAt),
+}));
+
+export const techCrawlsRelations = relations(techCrawls, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [techCrawls.projectId],
+    references: [projects.id],
+  }),
+  pageAudits: many(pageAudits),
+}));
+
+export const insertTechCrawlSchema = createInsertSchema(techCrawls).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTechCrawl = z.infer<typeof insertTechCrawlSchema>;
+export type TechCrawl = typeof techCrawls.$inferSelect;
+
+// Page Audits - Per-page technical audit data from OnPage API
+export const pageAudits = pgTable("page_audits", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  techCrawlId: integer("tech_crawl_id").references(() => techCrawls.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  onpageScore: numeric("onpage_score", { precision: 5, scale: 2 }),
+  statusCode: integer("status_code"),
+  isIndexable: boolean("is_indexable").default(true),
+  indexabilityReason: text("indexability_reason"),
+  canonicalUrl: text("canonical_url"),
+  title: text("title"),
+  titleLength: integer("title_length"),
+  description: text("description"),
+  descriptionLength: integer("description_length"),
+  h1Count: integer("h1_count").default(0),
+  h2Count: integer("h2_count").default(0),
+  wordCount: integer("word_count").default(0),
+  readabilityScore: numeric("readability_score", { precision: 5, scale: 2 }),
+  contentRate: numeric("content_rate", { precision: 5, scale: 2 }),
+  pageSizeKb: numeric("page_size_kb", { precision: 10, scale: 2 }),
+  loadTimeMs: integer("load_time_ms"),
+  lcpMs: integer("lcp_ms"),
+  clsScore: numeric("cls_score", { precision: 5, scale: 4 }),
+  tbtMs: integer("tbt_ms"),
+  fidMs: integer("fid_ms"),
+  internalLinksCount: integer("internal_links_count").default(0),
+  externalLinksCount: integer("external_links_count").default(0),
+  brokenLinksCount: integer("broken_links_count").default(0),
+  imagesCount: integer("images_count").default(0),
+  imagesWithoutAlt: integer("images_without_alt").default(0),
+  hasSchema: boolean("has_schema").default(false),
+  schemaTypes: jsonb("schema_types").$type<string[]>(),
+  isOrphanPage: boolean("is_orphan_page").default(false),
+  clickDepth: integer("click_depth"),
+  techRiskLevel: text("tech_risk_level").default("low"),
+  rawData: jsonb("raw_data").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("page_audits_project_id_idx").on(table.projectId),
+  techCrawlIdIdx: index("page_audits_tech_crawl_id_idx").on(table.techCrawlId),
+  urlIdx: index("page_audits_url_idx").on(table.url),
+  onpageScoreIdx: index("page_audits_onpage_score_idx").on(table.onpageScore),
+  techRiskLevelIdx: index("page_audits_tech_risk_level_idx").on(table.techRiskLevel),
+}));
+
+export const pageAuditsRelations = relations(pageAudits, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [pageAudits.projectId],
+    references: [projects.id],
+  }),
+  techCrawl: one(techCrawls, {
+    fields: [pageAudits.techCrawlId],
+    references: [techCrawls.id],
+  }),
+  issues: many(pageIssues),
+}));
+
+export const insertPageAuditSchema = createInsertSchema(pageAudits).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPageAudit = z.infer<typeof insertPageAuditSchema>;
+export type PageAudit = typeof pageAudits.$inferSelect;
+
+// Page Issues - Normalized issue list per page
+export const issueSeverityEnum = z.enum(["critical", "warning", "info"]);
+export type IssueSeverity = z.infer<typeof issueSeverityEnum>;
+
+export const issueCategoryEnum = z.enum(["indexability", "content", "links", "performance", "html", "images", "security", "other"]);
+export type IssueCategory = z.infer<typeof issueCategoryEnum>;
+
+export const pageIssues = pgTable("page_issues", {
+  id: serial("id").primaryKey(),
+  pageAuditId: integer("page_audit_id").notNull().references(() => pageAudits.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  issueCode: text("issue_code").notNull(),
+  issueLabel: text("issue_label").notNull(),
+  severity: text("severity").notNull(),
+  category: text("category").notNull(),
+  occurrences: integer("occurrences").default(1),
+  affectedElements: jsonb("affected_elements").$type<string[]>(),
+  sampleData: jsonb("sample_data").$type<Record<string, unknown>>(),
+  recommendationCreated: boolean("recommendation_created").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  pageAuditIdIdx: index("page_issues_page_audit_id_idx").on(table.pageAuditId),
+  projectIdIdx: index("page_issues_project_id_idx").on(table.projectId),
+  issueCodeIdx: index("page_issues_issue_code_idx").on(table.issueCode),
+  severityIdx: index("page_issues_severity_idx").on(table.severity),
+  categoryIdx: index("page_issues_category_idx").on(table.category),
+}));
+
+export const pageIssuesRelations = relations(pageIssues, ({ one }) => ({
+  pageAudit: one(pageAudits, {
+    fields: [pageIssues.pageAuditId],
+    references: [pageAudits.id],
+  }),
+  project: one(projects, {
+    fields: [pageIssues.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertPageIssueSchema = createInsertSchema(pageIssues).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPageIssue = z.infer<typeof insertPageIssueSchema>;
+export type PageIssue = typeof pageIssues.$inferSelect;
