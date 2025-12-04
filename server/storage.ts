@@ -35,6 +35,12 @@ import {
   type InsertBacklink,
   type CompetitorBacklink,
   type InsertCompetitorBacklink,
+  type TechCrawl,
+  type InsertTechCrawl,
+  type PageAudit,
+  type InsertPageAudit,
+  type PageIssue,
+  type InsertPageIssue,
   users,
   projects,
   keywords,
@@ -54,6 +60,9 @@ import {
   importLogs,
   backlinks,
   competitorBacklinks,
+  techCrawls,
+  pageAudits,
+  pageIssues,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -188,6 +197,58 @@ export interface IStorage {
     firstSeen: Date;
     lastSeen: Date;
     avgDomainAuthority: number | null;
+  }[]>;
+  
+  // Technical SEO Suite - Tech Crawls
+  getTechCrawls(projectId: string, limit?: number): Promise<TechCrawl[]>;
+  getTechCrawl(id: number): Promise<TechCrawl | undefined>;
+  getLatestTechCrawl(projectId: string): Promise<TechCrawl | undefined>;
+  createTechCrawl(crawl: InsertTechCrawl): Promise<TechCrawl>;
+  updateTechCrawl(id: number, updates: Partial<InsertTechCrawl>): Promise<TechCrawl | undefined>;
+  getRunningTechCrawls(projectId?: string): Promise<TechCrawl[]>;
+  
+  // Technical SEO Suite - Page Audits
+  getPageAudits(projectId: string, options?: { 
+    techCrawlId?: number; 
+    limit?: number; 
+    offset?: number;
+    minScore?: number;
+    maxScore?: number;
+    hasIssues?: boolean;
+  }): Promise<PageAudit[]>;
+  getPageAudit(id: number): Promise<PageAudit | undefined>;
+  getPageAuditByUrl(projectId: string, url: string, techCrawlId?: number): Promise<PageAudit | undefined>;
+  createPageAudit(audit: InsertPageAudit): Promise<PageAudit>;
+  createPageAudits(audits: InsertPageAudit[]): Promise<PageAudit[]>;
+  deletePageAuditsByTechCrawl(techCrawlId: number): Promise<void>;
+  getPageAuditsSummary(projectId: string, techCrawlId?: number): Promise<{
+    totalPages: number;
+    avgOnpageScore: number;
+    indexablePages: number;
+    nonIndexablePages: number;
+    pagesWithIssues: number;
+    issuesBySeverity: { critical: number; warning: number; info: number };
+    issuesByCategory: Record<string, number>;
+  }>;
+  
+  // Technical SEO Suite - Page Issues
+  getPageIssues(pageAuditId: number): Promise<PageIssue[]>;
+  getPageIssuesByProject(projectId: string, options?: {
+    techCrawlId?: number;
+    severity?: string;
+    category?: string;
+    limit?: number;
+  }): Promise<PageIssue[]>;
+  createPageIssue(issue: InsertPageIssue): Promise<PageIssue>;
+  createPageIssues(issues: InsertPageIssue[]): Promise<PageIssue[]>;
+  deletePageIssuesByAudit(pageAuditId: number): Promise<void>;
+  getIssuesSummary(projectId: string, techCrawlId?: number): Promise<{
+    issueCode: string;
+    issueLabel: string;
+    severity: string;
+    category: string;
+    count: number;
+    affectedPages: number;
   }[]>;
 }
 
@@ -2044,6 +2105,312 @@ export class DatabaseStorage implements IStorage {
         competitorBacklinkDomains: competitorDomainSet.size,
       },
     };
+  }
+
+  // Technical SEO Suite - Tech Crawls Implementation
+  async getTechCrawls(projectId: string, limit: number = 20): Promise<TechCrawl[]> {
+    return await db.select()
+      .from(techCrawls)
+      .where(eq(techCrawls.projectId, projectId))
+      .orderBy(desc(techCrawls.createdAt))
+      .limit(limit);
+  }
+
+  async getTechCrawl(id: number): Promise<TechCrawl | undefined> {
+    const [crawl] = await db.select()
+      .from(techCrawls)
+      .where(eq(techCrawls.id, id));
+    return crawl || undefined;
+  }
+
+  async getLatestTechCrawl(projectId: string): Promise<TechCrawl | undefined> {
+    const [crawl] = await db.select()
+      .from(techCrawls)
+      .where(eq(techCrawls.projectId, projectId))
+      .orderBy(desc(techCrawls.createdAt))
+      .limit(1);
+    return crawl || undefined;
+  }
+
+  async createTechCrawl(crawl: InsertTechCrawl): Promise<TechCrawl> {
+    const [result] = await db.insert(techCrawls).values(crawl).returning();
+    return result;
+  }
+
+  async updateTechCrawl(id: number, updates: Partial<InsertTechCrawl>): Promise<TechCrawl | undefined> {
+    const [result] = await db.update(techCrawls)
+      .set(updates)
+      .where(eq(techCrawls.id, id))
+      .returning();
+    return result || undefined;
+  }
+
+  async getRunningTechCrawls(projectId?: string): Promise<TechCrawl[]> {
+    const conditions = [
+      or(eq(techCrawls.status, 'queued'), eq(techCrawls.status, 'running'))
+    ];
+    if (projectId) {
+      conditions.push(eq(techCrawls.projectId, projectId));
+    }
+    return await db.select()
+      .from(techCrawls)
+      .where(and(...conditions))
+      .orderBy(desc(techCrawls.startedAt));
+  }
+
+  // Technical SEO Suite - Page Audits Implementation
+  async getPageAudits(projectId: string, options?: { 
+    techCrawlId?: number; 
+    limit?: number; 
+    offset?: number;
+    minScore?: number;
+    maxScore?: number;
+    hasIssues?: boolean;
+  }): Promise<PageAudit[]> {
+    const conditions = [eq(pageAudits.projectId, projectId)];
+    
+    if (options?.techCrawlId) {
+      conditions.push(eq(pageAudits.techCrawlId, options.techCrawlId));
+    }
+    if (options?.minScore !== undefined) {
+      conditions.push(gte(pageAudits.onpageScore, String(options.minScore)));
+    }
+    if (options?.maxScore !== undefined) {
+      conditions.push(lte(pageAudits.onpageScore, String(options.maxScore)));
+    }
+    
+    let query = db.select()
+      .from(pageAudits)
+      .where(and(...conditions))
+      .orderBy(pageAudits.onpageScore);
+    
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+    if (options?.offset) {
+      query = query.offset(options.offset) as typeof query;
+    }
+    
+    return await query;
+  }
+
+  async getPageAudit(id: number): Promise<PageAudit | undefined> {
+    const [audit] = await db.select()
+      .from(pageAudits)
+      .where(eq(pageAudits.id, id));
+    return audit || undefined;
+  }
+
+  async getPageAuditByUrl(projectId: string, url: string, techCrawlId?: number): Promise<PageAudit | undefined> {
+    const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
+    const conditions = [
+      eq(pageAudits.projectId, projectId),
+      sql`lower(${pageAudits.url}) = ${normalizedUrl}`
+    ];
+    if (techCrawlId) {
+      conditions.push(eq(pageAudits.techCrawlId, techCrawlId));
+    }
+    
+    const [audit] = await db.select()
+      .from(pageAudits)
+      .where(and(...conditions))
+      .orderBy(desc(pageAudits.createdAt))
+      .limit(1);
+    return audit || undefined;
+  }
+
+  async createPageAudit(audit: InsertPageAudit): Promise<PageAudit> {
+    const [result] = await db.insert(pageAudits).values(audit).returning();
+    return result;
+  }
+
+  async createPageAudits(audits: InsertPageAudit[]): Promise<PageAudit[]> {
+    if (audits.length === 0) return [];
+    return await db.insert(pageAudits).values(audits).returning();
+  }
+
+  async deletePageAuditsByTechCrawl(techCrawlId: number): Promise<void> {
+    await db.delete(pageAudits).where(eq(pageAudits.techCrawlId, techCrawlId));
+  }
+
+  async getPageAuditsSummary(projectId: string, techCrawlId?: number): Promise<{
+    totalPages: number;
+    avgOnpageScore: number;
+    indexablePages: number;
+    nonIndexablePages: number;
+    pagesWithIssues: number;
+    issuesBySeverity: { critical: number; warning: number; info: number };
+    issuesByCategory: Record<string, number>;
+  }> {
+    const conditions = [eq(pageAudits.projectId, projectId)];
+    if (techCrawlId) {
+      conditions.push(eq(pageAudits.techCrawlId, techCrawlId));
+    }
+
+    const audits = await db.select()
+      .from(pageAudits)
+      .where(and(...conditions));
+
+    const totalPages = audits.length;
+    const avgOnpageScore = totalPages > 0 
+      ? audits.reduce((sum, a) => sum + (Number(a.onpageScore) || 0), 0) / totalPages 
+      : 0;
+    const indexablePages = audits.filter(a => a.isIndexable).length;
+    const nonIndexablePages = totalPages - indexablePages;
+
+    // Get issues summary
+    const issueConditions = [eq(pageIssues.projectId, projectId)];
+    if (techCrawlId) {
+      const auditIds = audits.map(a => a.id);
+      if (auditIds.length > 0) {
+        issueConditions.push(sql`${pageIssues.pageAuditId} = ANY(${auditIds})`);
+      }
+    }
+
+    const issues = await db.select()
+      .from(pageIssues)
+      .where(and(...issueConditions));
+
+    const pageAuditIdsWithIssues = new Set(issues.map(i => i.pageAuditId));
+    const pagesWithIssues = pageAuditIdsWithIssues.size;
+
+    const issuesBySeverity = { critical: 0, warning: 0, info: 0 };
+    const issuesByCategory: Record<string, number> = {};
+
+    for (const issue of issues) {
+      if (issue.severity === 'critical') issuesBySeverity.critical++;
+      else if (issue.severity === 'warning') issuesBySeverity.warning++;
+      else issuesBySeverity.info++;
+
+      issuesByCategory[issue.category] = (issuesByCategory[issue.category] || 0) + 1;
+    }
+
+    return {
+      totalPages,
+      avgOnpageScore: Math.round(avgOnpageScore * 100) / 100,
+      indexablePages,
+      nonIndexablePages,
+      pagesWithIssues,
+      issuesBySeverity,
+      issuesByCategory,
+    };
+  }
+
+  // Technical SEO Suite - Page Issues Implementation
+  async getPageIssues(pageAuditId: number): Promise<PageIssue[]> {
+    return await db.select()
+      .from(pageIssues)
+      .where(eq(pageIssues.pageAuditId, pageAuditId))
+      .orderBy(desc(sql`CASE WHEN ${pageIssues.severity} = 'critical' THEN 0 WHEN ${pageIssues.severity} = 'warning' THEN 1 ELSE 2 END`));
+  }
+
+  async getPageIssuesByProject(projectId: string, options?: {
+    techCrawlId?: number;
+    severity?: string;
+    category?: string;
+    limit?: number;
+  }): Promise<PageIssue[]> {
+    const conditions = [eq(pageIssues.projectId, projectId)];
+    
+    if (options?.severity) {
+      conditions.push(eq(pageIssues.severity, options.severity));
+    }
+    if (options?.category) {
+      conditions.push(eq(pageIssues.category, options.category));
+    }
+
+    let query = db.select()
+      .from(pageIssues)
+      .where(and(...conditions))
+      .orderBy(desc(sql`CASE WHEN ${pageIssues.severity} = 'critical' THEN 0 WHEN ${pageIssues.severity} = 'warning' THEN 1 ELSE 2 END`));
+
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+
+    return await query;
+  }
+
+  async createPageIssue(issue: InsertPageIssue): Promise<PageIssue> {
+    const [result] = await db.insert(pageIssues).values(issue).returning();
+    return result;
+  }
+
+  async createPageIssues(issues: InsertPageIssue[]): Promise<PageIssue[]> {
+    if (issues.length === 0) return [];
+    return await db.insert(pageIssues).values(issues).returning();
+  }
+
+  async deletePageIssuesByAudit(pageAuditId: number): Promise<void> {
+    await db.delete(pageIssues).where(eq(pageIssues.pageAuditId, pageAuditId));
+  }
+
+  async getIssuesSummary(projectId: string, techCrawlId?: number): Promise<{
+    issueCode: string;
+    issueLabel: string;
+    severity: string;
+    category: string;
+    count: number;
+    affectedPages: number;
+  }[]> {
+    const conditions = [eq(pageIssues.projectId, projectId)];
+
+    if (techCrawlId) {
+      const audits = await db.select({ id: pageAudits.id })
+        .from(pageAudits)
+        .where(eq(pageAudits.techCrawlId, techCrawlId));
+      const auditIds = audits.map(a => a.id);
+      if (auditIds.length > 0) {
+        conditions.push(sql`${pageIssues.pageAuditId} = ANY(${auditIds})`);
+      }
+    }
+
+    const issues = await db.select()
+      .from(pageIssues)
+      .where(and(...conditions));
+
+    const summaryMap = new Map<string, {
+      issueCode: string;
+      issueLabel: string;
+      severity: string;
+      category: string;
+      count: number;
+      pageAuditIds: Set<number>;
+    }>();
+
+    for (const issue of issues) {
+      const existing = summaryMap.get(issue.issueCode);
+      if (existing) {
+        existing.count += issue.occurrences || 1;
+        existing.pageAuditIds.add(issue.pageAuditId);
+      } else {
+        summaryMap.set(issue.issueCode, {
+          issueCode: issue.issueCode,
+          issueLabel: issue.issueLabel,
+          severity: issue.severity,
+          category: issue.category,
+          count: issue.occurrences || 1,
+          pageAuditIds: new Set([issue.pageAuditId]),
+        });
+      }
+    }
+
+    return Array.from(summaryMap.values())
+      .map(s => ({
+        issueCode: s.issueCode,
+        issueLabel: s.issueLabel,
+        severity: s.severity,
+        category: s.category,
+        count: s.count,
+        affectedPages: s.pageAuditIds.size,
+      }))
+      .sort((a, b) => {
+        const severityOrder = { critical: 0, warning: 1, info: 2 };
+        const aSev = severityOrder[a.severity as keyof typeof severityOrder] ?? 3;
+        const bSev = severityOrder[b.severity as keyof typeof severityOrder] ?? 3;
+        if (aSev !== bSev) return aSev - bSev;
+        return b.affectedPages - a.affectedPages;
+      });
   }
 }
 
