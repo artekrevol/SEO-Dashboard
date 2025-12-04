@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
 import { BacklinkDetailDrawer } from "@/components/backlink-detail-drawer";
+import { PageAuditDrawer } from "@/components/page-audit-drawer";
 
 interface PageData {
   url: string;
@@ -51,6 +52,9 @@ interface PageData {
   contentGapScore: number;
   techRiskScore: number;
   authorityGapScore: number;
+  onpageScore: number | null;
+  issueCount: number;
+  hasAuditData: boolean;
 }
 
 interface PagesTableProps {
@@ -75,6 +79,8 @@ const pageExportColumns: ExportColumn<PageData>[] = [
   { header: "Indexable", accessor: (row) => row.isIndexable ? "Yes" : "No" },
   { header: "Duplicate Content", accessor: (row) => row.duplicateContent ? "Yes" : "No" },
   { header: "CWV OK", accessor: (row) => row.coreWebVitalsOk ? "Yes" : "No" },
+  { header: "OnPage Score", accessor: (row) => row.onpageScore !== null ? row.onpageScore.toFixed(0) : "-" },
+  { header: "Issue Count", accessor: "issueCount" },
   { header: "Tech Risk Score", accessor: "techRiskScore" },
   { header: "Content Gap Score", accessor: "contentGapScore" },
 ];
@@ -83,6 +89,8 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
   const [search, setSearch] = useState("");
   const [backlinkDrawerOpen, setBacklinkDrawerOpen] = useState(false);
   const [selectedPageUrl, setSelectedPageUrl] = useState<string | null>(null);
+  const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
+  const [selectedAuditUrl, setSelectedAuditUrl] = useState<string | null>(null);
 
   const filteredData = data.filter((item) =>
     item.url.toLowerCase().includes(search.toLowerCase())
@@ -305,19 +313,54 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">
-                            {getRiskLabel(item.techRiskScore)}
-                          </span>
-                          <span className="font-mono">{item.techRiskScore}%</span>
+                      {item.hasAuditData ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full h-auto p-1 hover:bg-muted"
+                          onClick={() => {
+                            setSelectedAuditUrl(item.url);
+                            setAuditDrawerOpen(true);
+                          }}
+                          data-testid={`button-view-audit-${index}`}
+                        >
+                          <div className="w-full space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">
+                                {getRiskLabel(item.techRiskScore)}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono">{item.techRiskScore}%</span>
+                                <Eye className="h-3 w-3 text-primary" />
+                              </div>
+                            </div>
+                            <Progress
+                              value={item.techRiskScore}
+                              className="h-2"
+                              indicatorClassName={getRiskColor(item.techRiskScore)}
+                            />
+                            {item.issueCount > 0 && (
+                              <span className="text-xs text-muted-foreground">
+                                {item.issueCount} issue{item.issueCount !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </Button>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {getRiskLabel(item.techRiskScore)}
+                            </span>
+                            <span className="font-mono">{item.techRiskScore}%</span>
+                          </div>
+                          <Progress
+                            value={item.techRiskScore}
+                            className="h-2"
+                            indicatorClassName={getRiskColor(item.techRiskScore)}
+                          />
                         </div>
-                        <Progress
-                          value={item.techRiskScore}
-                          className="h-2"
-                          indicatorClassName={getRiskColor(item.techRiskScore)}
-                        />
-                      </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
@@ -349,6 +392,15 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
           projectId={projectId}
           targetUrl={selectedPageUrl || undefined}
           pageTitle={selectedPageUrl?.replace(/^https?:\/\//, "") || ""}
+        />
+      )}
+
+      {projectId && selectedAuditUrl && (
+        <PageAuditDrawer
+          open={auditDrawerOpen}
+          onOpenChange={setAuditDrawerOpen}
+          projectId={projectId}
+          url={selectedAuditUrl}
         />
       )}
     </Card>

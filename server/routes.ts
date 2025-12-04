@@ -203,29 +203,48 @@ export async function registerRoutes(
       }
 
       const pages = await storage.getPageMetricsWithKeywordAnalytics(projectId);
+      
+      // Get latest page audit data for tech scores
+      const pageAuditsByUrl = await storage.getLatestPageAuditsByUrl(projectId);
 
-      const items = pages.map((p: any) => ({
-        id: p.id,
-        url: p.url,
-        date: p.date,
-        avgPosition: Number(p.avgPosition) || 0,
-        bestPosition: p.bestPosition || 0,
-        keywordsInTop10: p.keywordsInTop10 || 0,
-        keywordsInTop3: p.keywordsInTop3 || 0,
-        totalKeywords: p.totalKeywords || 0,
-        rankedKeywords: p.rankedKeywords || 0,
-        backlinksCount: p.backlinksCount || 0,
-        referringDomains: p.referringDomains || 0,
-        newLinks7d: p.newLinks7d || 0,
-        lostLinks7d: p.lostLinks7d || 0,
-        hasSchema: p.hasSchema || false,
-        isIndexable: p.isIndexable !== false,
-        duplicateContent: p.duplicateContent || false,
-        coreWebVitalsOk: p.coreWebVitalsOk !== false,
-        contentGapScore: Number(p.contentGapScore) || 0,
-        techRiskScore: Number(p.techRiskScore) || 0,
-        authorityGapScore: Number(p.authorityGapScore) || 0,
-      }));
+      const normalizeUrl = (url: string) => url.toLowerCase().replace(/\/+$/, '');
+
+      const items = pages.map((p: any) => {
+        const normalizedUrl = normalizeUrl(p.url);
+        const auditData = pageAuditsByUrl.get(normalizedUrl);
+        
+        // Calculate tech risk from OnPage score (100 - score) when available, fallback to legacy
+        const onpageScore = auditData?.onpageScore;
+        const techRiskScore = onpageScore !== null && onpageScore !== undefined
+          ? Math.round(100 - onpageScore)
+          : Number(p.techRiskScore) || 0;
+
+        return {
+          id: p.id,
+          url: p.url,
+          date: p.date,
+          avgPosition: Number(p.avgPosition) || 0,
+          bestPosition: p.bestPosition || 0,
+          keywordsInTop10: p.keywordsInTop10 || 0,
+          keywordsInTop3: p.keywordsInTop3 || 0,
+          totalKeywords: p.totalKeywords || 0,
+          rankedKeywords: p.rankedKeywords || 0,
+          backlinksCount: p.backlinksCount || 0,
+          referringDomains: p.referringDomains || 0,
+          newLinks7d: p.newLinks7d || 0,
+          lostLinks7d: p.lostLinks7d || 0,
+          hasSchema: p.hasSchema || false,
+          isIndexable: p.isIndexable !== false,
+          duplicateContent: p.duplicateContent || false,
+          coreWebVitalsOk: p.coreWebVitalsOk !== false,
+          contentGapScore: Number(p.contentGapScore) || 0,
+          techRiskScore: techRiskScore,
+          authorityGapScore: Number(p.authorityGapScore) || 0,
+          onpageScore: onpageScore ?? null,
+          issueCount: auditData?.issueCount || 0,
+          hasAuditData: !!auditData,
+        };
+      });
 
       res.json({ items });
     } catch (error) {

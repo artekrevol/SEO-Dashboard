@@ -250,6 +250,9 @@ export interface IStorage {
     count: number;
     affectedPages: number;
   }[]>;
+  
+  // Get latest page audit scores indexed by normalized URL for integration with Pages table
+  getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2411,6 +2414,70 @@ export class DatabaseStorage implements IStorage {
         if (aSev !== bSev) return aSev - bSev;
         return b.affectedPages - a.affectedPages;
       });
+  }
+
+  async getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>> {
+    const latestCrawl = await this.getLatestTechCrawl(projectId);
+    if (!latestCrawl || latestCrawl.status !== "completed") {
+      return new Map();
+    }
+
+    const audits = await db.select({
+      url: pageAudits.url,
+      onpageScore: pageAudits.onpageScore,
+    })
+      .from(pageAudits)
+      .where(and(
+        eq(pageAudits.projectId, projectId),
+        eq(pageAudits.techCrawlId, latestCrawl.id)
+      ));
+
+    const issues = await db.select({
+      pageAuditId: pageIssues.pageAuditId,
+      count: sql<number>`count(*)`.as("count"),
+    })
+      .from(pageIssues)
+      .innerJoin(pageAudits, eq(pageIssues.pageAuditId, pageAudits.id))
+      .where(and(
+        eq(pageAudits.projectId, projectId),
+        eq(pageAudits.techCrawlId, latestCrawl.id)
+      ))
+      .groupBy(pageIssues.pageAuditId);
+
+    const issueCountByAuditId = new Map<number, number>();
+    for (const i of issues) {
+      issueCountByAuditId.set(i.pageAuditId, Number(i.count));
+    }
+
+    const auditsByUrl = await db.select({
+      id: pageAudits.id,
+      url: pageAudits.url,
+    })
+      .from(pageAudits)
+      .where(and(
+        eq(pageAudits.projectId, projectId),
+        eq(pageAudits.techCrawlId, latestCrawl.id)
+      ));
+
+    const auditIdByUrl = new Map<string, number>();
+    for (const a of auditsByUrl) {
+      const normalizedUrl = a.url.toLowerCase().replace(/\/+$/, "");
+      auditIdByUrl.set(normalizedUrl, a.id);
+    }
+
+    const result = new Map<string, { onpageScore: number | null; issueCount: number }>();
+    for (const audit of audits) {
+      const normalizedUrl = audit.url.toLowerCase().replace(/\/+$/, "");
+      const auditId = auditIdByUrl.get(normalizedUrl);
+      result.set(normalizedUrl, {
+        onpageScore: audit.onpageScore !== null && audit.onpageScore !== undefined 
+          ? Number(audit.onpageScore) 
+          : null,
+        issueCount: auditId ? (issueCountByAuditId.get(auditId) || 0) : 0,
+      });
+    }
+
+    return result;
   }
 }
 
