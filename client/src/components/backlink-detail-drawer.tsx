@@ -31,6 +31,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Loader2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -117,6 +119,7 @@ export function BacklinkDetailDrawer({
   const [searchQuery, setSearchQuery] = useState("");
   const [linkTypeFilter, setLinkTypeFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "live" | "lost">("all");
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
   const { toast } = useToast();
 
   const spamScoreMutation = useMutation({
@@ -627,52 +630,119 @@ export function BacklinkDetailDrawer({
                         No referring domains found.
                       </div>
                     ) : (
-                      domainGroups.map((group) => (
-                        <Card
-                          key={group.domain}
-                          className="transition-colors"
-                          data-testid={`domain-group-${group.domain}`}
-                        >
-                          <CardContent className="py-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                  <span className="font-medium truncate">{group.domain}</span>
-                                  {group.avgDomainAuthority && (
-                                    <Badge variant="outline" className="text-xs shrink-0">
-                                      DA: {group.avgDomainAuthority}
-                                    </Badge>
-                                  )}
+                      domainGroups.map((group) => {
+                        const isExpanded = expandedDomain === group.domain;
+                        const domainBacklinks = backlinks.filter(bl => bl.sourceDomain === group.domain);
+                        
+                        return (
+                          <Card
+                            key={group.domain}
+                            className="transition-colors"
+                            data-testid={`domain-group-${group.domain}`}
+                          >
+                            <CardContent className="py-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <span className="font-medium truncate">{group.domain}</span>
+                                    {group.avgDomainAuthority && (
+                                      <Badge variant="outline" className="text-xs shrink-0">
+                                        DA: {group.avgDomainAuthority}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                                    <span>
+                                      First seen: {formatDate(group.firstSeen)}
+                                    </span>
+                                    <span>
+                                      Last seen: {formatDate(group.lastSeen)}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                                  <span>
-                                    First seen: {formatDate(group.firstSeen)}
-                                  </span>
-                                  <span>
-                                    Last seen: {formatDate(group.lastSeen)}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 shrink-0">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="secondary">
-                                    {group.backlinks} link{group.backlinks !== 1 ? "s" : ""}
-                                  </Badge>
-                                  {group.liveLinks > 0 && (
-                                    <Badge
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <div className="flex items-center gap-2">
+                                    <Badge 
                                       variant="secondary"
-                                      className="bg-green-500/10 text-green-600"
+                                      className="cursor-pointer hover-elevate"
+                                      onClick={() => setExpandedDomain(isExpanded ? null : group.domain)}
+                                      data-testid={`toggle-links-${group.domain}`}
                                     >
-                                      {group.liveLinks} live
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-3 w-3 mr-1" />
+                                      ) : (
+                                        <ChevronRight className="h-3 w-3 mr-1" />
+                                      )}
+                                      {group.backlinks} link{group.backlinks !== 1 ? "s" : ""}
                                     </Badge>
-                                  )}
+                                    {group.liveLinks > 0 && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-green-500/10 text-green-600"
+                                      >
+                                        {group.liveLinks} live
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))
+                              
+                              {isExpanded && domainBacklinks.length > 0 && (
+                                <div className="mt-3 pt-3 border-t space-y-2">
+                                  {domainBacklinks.map((backlink) => (
+                                    <div 
+                                      key={backlink.id}
+                                      className="flex items-start gap-2 text-sm pl-2 py-2 rounded-md bg-muted/30"
+                                      data-testid={`domain-backlink-${backlink.id}`}
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <a
+                                          href={backlink.sourceUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-sm hover:text-primary flex items-center gap-1 break-all"
+                                        >
+                                          {backlink.sourceUrl}
+                                          <ExternalLink className="h-3 w-3 shrink-0" />
+                                        </a>
+                                        {backlink.anchorText && (
+                                          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                            <Anchor className="h-3 w-3 shrink-0" />
+                                            <span className="truncate">"{backlink.anchorText}"</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {backlink.isLive ? (
+                                          <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600">
+                                            Live
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="secondary" className="text-xs bg-red-500/10 text-red-600">
+                                            Lost
+                                          </Badge>
+                                        )}
+                                        <Badge
+                                          variant="secondary"
+                                          className={cn(
+                                            "text-xs",
+                                            backlink.linkType === "dofollow"
+                                              ? "bg-blue-500/10 text-blue-600"
+                                              : ""
+                                          )}
+                                        >
+                                          {backlink.linkType}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })
                     )}
                     </div>
                   </ScrollArea>
