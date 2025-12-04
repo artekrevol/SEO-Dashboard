@@ -21,6 +21,7 @@ import { QuickWinsPage } from "@/pages/quick-wins";
 import { FallingStarsPage } from "@/pages/falling-stars";
 import { RankingsPage } from "@/pages/rankings";
 import { SettingsPage } from "@/pages/settings";
+import { SiteAuditPage } from "@/pages/site-audit";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -133,6 +134,9 @@ function AppContent() {
               </Route>
               <Route path="/rankings">
                 <RankingsPage projectId={selectedProjectId} />
+              </Route>
+              <Route path="/site-audit">
+                <SiteAuditPage projectId={selectedProjectId} />
               </Route>
               <Route path="/reports">
                 <div className="flex h-full items-center justify-center">

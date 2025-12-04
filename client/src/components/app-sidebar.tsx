@@ -12,6 +12,7 @@ import {
   Rocket,
   Database,
   Clock,
+  Globe,
 } from "lucide-react";
 import {
   Sidebar,
@@ -82,6 +83,11 @@ const analyticsItems = [
     title: "Rankings",
     url: "/rankings",
     icon: TrendingUp,
+  },
+  {
+    title: "Site Audit",
+    url: "/site-audit",
+    icon: Globe,
   },
   {
     title: "Reports",
