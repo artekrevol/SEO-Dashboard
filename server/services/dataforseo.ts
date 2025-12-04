@@ -1345,8 +1345,9 @@ export class DataForSEOService {
       }
 
       const pages = (result.items || []).map(item => {
-        const meta = item.meta || {};
-        const content = item.content || {};
+        const meta = item.meta || {} as any;
+        const metaContent = meta.content || {};
+        const htags = meta.htags || {};
         const timing = item.page_timing || {};
         const checks = item.checks || {};
         const indexation = item.indexation || {};
@@ -1362,39 +1363,46 @@ export class DataForSEOService {
           else if (indexation.reason) indexabilityReason = indexation.reason;
         }
 
+        // Extract heading counts from htags arrays
+        const h1Array = htags.h1 || [];
+        const h2Array = htags.h2 || [];
+
         return {
           url: item.url || '',
           statusCode: item.status_code || 0,
           onpageScore: item.onpage_score || 0,
           meta: {
             title: meta.title || '',
-            titleLength: (meta.title || '').length,
+            titleLength: meta.title_length || (meta.title || '').length,
             description: meta.description || '',
-            descriptionLength: (meta.description || '').length,
+            descriptionLength: meta.description_length || (meta.description || '').length,
             canonicalUrl: meta.canonical || null,
           },
           content: {
-            wordCount: content.plain_text_word_count || 0,
-            h1Count: item.h1?.count || 0,
-            h2Count: item.h2?.count || 0,
-            readabilityScore: content.automated_readability_index || 0,
-            contentRate: content.content_rate || 0,
+            // Content metrics are nested under meta.content in the API response
+            wordCount: metaContent.plain_text_word_count || 0,
+            h1Count: Array.isArray(h1Array) ? h1Array.length : 0,
+            h2Count: Array.isArray(h2Array) ? h2Array.length : 0,
+            readabilityScore: metaContent.automated_readability_index || 0,
+            contentRate: metaContent.plain_text_rate || 0,
           },
           performance: {
             pageSizeKb: (item.total_dom_size || 0) / 1024,
             loadTimeMs: timing.dom_complete || 0,
             lcpMs: timing.largest_contentful_paint || null,
-            clsScore: timing.cumulative_layout_shift || null,
+            clsScore: meta.cumulative_layout_shift ?? timing.cumulative_layout_shift ?? null,
             tbtMs: timing.total_blocking_time || null,
             fidMs: timing.first_input_delay || null,
           },
           links: {
-            internalCount: item.internal_links_count || 0,
-            externalCount: item.external_links_count || 0,
+            // Link counts are inside meta in the API response
+            internalCount: meta.internal_links_count || 0,
+            externalCount: meta.external_links_count || 0,
             brokenCount: item.broken_links || 0,
           },
           images: {
-            count: item.images_count || 0,
+            // Image count is inside meta in the API response
+            count: meta.images_count || 0,
             withoutAlt: item.images_without_alt || 0,
           },
           schema: {
