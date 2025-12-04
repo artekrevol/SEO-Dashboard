@@ -2220,6 +2220,81 @@ export async function registerRoutes(
           }
           
           updates.issuesTotal = allIssues.length;
+          
+          // Auto-generate recommendations from critical/error issues
+          const criticalIssues = allIssues.filter(issue => 
+            issue.severity === "critical" || issue.severity === "error"
+          );
+          
+          // Group issues by category and URL for recommendation generation
+          const issueGroups: Map<string, { count: number; urls: Set<string>; label: string; severity: string }> = new Map();
+          
+          for (let i = 0; i < criticalIssues.length; i++) {
+            const issue = criticalIssues[i];
+            const audit = createdAudits.find(a => a.id === issue.pageAuditId);
+            const key = `${issue.issueCode}-${issue.category}`;
+            
+            if (!issueGroups.has(key)) {
+              issueGroups.set(key, { 
+                count: 0, 
+                urls: new Set(), 
+                label: issue.issueLabel, 
+                severity: issue.severity 
+              });
+            }
+            
+            const group = issueGroups.get(key)!;
+            group.count++;
+            if (audit) {
+              group.urls.add(audit.url);
+            }
+          }
+          
+          // Create recommendations for issues affecting multiple pages or critical single-page issues
+          let recommendationsCreated = 0;
+          for (const [key, group] of issueGroups) {
+            const [issueCode, category] = key.split("-");
+            const pagesAffected = group.urls.size;
+            
+            // Create recommendation if it affects at least 1 page
+            if (pagesAffected > 0) {
+              const titleMap: Record<string, string> = {
+                "meta": "Fix Meta Tag Issues",
+                "content": "Resolve Content Issues",
+                "links": "Fix Broken or Missing Links",
+                "performance": "Improve Page Performance",
+                "indexability": "Resolve Indexability Issues",
+                "images": "Fix Image Optimization Issues",
+                "schema": "Add or Fix Structured Data",
+                "security": "Address Security Issues",
+              };
+              
+              const title = `${titleMap[category] || "Fix Technical Issue"}: ${group.label}`;
+              const description = pagesAffected > 1 
+                ? `This issue affects ${pagesAffected} pages across the site. Priority: ${group.severity}.`
+                : `This issue was found on: ${Array.from(group.urls)[0]}. Priority: ${group.severity}.`;
+              
+              await storage.createSeoRecommendation({
+                projectId: crawl.projectId,
+                url: pagesAffected === 1 ? Array.from(group.urls)[0] : undefined,
+                type: "technical_seo",
+                severity: group.severity === "critical" ? "critical" : "high",
+                title,
+                description,
+                status: "open",
+                sourceSignals: {
+                  issueCode,
+                  category,
+                  pagesAffected,
+                  techCrawlId: crawlId,
+                  affectedUrls: Array.from(group.urls).slice(0, 10), // Store first 10 URLs
+                },
+              });
+              recommendationsCreated++;
+            }
+          }
+          
+          console.log(`[Tech Audit] Generated ${recommendationsCreated} recommendations from ${criticalIssues.length} critical issues`);
         }
       }
 
