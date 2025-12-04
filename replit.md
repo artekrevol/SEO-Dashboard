@@ -6,10 +6,25 @@ The Live SEO Command Center is a production-ready dashboard designed for TekRevo
 ## Transformation Project Plan
 **See:** `docs/SEO_TRANSFORMATION_PROJECT_PLAN.md` for the complete 6-phase transformation roadmap.
 
-### Current Phase: PHASE 2 - Link Building Tracker ✅ COMPLETED
-Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
+### Current Phase: PHASE 4 - Technical SEO Suite ✅ COMPLETED
+Focus: Site audit functionality using DataForSEO OnPage API
 
 **Completed Features:**
+- **Tech Crawls Database Table**: Stores crawl configuration (target domain, max pages, crawl depth), status tracking, and DataForSEO task ID (`onpageTaskId`)
+- **Page Audits Table**: Stores per-URL technical metrics including OnPage score (0-100), status code, indexability, title/description analysis, heading counts, content metrics, performance data (LCP, CLS, TBT, FID), and link counts
+- **Page Issues Table**: Normalized issue list with severity (critical/warning/info), category (indexability, content, links, performance, HTML, images, security), occurrence count, and resolution guidance
+- **DataForSEO OnPage API Integration**: 6 API methods - `createOnPageTask`, `getOnPageTaskStatus`, `getOnPagePages`, `getOnPagePagesByResource`, `getOnPageErrors`, `getOnPageSummary`
+- **OnPage Sync Pipeline**: Background job that polls for task completion, fetches page data, and auto-generates SEO recommendations from critical/error issues
+- **Auto-Recommendation Generation**: Critical OnPage issues automatically create actionable recommendations with severity, type, and specific URL/issue details
+- **Site Audit Page**: Full-featured UI with crawl status cards, start crawl dialog (max pages configuration), tabbed interface for Pages/Issues views, and severity filtering
+- **PageAuditDrawer**: Per-URL technical analysis showing OnPage score with color-coded indicator, meta analysis, content metrics, performance breakdown (Core Web Vitals), link counts, and individual issues list
+- **Pages Table Integration**: Tech risk scores now derived from OnPage audit data when available (100 - OnPage score), clickable to open PageAuditDrawer with issue count display
+- **Navigation**: Site Audit added to Analytics section in sidebar with Globe icon
+
+### Completed: PHASE 2 - Link Building Tracker ✅
+Focus: Backlink management workflow (highest ROI: saves 110 hrs/month)
+
+**Features:**
 - **Backlinks Database Table**: Stores referring domain, URL, anchor text, link type (dofollow/nofollow), domain authority, first/last seen dates, lost status, and spam score
 - **Spam Score Detection**: Bulk spam score lookup via DataForSEO `/v3/backlinks/bulk_spam_score/live` endpoint with color-coded indicators (Safe ≤30%, Review 31-60%, Toxic >60%)
 - **Backlink Detail Drawer**: Sheet component showing backlink overview (total, live, lost, new counts), top anchor texts, link type breakdown, spam distribution, and individual backlink details with filtering
@@ -81,11 +96,16 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - `import_logs`: Audit trail for data imports.
     - `crawl_schedules`: Manages page crawl configurations.
     - `backlinks`: Tracks referring domains, URLs, anchor text, link type (dofollow/nofollow), domain/page authority, first/last seen dates, and lost status for backlink management workflow.
+    - `tech_crawls`: Stores technical SEO crawl configurations (target domain, max pages, crawl depth), status tracking, and DataForSEO OnPage task ID.
+    - `page_audits`: Per-URL technical audit results including OnPage score (0-100), status code, indexability, meta analysis, heading/content metrics, Core Web Vitals (LCP, CLS, TBT, FID), and link counts.
+    - `page_issues`: Normalized issue list with severity (critical/warning/info), category, occurrence count, and resolution guidance.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
 
 ## External Dependencies
-- **DataForSEO**: Used for live data fetching, including SERP rankings, search volume, keyword difficulty, and search intent classification.
-    - API Endpoints Used: `/serp/google/organic/live/advanced`, `/keywords_data/google_ads/search_volume/live`, `/dataforseo_labs/google/bulk_keyword_difficulty/live`, `/dataforseo_labs/google/search_intent/live`.
+- **DataForSEO**: Used for live data fetching, including SERP rankings, search volume, keyword difficulty, search intent classification, backlinks, and technical SEO audits.
+    - SERP & Keywords: `/serp/google/organic/live/advanced`, `/keywords_data/google_ads/search_volume/live`, `/dataforseo_labs/google/bulk_keyword_difficulty/live`, `/dataforseo_labs/google/search_intent/live`
+    - Backlinks: `/backlinks/backlinks/live`, `/backlinks/bulk_spam_score/live`
+    - OnPage (Technical SEO): `/on_page/task_post`, `/on_page/summary/{task_id}`, `/on_page/pages/{task_id}`, `/on_page/pages_by_resource/{task_id}`, `/on_page/non_indexable/{task_id}`, `/on_page/errors/{task_id}`
 - **PostgreSQL (Neon)**: Relational database for all project data.
 - **node-cron**: For scheduling background jobs.
 - **Vite**: Frontend build tool.
