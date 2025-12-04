@@ -1985,6 +1985,399 @@ export async function registerRoutes(
     }
   });
 
+  // ========== Technical SEO Suite API Routes ==========
+
+  // Get all tech crawls for a project
+  app.get("/api/tech-crawls", async (req, res) => {
+    try {
+      const { projectId, limit } = req.query;
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const crawls = await storage.getTechCrawls(projectId, limit ? Number(limit) : undefined);
+      res.json({ crawls });
+    } catch (error) {
+      console.error("Error fetching tech crawls:", error);
+      res.status(500).json({ error: "Failed to fetch tech crawls" });
+    }
+  });
+
+  // Get latest tech crawl for a project
+  app.get("/api/tech-crawls/latest", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      const crawl = await storage.getLatestTechCrawl(projectId);
+      if (!crawl) {
+        return res.status(404).json({ error: "No tech crawl found for this project" });
+      }
+      res.json(crawl);
+    } catch (error) {
+      console.error("Error fetching latest tech crawl:", error);
+      res.status(500).json({ error: "Failed to fetch latest tech crawl" });
+    }
+  });
+
+  // Get running tech crawls
+  app.get("/api/tech-crawls/running", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      const crawls = await storage.getRunningTechCrawls(
+        projectId && typeof projectId === "string" ? projectId : undefined
+      );
+      res.json({ crawls });
+    } catch (error) {
+      console.error("Error fetching running tech crawls:", error);
+      res.status(500).json({ error: "Failed to fetch running tech crawls" });
+    }
+  });
+
+  // Get a specific tech crawl
+  app.get("/api/tech-crawls/:id", async (req, res) => {
+    try {
+      const crawl = await storage.getTechCrawl(Number(req.params.id));
+      if (!crawl) {
+        return res.status(404).json({ error: "Tech crawl not found" });
+      }
+      res.json(crawl);
+    } catch (error) {
+      console.error("Error fetching tech crawl:", error);
+      res.status(500).json({ error: "Failed to fetch tech crawl" });
+    }
+  });
+
+  // Start a new tech audit crawl
+  app.post("/api/tech-crawls", async (req, res) => {
+    try {
+      const { projectId, maxPages, enableJavascript } = req.body;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Check for running crawls
+      const runningCrawls = await storage.getRunningTechCrawls(projectId);
+      if (runningCrawls.length > 0) {
+        return res.status(409).json({ 
+          error: "A tech crawl is already running for this project",
+          runningCrawlId: runningCrawls[0].id
+        });
+      }
+
+      const dataForSeoService = DataForSEOService.fromEnv();
+      if (!dataForSeoService) {
+        return res.status(503).json({ error: "DataForSEO API not configured" });
+      }
+
+      // Start the crawl via DataForSEO
+      const { taskId, error: apiError } = await dataForSeoService.startTechAuditCrawl(project.domain, {
+        maxPages: maxPages || 500,
+        enableJavascript: enableJavascript || false,
+      });
+
+      if (!taskId) {
+        return res.status(500).json({ error: apiError || "Failed to start tech audit crawl" });
+      }
+
+      // Create crawl record
+      const crawl = await storage.createTechCrawl({
+        projectId,
+        onpageTaskId: taskId,
+        targetDomain: project.domain,
+        status: "queued",
+        startedAt: new Date(),
+        maxPages: maxPages || 500,
+      });
+
+      console.log(`[Tech Audit] Started crawl for ${project.domain}, task ID: ${taskId}, crawl ID: ${crawl.id}`);
+
+      res.status(201).json(crawl);
+    } catch (error) {
+      console.error("Error starting tech crawl:", error);
+      res.status(500).json({ error: "Failed to start tech crawl" });
+    }
+  });
+
+  // Poll/sync tech crawl status and data
+  app.post("/api/tech-crawls/:id/sync", async (req, res) => {
+    try {
+      const crawlId = Number(req.params.id);
+      const crawl = await storage.getTechCrawl(crawlId);
+      
+      if (!crawl) {
+        return res.status(404).json({ error: "Tech crawl not found" });
+      }
+
+      if (crawl.status === "completed" || crawl.status === "failed") {
+        return res.json({ message: "Crawl already completed", crawl });
+      }
+
+      const dataForSeoService = DataForSEOService.fromEnv();
+      if (!dataForSeoService) {
+        return res.status(503).json({ error: "DataForSEO API not configured" });
+      }
+
+      if (!crawl.onpageTaskId) {
+        return res.status(400).json({ error: "Crawl has no associated DataForSEO task ID" });
+      }
+
+      // Get summary from DataForSEO
+      const summary = await dataForSeoService.getTechAuditSummary(crawl.onpageTaskId);
+      
+      if (!summary) {
+        return res.status(500).json({ error: "Failed to get crawl status from DataForSEO" });
+      }
+
+      // Update crawl record
+      const updates: any = {
+        status: summary.status,
+        pagesCrawled: summary.pagesCrawled,
+        pagesTotal: summary.maxPages,
+        avgOnpageScore: String(summary.onpageScore),
+        criticalIssues: summary.issuesSummary.critical,
+        warnings: summary.issuesSummary.warnings,
+      };
+
+      if (summary.status === "completed") {
+        updates.completedAt = new Date();
+        
+        // Fetch and store page audit data
+        const { pages } = await dataForSeoService.getTechAuditPages(crawl.onpageTaskId, 1000);
+        
+        if (pages.length > 0) {
+          // Delete existing audits for this crawl (in case of re-sync)
+          await storage.deletePageAuditsByTechCrawl(crawlId);
+          
+          // Create page audits
+          const auditRecords = pages.map(page => ({
+            projectId: crawl.projectId,
+            techCrawlId: crawlId,
+            url: page.url,
+            statusCode: page.statusCode,
+            onpageScore: String(page.onpageScore),
+            title: page.meta.title,
+            titleLength: page.meta.titleLength,
+            description: page.meta.description,
+            descriptionLength: page.meta.descriptionLength,
+            canonicalUrl: page.meta.canonicalUrl,
+            isIndexable: page.indexability.isIndexable,
+            indexabilityReason: page.indexability.reason,
+            wordCount: page.content.wordCount,
+            h1Count: page.content.h1Count,
+            h2Count: page.content.h2Count,
+            readabilityScore: String(page.content.readabilityScore),
+            contentRate: String(page.content.contentRate),
+            pageSizeKb: String(page.performance.pageSizeKb),
+            loadTimeMs: page.performance.loadTimeMs,
+            lcpMs: page.performance.lcpMs,
+            clsScore: page.performance.clsScore ? String(page.performance.clsScore) : null,
+            tbtMs: page.performance.tbtMs,
+            fidMs: page.performance.fidMs,
+            internalLinksCount: page.links.internalCount,
+            externalLinksCount: page.links.externalCount,
+            brokenLinksCount: page.links.brokenCount,
+            imagesCount: page.images.count,
+            imagesWithoutAlt: page.images.withoutAlt,
+            hasSchema: page.schema.hasSchema,
+            schemaTypes: page.schema.types,
+            clickDepth: page.structure.clickDepth,
+            isOrphanPage: page.structure.isOrphanPage,
+            checksData: page.checks,
+          }));
+
+          const createdAudits = await storage.createPageAudits(auditRecords);
+          
+          // Create page issues from checks
+          const allIssues: any[] = [];
+          for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            const audit = createdAudits[i];
+            
+            for (const [checkKey, checkValue] of Object.entries(page.checks)) {
+              const issueInfo = dataForSeoService.classifyOnPageIssue(checkKey, checkValue);
+              if (issueInfo) {
+                allIssues.push({
+                  projectId: crawl.projectId,
+                  pageAuditId: audit.id,
+                  issueCode: issueInfo.code,
+                  issueLabel: issueInfo.label,
+                  severity: issueInfo.severity,
+                  category: issueInfo.category,
+                  occurrences: 1,
+                });
+              }
+            }
+          }
+          
+          if (allIssues.length > 0) {
+            await storage.createPageIssues(allIssues);
+          }
+          
+          updates.issuesTotal = allIssues.length;
+        }
+      }
+
+      const updatedCrawl = await storage.updateTechCrawl(crawlId, updates);
+      
+      res.json({ 
+        crawl: updatedCrawl,
+        summary: {
+          status: summary.status,
+          pagesCrawled: summary.pagesCrawled,
+          onpageScore: summary.onpageScore,
+          issues: summary.issuesSummary,
+        }
+      });
+    } catch (error) {
+      console.error("Error syncing tech crawl:", error);
+      res.status(500).json({ error: "Failed to sync tech crawl" });
+    }
+  });
+
+  // Get page audits for a project
+  app.get("/api/page-audits", async (req, res) => {
+    try {
+      const { projectId, techCrawlId, limit, offset, minScore, maxScore } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const audits = await storage.getPageAudits(projectId, {
+        techCrawlId: techCrawlId ? Number(techCrawlId) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+        minScore: minScore ? Number(minScore) : undefined,
+        maxScore: maxScore ? Number(maxScore) : undefined,
+      });
+
+      res.json({ audits });
+    } catch (error) {
+      console.error("Error fetching page audits:", error);
+      res.status(500).json({ error: "Failed to fetch page audits" });
+    }
+  });
+
+  // Get page audits summary
+  app.get("/api/page-audits/summary", async (req, res) => {
+    try {
+      const { projectId, techCrawlId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const summary = await storage.getPageAuditsSummary(
+        projectId, 
+        techCrawlId ? Number(techCrawlId) : undefined
+      );
+
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching page audits summary:", error);
+      res.status(500).json({ error: "Failed to fetch page audits summary" });
+    }
+  });
+
+  // Get a specific page audit
+  app.get("/api/page-audits/:id", async (req, res) => {
+    try {
+      const audit = await storage.getPageAudit(Number(req.params.id));
+      if (!audit) {
+        return res.status(404).json({ error: "Page audit not found" });
+      }
+      
+      // Also get issues for this audit
+      const issues = await storage.getPageIssues(audit.id);
+      
+      res.json({ audit, issues });
+    } catch (error) {
+      console.error("Error fetching page audit:", error);
+      res.status(500).json({ error: "Failed to fetch page audit" });
+    }
+  });
+
+  // Get page audit by URL
+  app.get("/api/page-audits/by-url", async (req, res) => {
+    try {
+      const { projectId, url, techCrawlId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ error: "url is required" });
+      }
+
+      const audit = await storage.getPageAuditByUrl(
+        projectId, 
+        url,
+        techCrawlId ? Number(techCrawlId) : undefined
+      );
+
+      if (!audit) {
+        return res.status(404).json({ error: "Page audit not found for this URL" });
+      }
+
+      const issues = await storage.getPageIssues(audit.id);
+      
+      res.json({ audit, issues });
+    } catch (error) {
+      console.error("Error fetching page audit by URL:", error);
+      res.status(500).json({ error: "Failed to fetch page audit" });
+    }
+  });
+
+  // Get issues for a project
+  app.get("/api/page-issues", async (req, res) => {
+    try {
+      const { projectId, techCrawlId, severity, category, limit } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const issues = await storage.getPageIssuesByProject(projectId, {
+        techCrawlId: techCrawlId ? Number(techCrawlId) : undefined,
+        severity: severity && typeof severity === "string" ? severity : undefined,
+        category: category && typeof category === "string" ? category : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+
+      res.json({ issues });
+    } catch (error) {
+      console.error("Error fetching page issues:", error);
+      res.status(500).json({ error: "Failed to fetch page issues" });
+    }
+  });
+
+  // Get issues summary
+  app.get("/api/page-issues/summary", async (req, res) => {
+    try {
+      const { projectId, techCrawlId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const summary = await storage.getIssuesSummary(
+        projectId,
+        techCrawlId ? Number(techCrawlId) : undefined
+      );
+
+      res.json({ issues: summary });
+    } catch (error) {
+      console.error("Error fetching issues summary:", error);
+      res.status(500).json({ error: "Failed to fetch issues summary" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;
