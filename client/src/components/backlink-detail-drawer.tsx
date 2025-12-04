@@ -501,9 +501,9 @@ export function BacklinkDetailDrawer({
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0 relative" data-testid="scroll-container-all-links">
-                  <ScrollArea className="absolute inset-0" data-testid="scroll-area-all-links">
-                  <div className="space-y-3 pr-4">
+                <div className="flex-1 min-h-0 flex flex-col" data-testid="scroll-container-all-links">
+                  <ScrollArea className="flex-1 min-h-0" data-testid="scroll-area-all-links">
+                    <div className="space-y-3 pr-4">
                     {filteredBacklinks.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-backlinks">
                         {backlinks.length === 0
@@ -613,15 +613,15 @@ export function BacklinkDetailDrawer({
                         </Card>
                       ))
                     )}
-                  </div>
+                    </div>
                   </ScrollArea>
                 </div>
               </TabsContent>
 
               <TabsContent value="domains" className="flex-1 min-h-0 overflow-hidden flex flex-col mt-4 px-4 pb-4">
-                <div className="flex-1 min-h-0 relative" data-testid="scroll-container-domains">
-                  <ScrollArea className="absolute inset-0" data-testid="scroll-area-domains">
-                  <div className="space-y-3 pr-4">
+                <div className="flex-1 min-h-0 flex flex-col" data-testid="scroll-container-domains">
+                  <ScrollArea className="flex-1 min-h-0" data-testid="scroll-area-domains">
+                    <div className="space-y-3 pr-4">
                     {domainGroups.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground" data-testid="no-domains">
                         No referring domains found.
@@ -674,7 +674,7 @@ export function BacklinkDetailDrawer({
                         </Card>
                       ))
                     )}
-                  </div>
+                    </div>
                   </ScrollArea>
                 </div>
               </TabsContent>
