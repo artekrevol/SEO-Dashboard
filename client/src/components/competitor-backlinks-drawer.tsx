@@ -30,6 +30,9 @@ import {
   Star,
   Plus,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  Anchor,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -141,6 +144,7 @@ export function CompetitorBacklinksDrawer({
 }: CompetitorBacklinksDrawerProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [opportunityFilter, setOpportunityFilter] = useState<"all" | "opportunities">("all");
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { data: backlinks = [], isLoading: isLoadingBacklinks, refetch: refetchBacklinks } = useQuery<CompetitorBacklink[]>({
@@ -370,6 +374,9 @@ export function CompetitorBacklinksDrawer({
                   </TabsTrigger>
                   <TabsTrigger value="opportunities" data-testid="tab-opportunities">
                     Opportunities ({opportunityBacklinks.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="domains" data-testid="tab-domains">
+                    By Domain ({domainGroups.length})
                   </TabsTrigger>
                   <TabsTrigger value="all" data-testid="tab-all">All ({backlinks.length})</TabsTrigger>
                 </TabsList>
@@ -871,6 +878,149 @@ export function CompetitorBacklinksDrawer({
                           </CardContent>
                         </Card>
                       ))
+                    )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="domains" className="flex-1 min-h-0 mt-4 px-4 pb-4">
+                <div className="flex-1 min-h-0" data-testid="scroll-container-domains">
+                  <ScrollArea className="h-full" data-testid="scroll-area-domains">
+                    <div className="space-y-3 pr-4">
+                    {domainGroups.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground" data-testid="no-domains">
+                        No referring domains found.
+                      </div>
+                    ) : (
+                      domainGroups.map((group) => {
+                        const isExpanded = expandedDomain === group.domain;
+                        const domainBacklinks = backlinks.filter(bl => bl.sourceDomain === group.domain);
+                        
+                        return (
+                          <Card
+                            key={group.domain}
+                            className={cn(
+                              "transition-colors",
+                              group.isOpportunity && "border-green-500/30 bg-green-500/5"
+                            )}
+                            data-testid={`domain-group-${group.domain}`}
+                          >
+                            <CardContent className="py-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <span className="font-medium truncate">{group.domain}</span>
+                                    {group.isOpportunity && (
+                                      <Star className="h-3 w-3 text-green-500" />
+                                    )}
+                                    {group.avgDomainAuthority && (
+                                      <Badge variant="outline" className="text-xs shrink-0">
+                                        DA: {group.avgDomainAuthority}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {group.avgSpamScore !== null && (
+                                    <div className="flex items-center gap-1 mt-1 text-xs">
+                                      <span className="text-muted-foreground">Avg Spam:</span>
+                                      <Badge
+                                        variant={getSpamScoreBadge(group.avgSpamScore).variant}
+                                        className={cn("text-xs", getSpamScoreBadge(group.avgSpamScore).className)}
+                                      >
+                                        {group.avgSpamScore}%
+                                      </Badge>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <div className="flex items-center gap-2">
+                                    <Badge 
+                                      variant="secondary"
+                                      className="cursor-pointer hover-elevate"
+                                      onClick={() => setExpandedDomain(isExpanded ? null : group.domain)}
+                                      data-testid={`toggle-links-${group.domain}`}
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-3 w-3 mr-1" />
+                                      ) : (
+                                        <ChevronRight className="h-3 w-3 mr-1" />
+                                      )}
+                                      {group.backlinks} link{group.backlinks !== 1 ? "s" : ""}
+                                    </Badge>
+                                    {group.liveLinks > 0 && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="bg-green-500/10 text-green-600"
+                                      >
+                                        {group.liveLinks} live
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {isExpanded && domainBacklinks.length > 0 && (
+                                <div className="mt-3 pt-3 border-t space-y-2">
+                                  {domainBacklinks.map((backlink) => (
+                                    <div 
+                                      key={backlink.id}
+                                      className={cn(
+                                        "flex items-start gap-2 text-sm pl-2 py-2 rounded-md",
+                                        backlink.isOpportunity ? "bg-green-500/10" : "bg-muted/30"
+                                      )}
+                                      data-testid={`domain-backlink-${backlink.id}`}
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <a
+                                          href={backlink.sourceUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-sm hover:text-primary flex items-center gap-1 break-all"
+                                        >
+                                          {backlink.sourceUrl}
+                                          <ExternalLink className="h-3 w-3 shrink-0" />
+                                        </a>
+                                        {backlink.anchorText && (
+                                          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                            <Anchor className="h-3 w-3 shrink-0" />
+                                            <span className="truncate">"{backlink.anchorText}"</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {backlink.isOpportunity && (
+                                          <Star className="h-3 w-3 text-green-500" />
+                                        )}
+                                        {backlink.isLive ? (
+                                          <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600">
+                                            Live
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="secondary" className="text-xs bg-red-500/10 text-red-600">
+                                            Lost
+                                          </Badge>
+                                        )}
+                                        <Badge
+                                          variant="secondary"
+                                          className={cn(
+                                            "text-xs",
+                                            backlink.linkType === "dofollow"
+                                              ? "bg-blue-500/10 text-blue-600"
+                                              : ""
+                                          )}
+                                        >
+                                          {backlink.linkType}
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })
                     )}
                     </div>
                   </ScrollArea>
