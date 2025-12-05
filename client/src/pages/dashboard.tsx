@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock, Info } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
@@ -137,6 +138,13 @@ export function Dashboard({ projectId }: DashboardProps) {
   };
 
   const lastUpdated = latestSnapshot?.date ? new Date(latestSnapshot.date) : null;
+  
+  // Determine if data needs syncing
+  const keywordItems = keywords?.items || [];
+  const totalImportedKeywords = keywordItems.length;
+  const keywordsWithRankings = keywordItems.filter((k: any) => k.currentPosition > 0).length;
+  const needsRankingSync = totalImportedKeywords > 0 && keywordsWithRankings < totalImportedKeywords * 0.1;
+  const noKeywordsImported = totalImportedKeywords === 0;
 
   return (
     <div className="space-y-6 p-6">
@@ -169,6 +177,29 @@ export function Dashboard({ projectId }: DashboardProps) {
         </div>
       </div>
 
+      {needsRankingSync && !keywordsLoading && (
+        <Alert data-testid="alert-sync-pending">
+          <Info className="h-4 w-4" />
+          <AlertTitle>Rankings Data Pending</AlertTitle>
+          <AlertDescription>
+            {keywordsWithRankings > 0 
+              ? `Only ${keywordsWithRankings} of ${totalImportedKeywords} keywords have ranking data. Run a keyword rankings crawl to fetch current positions.`
+              : `${totalImportedKeywords} keywords are imported but no rankings have been synced yet. Run a keyword rankings crawl to fetch current positions.`
+            }
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {noKeywordsImported && !keywordsLoading && (
+        <Alert data-testid="alert-no-keywords">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>No Keywords Found</AlertTitle>
+          <AlertDescription>
+            Import keywords via Data Management to start tracking your SEO performance.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           title="SEO Health Score"
@@ -192,11 +223,11 @@ export function Dashboard({ projectId }: DashboardProps) {
         <KpiCard
           title="Keywords in Top 10"
           value={latestSnapshot?.top10Keywords || 0}
-          suffix={`/ ${latestSnapshot?.totalKeywords || 0}`}
-          change={8.5}
-          changeLabel="vs last week"
+          suffix={`/ ${totalImportedKeywords > 0 ? totalImportedKeywords : (latestSnapshot?.totalKeywords || 0)}`}
+          change={needsRankingSync ? undefined : 8.5}
+          changeLabel={needsRankingSync ? "sync pending" : "vs last week"}
           trend={keywordsTrend}
-          status="healthy"
+          status={needsRankingSync ? "at_risk" : "healthy"}
           testId="kpi-top10-keywords"
         />
         <KpiCard
