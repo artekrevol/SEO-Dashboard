@@ -396,10 +396,10 @@ export class RankingsSyncService {
         await storage.updateCrawlProgress(crawlResultId, 0, "fetching_backlinks", urls.length);
       }
 
-      console.log(`[PageMetrics] Syncing ${urls.length} pages for project ${project.name} using Summary API`);
+      console.log(`[PageMetrics] Syncing ${urls.length} pages for project ${project.name}`);
 
       const backlinkData = await this.dataForSEO.syncPagesBacklinks(urls);
-      console.log(`[PageMetrics] Retrieved backlinks for ${backlinkData.size} URLs`);
+      console.log(`[PageMetrics] Retrieved backlinks for ${backlinkData.size}/${urls.length} URLs from DataForSEO`);
 
       const today = new Date().toISOString().split('T')[0];
       const totalUrls = urls.length;

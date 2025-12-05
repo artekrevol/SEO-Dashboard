@@ -106,7 +106,17 @@ export class CrawlSchedulerService {
       if (scheduleType === "keyword_ranks" || scheduleType === "deep_discovery") {
         const keywords = await storage.getKeywords(schedule.projectId);
         estimatedItems = keywords.length;
-      } else if (scheduleType === "backlinks" || scheduleType === "pages_health") {
+      } else if (scheduleType === "pages_health") {
+        // For pages_health, count unique target URLs from keywords (same as what gets synced)
+        const keywords = await storage.getKeywords(schedule.projectId);
+        const urlSet = new Set<string>();
+        for (const kw of keywords) {
+          if (kw.targetUrl) {
+            urlSet.add(kw.targetUrl.toLowerCase().replace(/\/+$/, ''));
+          }
+        }
+        estimatedItems = urlSet.size;
+      } else if (scheduleType === "backlinks") {
         const pages = await storage.getPageMetrics(schedule.projectId);
         estimatedItems = Math.min(pages.length, 50);
       } else if (scheduleType === "competitors" || scheduleType === "competitor_backlinks") {
@@ -137,7 +147,7 @@ export class CrawlSchedulerService {
       // Update stage to "processing"
       await storage.updateCrawlProgress(crawlResult.id, 0, "processing");
 
-      let result: { success: boolean; message: string; keywordsProcessed?: number; keywordsUpdated?: number };
+      let result: { success: boolean; message: string; keywordsProcessed?: number; keywordsUpdated?: number; itemsProcessed?: number };
 
       switch (scheduleType) {
         case "keyword_ranks":
@@ -148,6 +158,7 @@ export class CrawlSchedulerService {
             message: rankResult.message,
             keywordsProcessed: rankResult.keywordsUpdated,
             keywordsUpdated: rankResult.keywordsUpdated,
+            itemsProcessed: rankResult.keywordsUpdated,
           };
           break;
 
@@ -162,6 +173,7 @@ export class CrawlSchedulerService {
           result = { 
             success: pagesResult.success, 
             message: pagesResult.message,
+            itemsProcessed: pagesResult.pagesUpdated,
           };
           break;
 
@@ -195,7 +207,7 @@ export class CrawlSchedulerService {
         duration,
         keywordsProcessed: result.keywordsProcessed || 0,
         keywordsUpdated: result.keywordsUpdated || 0,
-        itemsProcessed: estimatedItems,
+        itemsProcessed: result.itemsProcessed ?? estimatedItems,
         currentStage: "completed",
         completedAt: new Date(),
       });
