@@ -1328,23 +1328,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/crawl-results/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ error: "Invalid crawl result ID" });
-      }
-      const result = await storage.getCrawlResult(id);
-      if (!result) {
-        return res.status(404).json({ error: "Crawl result not found" });
-      }
-      res.json(result);
-    } catch (error) {
-      console.error("Error fetching crawl result:", error);
-      res.status(500).json({ error: "Failed to fetch crawl result" });
-    }
-  });
-
+  // Running crawls endpoint - must be before :id route to avoid "running" being parsed as an ID
   app.get("/api/crawl-results/running", async (req, res) => {
     try {
       const projectId = req.query.projectId as string;
@@ -1372,6 +1356,23 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching running crawls:", error);
       res.status(500).json({ error: "Failed to fetch running crawls" });
+    }
+  });
+
+  app.get("/api/crawl-results/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid crawl result ID" });
+      }
+      const result = await storage.getCrawlResult(id);
+      if (!result) {
+        return res.status(404).json({ error: "Crawl result not found" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching crawl result:", error);
+      res.status(500).json({ error: "Failed to fetch crawl result" });
     }
   });
 
