@@ -381,10 +381,19 @@ export class RankingsSyncService {
         return { success: false, message: "Project not found", pagesUpdated: 0, errors: ["Project not found"] };
       }
 
+      // Collect URLs from keywords (primary source)
       const urlSet = new Set<string>();
       for (const kw of keywords) {
         if (kw.targetUrl) {
           urlSet.add(kw.targetUrl.toLowerCase().replace(/\/+$/, ''));
+        }
+      }
+
+      // Also include ALL existing pages in page_metrics (even those without keywords)
+      const existingPages = await storage.getPageMetrics(projectId);
+      for (const page of existingPages) {
+        if (page.url) {
+          urlSet.add(page.url.toLowerCase().replace(/\/+$/, ''));
         }
       }
 
