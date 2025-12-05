@@ -1352,7 +1352,23 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
       const runningCrawls = await storage.getRunningCrawls(projectId);
-      res.json({ running: runningCrawls });
+      
+      const enriched = runningCrawls.map(c => ({
+        id: c.id,
+        type: c.type,
+        status: c.status,
+        currentStage: c.currentStage,
+        itemsTotal: c.itemsTotal || 0,
+        itemsProcessed: c.itemsProcessed || 0,
+        estimatedDurationSec: c.estimatedDurationSec,
+        startedAt: c.startedAt,
+        elapsedSec: c.startedAt ? Math.floor((Date.now() - new Date(c.startedAt).getTime()) / 1000) : 0,
+        progressPercent: c.itemsTotal && c.itemsTotal > 0 
+          ? Math.round((c.itemsProcessed || 0) / c.itemsTotal * 100) 
+          : 0,
+      }));
+      
+      res.json(enriched);
     } catch (error) {
       console.error("Error fetching running crawls:", error);
       res.status(500).json({ error: "Failed to fetch running crawls" });

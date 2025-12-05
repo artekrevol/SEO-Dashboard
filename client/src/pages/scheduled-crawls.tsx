@@ -23,8 +23,10 @@ import {
   History,
   RefreshCw,
   AlertCircle,
-  Timer
+  Timer,
+  Activity
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +52,19 @@ interface CrawlResultWithCST extends CrawlResult {
   startedAtCST: string | null;
   completedAtCST: string | null;
   durationFormatted: string | null;
+}
+
+interface RunningCrawlProgress {
+  id: number;
+  type: string;
+  status: string;
+  currentStage: string | null;
+  itemsTotal: number;
+  itemsProcessed: number;
+  estimatedDurationSec: number | null;
+  startedAt: string;
+  elapsedSec: number;
+  progressPercent: number;
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -143,6 +158,16 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       return response.json();
     },
     refetchInterval: 30000,
+  });
+
+  const { data: runningCrawls = [] } = useQuery<RunningCrawlProgress[]>({
+    queryKey: ["/api/crawl-results/running", projectId],
+    queryFn: async () => {
+      const response = await fetch(`/api/crawl-results/running?projectId=${projectId}`);
+      if (!response.ok) throw new Error("Failed to fetch running crawls");
+      return response.json();
+    },
+    refetchInterval: 3000,
   });
 
   const createMutation = useMutation({
@@ -533,6 +558,27 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
         </Tabs>
       )}
 
+      {runningCrawls.length > 0 && (
+        <Card className="mt-6 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400">
+                <Activity className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Active Crawls</CardTitle>
+                <CardDescription>{runningCrawls.length} crawl{runningCrawls.length > 1 ? 's' : ''} in progress</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {runningCrawls.map((crawl) => (
+              <RunningCrawlCard key={crawl.id} crawl={crawl} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="mt-6">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -860,7 +906,7 @@ function CrawlHistoryItem({ result }: { result: CrawlResultWithCST }) {
     return typeMap[type] || type;
   };
 
-  const metadata = result.metadata as Record<string, unknown> | null;
+  const metadata = result.details as Record<string, unknown> | null;
 
   return (
     <div 
@@ -908,6 +954,105 @@ function CrawlHistoryItem({ result }: { result: CrawlResultWithCST }) {
             </>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RunningCrawlCard({ crawl }: { crawl: RunningCrawlProgress }) {
+  const getCrawlTypeLabel = (type: string) => {
+    const typeMap: Record<string, string> = {
+      keyword_ranks: "Keyword Rankings",
+      keywords: "Keywords",
+      pages: "Page Metrics",
+      pages_health: "Page Metrics",
+      competitors: "Competitor Analysis",
+      backlinks: "Backlink Check",
+      competitor_backlinks: "Competitor Backlinks",
+      technical: "Technical Audit",
+      deep_discovery: "Deep Discovery",
+    };
+    return typeMap[type] || type;
+  };
+
+  const getStageLabel = (stage: string | null) => {
+    if (!stage) return "Initializing...";
+    const stageMap: Record<string, string> = {
+      initializing: "Initializing...",
+      fetching_keywords: "Fetching keywords...",
+      processing_rankings: "Processing rankings...",
+      saving_results: "Saving results...",
+      fetching_pages: "Fetching page data...",
+      analyzing_content: "Analyzing content...",
+      fetching_competitors: "Fetching competitor data...",
+      processing_backlinks: "Processing backlinks...",
+      completing: "Completing...",
+    };
+    return stageMap[stage] || stage;
+  };
+
+  const formatElapsedTime = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins < 60) return `${mins}m ${secs}s`;
+    const hours = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return `${hours}h ${remainingMins}m`;
+  };
+
+  const formatEstimatedRemaining = (estimatedSec: number | null, elapsedSec: number) => {
+    if (!estimatedSec) return null;
+    const remaining = Math.max(0, estimatedSec - elapsedSec);
+    if (remaining === 0) return "Almost done...";
+    return `~${formatElapsedTime(remaining)} remaining`;
+  };
+
+  const config = CRAWL_TYPE_CONFIG[crawl.type] || {
+    icon: Settings2,
+    label: crawl.type,
+    color: "text-gray-600",
+  };
+  const Icon = config.icon;
+
+  return (
+    <div 
+      className="p-4 rounded-lg border bg-card"
+      data-testid={`running-crawl-${crawl.id}`}
+    >
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <Icon className={`w-4 h-4 ${config.color}`} />
+          <span className="font-medium">{getCrawlTypeLabel(crawl.type)}</span>
+          <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            Running
+          </Badge>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Timer className="w-3 h-3" />
+            {formatElapsedTime(crawl.elapsedSec)}
+          </span>
+          {formatEstimatedRemaining(crawl.estimatedDurationSec, crawl.elapsedSec) && (
+            <span className="text-xs">
+              {formatEstimatedRemaining(crawl.estimatedDurationSec, crawl.elapsedSec)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">{getStageLabel(crawl.currentStage)}</span>
+          <span className="font-medium">{crawl.progressPercent}%</span>
+        </div>
+        <Progress value={crawl.progressPercent} className="h-2" />
+        {crawl.itemsTotal > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {crawl.itemsProcessed} of {crawl.itemsTotal} items processed
+          </p>
+        )}
       </div>
     </div>
   );
