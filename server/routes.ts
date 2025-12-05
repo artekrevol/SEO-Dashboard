@@ -1206,66 +1206,8 @@ export async function registerRoutes(
     }
   });
 
-  // Zod schema for manual crawl trigger validation
-  const manualCrawlTriggerSchema = z.object({
-    projectId: z.string().uuid(),
-    type: z.enum(["keywords", "pages", "competitors"]),
-    scope: z.enum(["all", "selected"]).default("all"),
-    keywordIds: z.array(z.number().int().positive()).optional(),
-    limit: z.number().int().positive().optional(),
-  }).refine(
-    (data) => {
-      // If scope is "selected", keywordIds must be non-empty
-      if (data.scope === "selected") {
-        return data.keywordIds && data.keywordIds.length > 0;
-      }
-      return true;
-    },
-    { message: "keywordIds must be non-empty when scope is 'selected'" }
-  );
-
-  // Manual crawl trigger for ad-hoc data collection
-  app.post("/api/crawl/trigger", async (req, res) => {
-    try {
-      const parseResult = manualCrawlTriggerSchema.safeParse(req.body);
-      if (!parseResult.success) {
-        return res.status(400).json({ 
-          error: "Validation failed", 
-          details: parseResult.error.errors 
-        });
-      }
-
-      const { projectId, type, scope, keywordIds, limit } = parseResult.data;
-
-      // Verify project exists
-      const project = await storage.getProject(projectId);
-      if (!project) {
-        return res.status(404).json({ error: "Project not found" });
-      }
-
-      let result: any = { success: true, message: "Crawl queued" };
-
-      switch (type) {
-        case "keywords":
-          result = await runRankingsSyncWithLimit(projectId, limit);
-          if (scope === "selected" && keywordIds && keywordIds.length > 0) {
-            result.note = `Crawl requested for ${keywordIds.length} specific keywords`;
-          }
-          break;
-        case "pages":
-          result = await runKeywordMetricsUpdate(projectId);
-          break;
-        case "competitors":
-          result = await runCompetitorAnalysis(projectId);
-          break;
-      }
-
-      res.json({ success: true, type, scope, result });
-    } catch (error) {
-      console.error("Error triggering manual crawl:", error);
-      res.status(500).json({ error: "Failed to trigger crawl" });
-    }
-  });
+  // Manual crawl trigger is now handled by the unified /api/crawl/trigger endpoint below
+  // that uses the crawl scheduler for proper progress tracking
 
   // Full crawl endpoint - comprehensive SEO data refresh
   app.post("/api/crawl/full", async (req, res) => {
@@ -1435,62 +1377,32 @@ export async function registerRoutes(
       const schedules = await storage.getCrawlSchedules(projectId);
       const schedule = schedules.find(s => s.type === crawlType);
       
-      // Create a crawl result with manual trigger
-      const crawlTypeDurations: Record<string, number> = {
-        keyword_ranks: 120,
-        competitors: 180,
-        pages_health: 90,
-        deep_discovery: 300,
-        backlinks: 240,
-        competitor_backlinks: 300,
+      // Create a temporary schedule object for execution (the scheduler will create the crawl result)
+      const tempSchedule = schedule || {
+        id: -1,
+        projectId,
+        type: crawlType,
+        url: null,
+        frequency: "manual",
+        scheduledTime: "00:00",
+        daysOfWeek: [],
+        isActive: false,
+        config: null,
+        lastRunAt: null,
+        nextRunAt: null,
+        lastRunStatus: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
       
-      const crawlResult = await storage.createCrawlResult({
-        projectId,
-        scheduleId: schedule?.id || null,
-        type: crawlType,
-        status: "running",
-        triggerType: "manual",
-        message: `Manual ${crawlType} crawl started...`,
-        estimatedDurationSec: crawlTypeDurations[crawlType] || 120,
-        itemsTotal: 0,
-        itemsProcessed: 0,
-        currentStage: "initializing",
+      // Execute the crawl asynchronously - scheduler creates the crawl result record
+      crawlSchedulerService.executeSchedule(tempSchedule).catch(err => {
+        console.error(`Error executing manual crawl for ${crawlType}:`, err);
       });
-      
-      // Execute the crawl asynchronously
-      if (schedule) {
-        crawlSchedulerService.executeSchedule(schedule).catch(err => {
-          console.error(`Error executing manual crawl for ${crawlType}:`, err);
-        });
-      } else {
-        // Create a temporary schedule object for execution
-        const tempSchedule = {
-          id: -1,
-          projectId,
-          type: crawlType,
-          url: null,
-          frequency: "manual",
-          scheduledTime: "00:00",
-          daysOfWeek: [],
-          isActive: false,
-          config: null,
-          lastRunAt: null,
-          nextRunAt: null,
-          lastRunStatus: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        crawlSchedulerService.executeSchedule(tempSchedule).catch(err => {
-          console.error(`Error executing manual crawl for ${crawlType}:`, err);
-        });
-      }
       
       res.json({ 
         success: true, 
-        crawlResultId: crawlResult.id,
-        message: `${crawlType} crawl triggered successfully`,
-        crawlResult
+        message: `${crawlType} crawl triggered successfully. Check the Active Crawls section for progress.`,
       });
     } catch (error) {
       console.error("Error triggering crawl:", error);

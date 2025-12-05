@@ -212,21 +212,24 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   });
 
   const runCrawlMutation = useMutation({
-    mutationFn: async (params: { type: string; scope: string; keywordIds?: number[] }) => {
+    mutationFn: async (params: { crawlType: string; scope: string; keywordIds?: number[] }) => {
       const response = await apiRequest("POST", "/api/crawl/trigger", {
         projectId,
-        ...params,
+        crawlType: params.crawlType,
+        scope: params.scope,
+        ...(params.keywordIds && { keywordIds: params.keywordIds }),
       });
       return response.json();
     },
     onSuccess: (_, variables) => {
       toast({ 
         title: "Crawl Started", 
-        description: `${variables.type} crawl has been queued for execution.` 
+        description: `${variables.crawlType} crawl has been queued for execution.` 
       });
       setShowManualCrawlDialog(false);
       setSelectedKeywords([]);
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-results", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/crawl-results/running", projectId] });
     },
     onError: () => {
       toast({ 
@@ -303,11 +306,11 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   };
 
   const handleManualCrawl = () => {
-    const crawlMap: Record<ManualCrawlType, { type: string; scope: string }> = {
-      all_keywords: { type: "keywords", scope: "all" },
-      selected_keywords: { type: "keywords", scope: "selected" },
-      all_pages: { type: "pages", scope: "all" },
-      all_competitors: { type: "competitors", scope: "all" },
+    const crawlMap: Record<ManualCrawlType, { crawlType: string; scope: string }> = {
+      all_keywords: { crawlType: "keyword_ranks", scope: "all" },
+      selected_keywords: { crawlType: "keyword_ranks", scope: "selected" },
+      all_pages: { crawlType: "pages_health", scope: "all" },
+      all_competitors: { crawlType: "competitors", scope: "all" },
     };
     
     const params = crawlMap[manualCrawlType];
