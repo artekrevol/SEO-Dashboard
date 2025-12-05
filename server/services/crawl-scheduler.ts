@@ -380,10 +380,19 @@ export class CrawlSchedulerService {
       }
       
       const pageMetrics = await storage.getPageMetrics(projectId);
-      const targetUrls = pageMetrics
+      const pageMetricUrls = pageMetrics
         .filter(pm => pm.url)
-        .map(pm => pm.url)
-        .slice(0, 50);
+        .map(pm => pm.url);
+      
+      const keywords = await storage.getKeywords(projectId);
+      const keywordUrls = keywords
+        .filter(k => k.targetUrl)
+        .map(k => k.targetUrl as string);
+      
+      const allUrlsSet = new Set([...pageMetricUrls, ...keywordUrls]);
+      const targetUrls = Array.from(allUrlsSet).slice(0, 50);
+      
+      console.log(`[CrawlScheduler] Backlinks crawl: Found ${pageMetricUrls.length} URLs from page_metrics, ${keywordUrls.length} from keywords, ${allUrlsSet.size} unique total`);
       
       if (targetUrls.length === 0) {
         const domainUrl = `https://${project.domain}`;
