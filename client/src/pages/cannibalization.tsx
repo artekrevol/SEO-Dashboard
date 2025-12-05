@@ -83,6 +83,7 @@ interface ConflictSummary {
 export default function CannibalizationPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [severityFilter, setSeverityFilter] = useState<string>("all");
@@ -94,33 +95,33 @@ export default function CannibalizationPage() {
     queryKey: ["/api/projects"],
   });
 
-  const projectId = projectsQuery.data?.projects?.[0]?.id;
+  const projects = projectsQuery.data?.projects || [];
 
   const conflictsQuery = useQuery<{ conflicts: KeywordPageConflict[] }>({
-    queryKey: ["/api/cannibalization", projectId, statusFilter, severityFilter, searchKeyword],
+    queryKey: ["/api/cannibalization", selectedProjectId, statusFilter, severityFilter, searchKeyword],
     queryFn: async () => {
-      const params = new URLSearchParams({ projectId: projectId! });
+      const params = new URLSearchParams({ projectId: selectedProjectId });
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (severityFilter !== "all") params.append("severity", severityFilter);
       if (searchKeyword) params.append("keyword", searchKeyword);
       const response = await fetch(`/api/cannibalization?${params}`);
       return response.json();
     },
-    enabled: !!projectId,
+    enabled: !!selectedProjectId,
   });
 
   const summaryQuery = useQuery<ConflictSummary>({
-    queryKey: ["/api/cannibalization/summary", projectId],
+    queryKey: ["/api/cannibalization/summary", selectedProjectId],
     queryFn: async () => {
-      const response = await fetch(`/api/cannibalization/summary?projectId=${projectId}`);
+      const response = await fetch(`/api/cannibalization/summary?projectId=${selectedProjectId}`);
       return response.json();
     },
-    enabled: !!projectId,
+    enabled: !!selectedProjectId,
   });
 
   const scanMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/cannibalization/scan", { projectId });
+      const response = await apiRequest("POST", "/api/cannibalization/scan", { projectId: selectedProjectId });
       return response.json();
     },
     onSuccess: (data: { message: string }) => {
@@ -128,8 +129,7 @@ export default function CannibalizationPage() {
         title: "Scan Complete",
         description: data.message,
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/cannibalization"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cannibalization/summary"] });
+      queryClient.invalidateQueries({ predicate: (query) => typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith("/api/cannibalization") });
     },
     onError: (error: Error) => {
       toast({
@@ -147,8 +147,7 @@ export default function CannibalizationPage() {
     },
     onSuccess: () => {
       toast({ title: "Status updated" });
-      queryClient.invalidateQueries({ queryKey: ["/api/cannibalization"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cannibalization/summary"] });
+      queryClient.invalidateQueries({ predicate: (query) => typeof query.queryKey[0] === 'string' && query.queryKey[0].startsWith("/api/cannibalization") });
       setIsDetailsOpen(false);
     },
     onError: (error: Error) => {
@@ -234,23 +233,39 @@ export default function CannibalizationPage() {
             Identify and resolve keyword conflicts where multiple pages compete for the same rankings
           </p>
         </div>
-        <Button
-          onClick={() => scanMutation.mutate()}
-          disabled={scanMutation.isPending}
-          data-testid="button-scan-cannibalization"
-        >
-          {scanMutation.isPending ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Scanning...
-            </>
-          ) : (
-            <>
-              <Search className="h-4 w-4 mr-2" />
-              Run Scan
-            </>
+        <div className="flex items-center gap-3">
+          <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+            <SelectTrigger className="w-[240px]" data-testid="select-project">
+              <SelectValue placeholder="Select a project" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id} data-testid={`select-project-${project.id}`}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedProjectId && (
+            <Button
+              onClick={() => scanMutation.mutate()}
+              disabled={scanMutation.isPending}
+              data-testid="button-scan-cannibalization"
+            >
+              {scanMutation.isPending ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Scanning...
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 mr-2" />
+                  Run Scan
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
