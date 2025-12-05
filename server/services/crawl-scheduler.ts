@@ -29,6 +29,21 @@ const CRAWL_TYPE_DURATIONS: Record<CrawlType, number> = {
   competitor_backlinks: 300,
 };
 
+function normalizeCrawlType(type: string): CrawlType {
+  const typeMap: Record<string, CrawlType> = {
+    keywords: "keyword_ranks",
+    keyword_ranks: "keyword_ranks",
+    pages: "pages_health",
+    pages_health: "pages_health",
+    competitors: "competitors",
+    backlinks: "backlinks",
+    competitor_backlinks: "competitor_backlinks",
+    deep_discovery: "deep_discovery",
+    technical: "pages_health",
+  };
+  return typeMap[type] || "keyword_ranks";
+}
+
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
 export class CrawlSchedulerService {
@@ -56,7 +71,7 @@ export class CrawlSchedulerService {
 
   async executeSchedule(schedule: CrawlSchedule): Promise<CrawlRunResult> {
     const startTime = Date.now();
-    const scheduleType = (schedule.type || "keyword_ranks") as CrawlType;
+    const scheduleType = normalizeCrawlType(schedule.type || "keyword_ranks");
 
     // Check if this schedule is already running (prevents duplicate runs)
     if (schedule.id > 0 && this.runningSchedules.has(schedule.id)) {
@@ -127,7 +142,7 @@ export class CrawlSchedulerService {
       switch (scheduleType) {
         case "keyword_ranks":
           await storage.updateCrawlProgress(crawlResult.id, 0, "fetching_rankings");
-          const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId);
+          const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId, undefined, crawlResult.id);
           result = { 
             success: rankResult.success, 
             message: rankResult.message,
@@ -143,7 +158,11 @@ export class CrawlSchedulerService {
 
         case "pages_health":
           await storage.updateCrawlProgress(crawlResult.id, 0, "checking_pages");
-          result = await runDailySEOSnapshot(schedule.projectId);
+          const pagesResult = await rankingsSyncService.syncPageMetrics(schedule.projectId, undefined, crawlResult.id);
+          result = { 
+            success: pagesResult.success, 
+            message: pagesResult.message,
+          };
           break;
 
         case "deep_discovery":

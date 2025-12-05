@@ -310,22 +310,27 @@ export async function runCompetitorAnalysis(projectId: string): Promise<JobResul
         console.warn(`[Job] Failed to fetch backlinks for ${competitor.domain}`);
       }
 
+      const safeAvgPosition = Math.min(999, Math.max(0, competitor.avgPosition || 0));
+      const safeAuthorityScore = Math.min(999, Math.max(0, competitorBacklinks.domainAuthority || 0));
+      
       const pressureIndex = calculateCompetitorPressure(
         competitor.keywordsCount,
-        competitorBacklinks.domainAuthority,
+        safeAuthorityScore,
         ourBacklinks.domainAuthority,
-        competitor.avgPosition,
+        safeAvgPosition,
         10
       );
+
+      const safePressureIndex = Math.min(9999, Math.max(0, pressureIndex || 0));
 
       metricsToSave.push({
         projectId,
         competitorDomain: competitor.domain,
         date: today,
         sharedKeywords: competitor.keywordsCount,
-        avgPosition: competitor.avgPosition.toFixed(2),
-        authorityScore: competitorBacklinks.domainAuthority.toFixed(2),
-        pressureIndex: pressureIndex.toFixed(2),
+        avgPosition: safeAvgPosition.toFixed(2),
+        authorityScore: safeAuthorityScore.toFixed(2),
+        pressureIndex: safePressureIndex.toFixed(2),
       });
     }
 

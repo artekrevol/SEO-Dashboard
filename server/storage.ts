@@ -266,7 +266,7 @@ export interface IStorage {
   // Enhanced Crawl Management
   getRunningCrawlsByType(projectId: string, type: string): Promise<CrawlResult[]>;
   getAllRunningCrawls(): Promise<CrawlResult[]>;
-  updateCrawlProgress(id: number, itemsProcessed: number, stage?: string): Promise<CrawlResult | undefined>;
+  updateCrawlProgress(id: number, itemsProcessed: number, stage?: string, itemsTotal?: number): Promise<CrawlResult | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2553,12 +2553,15 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(crawlResults.startedAt));
   }
 
-  async updateCrawlProgress(id: number, itemsProcessed: number, stage?: string): Promise<CrawlResult | undefined> {
+  async updateCrawlProgress(id: number, itemsProcessed: number, stage?: string, itemsTotal?: number): Promise<CrawlResult | undefined> {
     const updates: Partial<CrawlResult> = { 
       itemsProcessed,
     };
     if (stage) {
       updates.currentStage = stage;
+    }
+    if (itemsTotal !== undefined) {
+      updates.itemsTotal = itemsTotal;
     }
     const [updated] = await db
       .update(crawlResults)

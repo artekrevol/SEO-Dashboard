@@ -167,7 +167,7 @@ export class RankingsSyncService {
       .filter(Boolean);
   }
 
-  async syncRankingsForProject(projectId: string, keywordLimit?: number): Promise<RankingsSyncResult> {
+  async syncRankingsForProject(projectId: string, keywordLimit?: number, crawlResultId?: number): Promise<RankingsSyncResult> {
     const errors: string[] = [];
     let keywordsUpdated = 0;
     let competitorsFound = 0;
@@ -214,6 +214,10 @@ export class RankingsSyncService {
       const today = new Date().toISOString().split("T")[0];
       const totalKeywords = activeKeywords.length;
 
+      if (crawlResultId) {
+        await storage.updateCrawlProgress(crawlResultId, 0, "fetching_rankings", totalKeywords);
+      }
+
       console.log(`[RankingsSync] Starting sync for ${totalKeywords} keywords (processing one at a time)`);
 
       for (let i = 0; i < activeKeywords.length; i++) {
@@ -221,6 +225,10 @@ export class RankingsSyncService {
 
         if (i % 10 === 0 || i === totalKeywords - 1) {
           console.log(`[RankingsSync] Progress: ${i + 1}/${totalKeywords} (${Math.round((i + 1) / totalKeywords * 100)}%)`);
+        }
+
+        if (crawlResultId && (i % 5 === 0 || i === totalKeywords - 1)) {
+          await storage.updateCrawlProgress(crawlResultId, i + 1, "fetching_rankings");
         }
 
         try {
@@ -342,7 +350,7 @@ export class RankingsSyncService {
     return results;
   }
 
-  async syncPageMetrics(projectId: string, urlLimit?: number): Promise<{
+  async syncPageMetrics(projectId: string, urlLimit?: number, crawlResultId?: number): Promise<{
     success: boolean;
     message: string;
     pagesUpdated: number;
@@ -384,14 +392,25 @@ export class RankingsSyncService {
         urls = urls.slice(0, urlLimit);
       }
 
+      if (crawlResultId) {
+        await storage.updateCrawlProgress(crawlResultId, 0, "fetching_backlinks", urls.length);
+      }
+
       console.log(`[PageMetrics] Syncing ${urls.length} pages for project ${project.name} using Summary API`);
 
       const backlinkData = await this.dataForSEO.syncPagesBacklinks(urls);
       console.log(`[PageMetrics] Retrieved backlinks for ${backlinkData.size} URLs`);
 
       const today = new Date().toISOString().split('T')[0];
+      const totalUrls = urls.length;
 
-      for (const url of urls) {
+      for (let i = 0; i < urls.length; i++) {
+        const url = urls[i];
+
+        if (crawlResultId && (i % 3 === 0 || i === totalUrls - 1)) {
+          await storage.updateCrawlProgress(crawlResultId, i + 1, "syncing_pages");
+        }
+
         try {
           const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
           const backlinks = backlinkData.get(normalizedUrl) || backlinkData.get(url);

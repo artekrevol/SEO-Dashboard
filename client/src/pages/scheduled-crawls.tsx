@@ -82,7 +82,19 @@ const CRAWL_TYPE_CONFIG: Record<string, {
     description: "Fetch SERP positions and search volume for tracked keywords",
     color: "text-blue-600 dark:text-blue-400"
   },
+  keyword_ranks: { 
+    icon: Search, 
+    label: "Keyword Rankings", 
+    description: "Fetch SERP positions and search volume for tracked keywords",
+    color: "text-blue-600 dark:text-blue-400"
+  },
   pages: { 
+    icon: FileText, 
+    label: "Page Metrics", 
+    description: "Crawl pages for Core Web Vitals, indexability, and content analysis",
+    color: "text-green-600 dark:text-green-400"
+  },
+  pages_health: { 
     icon: FileText, 
     label: "Page Metrics", 
     description: "Crawl pages for Core Web Vitals, indexability, and content analysis",
@@ -99,6 +111,18 @@ const CRAWL_TYPE_CONFIG: Record<string, {
     label: "Backlink Check", 
     description: "Monitor referring domains and new/lost backlinks",
     color: "text-orange-600 dark:text-orange-400"
+  },
+  competitor_backlinks: { 
+    icon: Link2, 
+    label: "Competitor Backlinks", 
+    description: "Analyze competitor backlink profiles for opportunities",
+    color: "text-amber-600 dark:text-amber-400"
+  },
+  deep_discovery: { 
+    icon: Search, 
+    label: "Deep Discovery", 
+    description: "Fetch keyword difficulty, search volume, and intent data",
+    color: "text-cyan-600 dark:text-cyan-400"
   },
   technical: { 
     icon: Settings2, 
@@ -231,10 +255,22 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-results", projectId] });
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-results/running", projectId] });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      // apiRequest throws with format "409: {json}" - parse and extract error field
+      let message = "Failed to start crawl";
+      try {
+        const jsonMatch = error.message.match(/^\d+:\s*(.+)/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1]);
+          message = parsed.error || message;
+        }
+      } catch {
+        // If parsing fails, strip status code prefix as fallback
+        message = error.message.replace(/^\d+:\s*/, "") || message;
+      }
       toast({ 
         title: "Error", 
-        description: "Failed to start crawl", 
+        description: message, 
         variant: "destructive" 
       });
     },
@@ -252,8 +288,20 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       toast({ title: "Crawl executed successfully" });
       setRunningCrawl(null);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to run crawl", variant: "destructive" });
+    onError: (error: Error) => {
+      // apiRequest throws with format "409: {json}" - parse and extract error field
+      let message = "Failed to run crawl";
+      try {
+        const jsonMatch = error.message.match(/^\d+:\s*(.+)/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1]);
+          message = parsed.error || message;
+        }
+      } catch {
+        // If parsing fails, strip status code prefix as fallback
+        message = error.message.replace(/^\d+:\s*/, "") || message;
+      }
+      toast({ title: "Error", description: message, variant: "destructive" });
       setRunningCrawl(null);
     },
   });
