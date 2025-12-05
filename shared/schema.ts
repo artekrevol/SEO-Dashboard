@@ -659,10 +659,15 @@ export const crawlResults = pgTable("crawl_results", {
   scheduleId: integer("schedule_id").references(() => crawlSchedules.id, { onDelete: "set null" }),
   type: text("type").notNull(),
   status: text("status").notNull().default("running"),
+  triggerType: text("trigger_type").default("scheduled").notNull(), // 'scheduled' or 'manual'
   message: text("message"),
+  currentStage: text("current_stage"), // e.g., 'fetching_keywords', 'processing_rankings', 'saving_results'
+  itemsTotal: integer("items_total").default(0),
+  itemsProcessed: integer("items_processed").default(0),
   keywordsProcessed: integer("keywords_processed").default(0),
   keywordsUpdated: integer("keywords_updated").default(0),
   errorsCount: integer("errors_count").default(0),
+  estimatedDurationSec: integer("estimated_duration_sec"),
   duration: integer("duration"),
   details: jsonb("details").$type<Record<string, unknown>>(),
   startedAt: timestamp("started_at").defaultNow().notNull(),
@@ -847,3 +852,47 @@ export const insertPageIssueSchema = createInsertSchema(pageIssues).omit({
 
 export type InsertPageIssue = z.infer<typeof insertPageIssueSchema>;
 export type PageIssue = typeof pageIssues.$inferSelect;
+
+// Global Settings - System-wide configuration including timezone
+export const globalSettings = pgTable("global_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  description: text("description"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertGlobalSettingSchema = createInsertSchema(globalSettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type InsertGlobalSetting = z.infer<typeof insertGlobalSettingSchema>;
+export type GlobalSetting = typeof globalSettings.$inferSelect;
+
+// Crawl type estimated durations in seconds (used for progress estimation)
+export const crawlTypeDurations: Record<string, number> = {
+  keyword_ranks: 120,      // ~2 minutes for typical keyword batch
+  competitors: 180,        // ~3 minutes for competitor analysis
+  pages_health: 90,        // ~1.5 minutes for page metrics
+  deep_discovery: 300,     // ~5 minutes for deep keyword discovery
+  backlinks: 240,          // ~4 minutes for backlink crawl
+  competitor_backlinks: 300, // ~5 minutes for competitor backlinks
+  tech_audit: 600,         // ~10 minutes for technical audit
+};
+
+// Crawl concurrency rules - which crawl types can run simultaneously
+export const crawlConcurrencyRules = {
+  // Only one of each type can run per project at a time
+  maxPerTypePerProject: 1,
+  // Global limits across all projects
+  globalLimits: {
+    keyword_ranks: 2,
+    competitors: 2,
+    pages_health: 2,
+    deep_discovery: 1,
+    backlinks: 2,
+    competitor_backlinks: 1,
+    tech_audit: 1,
+  },
+};
