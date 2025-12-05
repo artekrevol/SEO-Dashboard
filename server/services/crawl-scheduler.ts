@@ -18,16 +18,48 @@ interface CrawlRunResult {
 
 type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery" | "backlinks" | "competitor_backlinks";
 
+const DEFAULT_TIMEZONE = "America/Chicago";
+
+const CRAWL_TYPE_DURATIONS: Record<CrawlType, number> = {
+  keyword_ranks: 120,
+  competitors: 180,
+  pages_health: 90,
+  deep_discovery: 300,
+  backlinks: 240,
+  competitor_backlinks: 300,
+};
+
 const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
 export class CrawlSchedulerService {
   private runningSchedules: Set<number> = new Set();
+  private currentTimezone: string = DEFAULT_TIMEZONE;
+
+  async getTimezone(): Promise<string> {
+    try {
+      const setting = await storage.getGlobalSetting("timezone");
+      return setting?.value || DEFAULT_TIMEZONE;
+    } catch (error) {
+      console.error("[CrawlScheduler] Error fetching timezone, using default:", error);
+      return DEFAULT_TIMEZONE;
+    }
+  }
+
+  async refreshTimezone(): Promise<void> {
+    this.currentTimezone = await this.getTimezone();
+    console.log(`[CrawlScheduler] Timezone set to: ${this.currentTimezone}`);
+  }
+
+  getEstimatedDuration(crawlType: CrawlType): number {
+    return CRAWL_TYPE_DURATIONS[crawlType] || 120;
+  }
 
   async executeSchedule(schedule: CrawlSchedule): Promise<CrawlRunResult> {
     const startTime = Date.now();
     const scheduleType = (schedule.type || "keyword_ranks") as CrawlType;
 
-    if (this.runningSchedules.has(schedule.id)) {
+    // Check if this schedule is already running (prevents duplicate runs)
+    if (schedule.id > 0 && this.runningSchedules.has(schedule.id)) {
       return {
         scheduleId: schedule.id,
         type: scheduleType,
@@ -37,24 +69,64 @@ export class CrawlSchedulerService {
       };
     }
 
-    this.runningSchedules.add(schedule.id);
+    // Also check for running crawls of the same type for this project
+    const existingRunning = await storage.getRunningCrawlsByType(schedule.projectId, scheduleType);
+    if (existingRunning.length > 0) {
+      return {
+        scheduleId: schedule.id,
+        type: scheduleType,
+        success: false,
+        message: `A ${scheduleType} crawl is already running for this project`,
+        duration: 0,
+      };
+    }
 
-    // Create initial crawl result record
+    if (schedule.id > 0) {
+      this.runningSchedules.add(schedule.id);
+    }
+
+    // Get estimated item count based on crawl type
+    let estimatedItems = 0;
+    try {
+      if (scheduleType === "keyword_ranks" || scheduleType === "deep_discovery") {
+        const keywords = await storage.getKeywords(schedule.projectId);
+        estimatedItems = keywords.length;
+      } else if (scheduleType === "backlinks" || scheduleType === "pages_health") {
+        const pages = await storage.getPageMetrics(schedule.projectId);
+        estimatedItems = Math.min(pages.length, 50);
+      } else if (scheduleType === "competitors" || scheduleType === "competitor_backlinks") {
+        const competitors = await storage.getCompetitorMetrics(schedule.projectId);
+        estimatedItems = Math.min(competitors.length, 10);
+      }
+    } catch (e) {
+      estimatedItems = 10;
+    }
+
+    // Create initial crawl result record with progress tracking fields
     const crawlResult = await storage.createCrawlResult({
       projectId: schedule.projectId,
-      scheduleId: schedule.id,
+      scheduleId: schedule.id > 0 ? schedule.id : null,
       type: scheduleType,
       status: "running",
+      triggerType: schedule.id > 0 ? "scheduled" : "manual",
       message: `Starting ${scheduleType} crawl...`,
+      estimatedDurationSec: this.getEstimatedDuration(scheduleType),
+      itemsTotal: estimatedItems,
+      itemsProcessed: 0,
+      currentStage: "initializing",
     });
 
     try {
       console.log(`[CrawlScheduler] Executing ${scheduleType} for project ${schedule.projectId}`);
 
+      // Update stage to "processing"
+      await storage.updateCrawlProgress(crawlResult.id, 0, "processing");
+
       let result: { success: boolean; message: string; keywordsProcessed?: number; keywordsUpdated?: number };
 
       switch (scheduleType) {
         case "keyword_ranks":
+          await storage.updateCrawlProgress(crawlResult.id, 0, "fetching_rankings");
           const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId);
           result = { 
             success: rankResult.success, 
@@ -65,24 +137,29 @@ export class CrawlSchedulerService {
           break;
 
         case "competitors":
+          await storage.updateCrawlProgress(crawlResult.id, 0, "analyzing_competitors");
           result = await runCompetitorAnalysis(schedule.projectId);
           break;
 
         case "pages_health":
+          await storage.updateCrawlProgress(crawlResult.id, 0, "checking_pages");
           result = await runDailySEOSnapshot(schedule.projectId);
           break;
 
         case "deep_discovery":
+          await storage.updateCrawlProgress(crawlResult.id, 0, "discovering_metrics");
           const metricsResult = await runKeywordMetricsUpdate(schedule.projectId);
           result = metricsResult;
           break;
 
         case "backlinks":
-          result = await this.runBacklinksCrawl(schedule.projectId);
+          await storage.updateCrawlProgress(crawlResult.id, 0, "crawling_backlinks");
+          result = await this.runBacklinksCrawl(schedule.projectId, crawlResult.id);
           break;
 
         case "competitor_backlinks":
-          result = await this.runCompetitorBacklinksCrawl(schedule.projectId);
+          await storage.updateCrawlProgress(crawlResult.id, 0, "crawling_competitor_backlinks");
+          result = await this.runCompetitorBacklinksCrawl(schedule.projectId, crawlResult.id);
           break;
 
         default:
@@ -90,7 +167,7 @@ export class CrawlSchedulerService {
       }
 
       const duration = Date.now() - startTime;
-      const status = result.success ? "success" : "failed";
+      const status = result.success ? "completed" : "failed";
 
       // Update crawl result with final status
       await storage.updateCrawlResult(crawlResult.id, {
@@ -99,10 +176,14 @@ export class CrawlSchedulerService {
         duration,
         keywordsProcessed: result.keywordsProcessed || 0,
         keywordsUpdated: result.keywordsUpdated || 0,
+        itemsProcessed: estimatedItems,
+        currentStage: "completed",
         completedAt: new Date(),
       });
 
-      await storage.updateCrawlScheduleLastRun(schedule.id, status);
+      if (schedule.id > 0) {
+        await storage.updateCrawlScheduleLastRun(schedule.id, status);
+      }
 
       console.log(`[CrawlScheduler] ${scheduleType} completed in ${duration}ms: ${result.message}`);
 
@@ -126,10 +207,13 @@ export class CrawlSchedulerService {
         message: errorMessage,
         duration,
         errorsCount: 1,
+        currentStage: "failed",
         completedAt: new Date(),
       });
 
-      await storage.updateCrawlScheduleLastRun(schedule.id, "failed");
+      if (schedule.id > 0) {
+        await storage.updateCrawlScheduleLastRun(schedule.id, "failed");
+      }
 
       console.error(`[CrawlScheduler] ${scheduleType} failed:`, error);
 
@@ -142,16 +226,36 @@ export class CrawlSchedulerService {
         duration,
       };
     } finally {
-      this.runningSchedules.delete(schedule.id);
+      if (schedule.id > 0) {
+        this.runningSchedules.delete(schedule.id);
+      }
     }
   }
 
   async checkAndRunDueSchedules(): Promise<CrawlRunResult[]> {
     const results: CrawlRunResult[] = [];
     const activeSchedules = await storage.getActiveCrawlSchedules();
+    
+    // Get current time in configured timezone
+    const timezone = this.currentTimezone;
     const now = new Date();
-    const currentDay = now.getDay();
-    const currentTime = now.toTimeString().slice(0, 5);
+    const tzOptions: Intl.DateTimeFormatOptions = { 
+      timeZone: timezone,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false 
+    };
+    const tzFormatter = new Intl.DateTimeFormat('en-US', tzOptions);
+    const parts = tzFormatter.formatToParts(now);
+    
+    const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+    const weekdayPart = parts.find(p => p.type === 'weekday')?.value || 'Sun';
+    const hourPart = parts.find(p => p.type === 'hour')?.value || '00';
+    const minutePart = parts.find(p => p.type === 'minute')?.value || '00';
+    
+    const currentDay = dayMap[weekdayPart] ?? 0;
+    const currentTime = `${hourPart}:${minutePart}`;
 
     for (const schedule of activeSchedules) {
       const daysOfWeek = schedule.daysOfWeek as number[];
@@ -196,6 +300,17 @@ export class CrawlSchedulerService {
   }
 
   async startScheduler(): Promise<void> {
+    // Initialize timezone from database
+    await this.refreshTimezone();
+    
+    // Set up a job to refresh timezone every 5 minutes
+    const timezoneRefresh = cron.schedule("*/5 * * * *", async () => {
+      await this.refreshTimezone();
+    });
+    cronJobs.set("timezone-refresh", timezoneRefresh);
+    
+    // Note: node-cron doesn't support dynamic timezone changes, 
+    // so we check schedules ourselves with current timezone
     const minuteCheck = cron.schedule(
       "* * * * *",
       async () => {
@@ -203,14 +318,11 @@ export class CrawlSchedulerService {
         if (results.length > 0) {
           console.log(`[CrawlScheduler] Executed ${results.length} scheduled crawls`);
         }
-      },
-      {
-        timezone: "America/Chicago",
       }
     );
 
     cronJobs.set("crawl-scheduler-check", minuteCheck);
-    console.log("[CrawlScheduler] Started crawl scheduler (checking every minute in CST)");
+    console.log(`[CrawlScheduler] Started crawl scheduler (timezone: ${this.currentTimezone})`);
   }
 
   stopScheduler(): void {
@@ -221,7 +333,7 @@ export class CrawlSchedulerService {
     cronJobs.clear();
   }
 
-  async runBacklinksCrawl(projectId: string): Promise<{ success: boolean; message: string; keywordsProcessed?: number }> {
+  async runBacklinksCrawl(projectId: string, crawlResultId?: number): Promise<{ success: boolean; message: string; keywordsProcessed?: number }> {
     try {
       console.log(`[CrawlScheduler] Running backlinks crawl for project ${projectId}`);
       
@@ -247,10 +359,16 @@ export class CrawlSchedulerService {
         targetUrls.push(domainUrl);
       }
       
+      // Update total items for progress tracking
+      if (crawlResultId) {
+        await storage.updateCrawlResult(crawlResultId, { itemsTotal: targetUrls.length });
+      }
+      
       let newBacklinksCount = 0;
       let lostBacklinksCount = 0;
       let totalBacklinksIngested = 0;
       
+      let urlIndex = 0;
       for (const targetUrl of targetUrls) {
         try {
           console.log(`[CrawlScheduler] Fetching backlinks for ${targetUrl}`);
@@ -302,6 +420,12 @@ export class CrawlSchedulerService {
             }
           }
           
+          // Update progress
+          urlIndex++;
+          if (crawlResultId) {
+            await storage.updateCrawlProgress(crawlResultId, urlIndex, `Processing URL ${urlIndex}/${targetUrls.length}`);
+          }
+          
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (urlError) {
           console.error(`[CrawlScheduler] Error fetching backlinks for ${targetUrl}:`, urlError);
@@ -331,7 +455,7 @@ export class CrawlSchedulerService {
     }
   }
 
-  async runCompetitorBacklinksCrawl(projectId: string): Promise<{ success: boolean; message: string; keywordsProcessed?: number }> {
+  async runCompetitorBacklinksCrawl(projectId: string, crawlResultId?: number): Promise<{ success: boolean; message: string; keywordsProcessed?: number }> {
     try {
       console.log(`[CrawlScheduler] Running competitor backlinks crawl for project ${projectId}`);
       
@@ -356,9 +480,15 @@ export class CrawlSchedulerService {
         return { success: true, message: "No competitors found to analyze backlinks" };
       }
       
+      // Update total items for progress tracking
+      if (crawlResultId) {
+        await storage.updateCrawlResult(crawlResultId, { itemsTotal: competitorDomains.length });
+      }
+      
       let totalBacklinksIngested = 0;
       let totalOpportunities = 0;
       
+      let competitorIndex = 0;
       for (const competitorDomain of competitorDomains) {
         try {
           console.log(`[CrawlScheduler] Fetching backlinks for competitor: ${competitorDomain}`);
@@ -403,6 +533,12 @@ export class CrawlSchedulerService {
           
           const oppsUpdated = await storage.updateCompetitorBacklinkOpportunities(projectId, competitorDomain);
           totalOpportunities += oppsUpdated;
+          
+          // Update progress
+          competitorIndex++;
+          if (crawlResultId) {
+            await storage.updateCrawlProgress(crawlResultId, competitorIndex, `Analyzing competitor ${competitorIndex}/${competitorDomains.length}`);
+          }
           
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch (domainError) {
