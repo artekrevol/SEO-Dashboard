@@ -58,6 +58,22 @@ function getDefaultFallingStarsSettings(projectId: string) {
   };
 }
 
+// Normalize legacy crawl types to canonical types
+function normalizeCrawlTypeForSchedule(type?: string): string {
+  const typeMap: Record<string, string> = {
+    keywords: "keyword_ranks",
+    keyword_ranks: "keyword_ranks",
+    pages: "pages_health",
+    pages_health: "pages_health",
+    competitors: "competitors",
+    backlinks: "backlinks",
+    competitor_backlinks: "competitor_backlinks",
+    deep_discovery: "deep_discovery",
+    technical: "pages_health",
+  };
+  return typeMap[type || "keyword_ranks"] || "keyword_ranks";
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1095,10 +1111,14 @@ export async function registerRoutes(
       if (!projectId || !scheduledTime || !daysOfWeek) {
         return res.status(400).json({ error: "Missing required fields" });
       }
+      
+      // Normalize legacy crawl types to canonical types
+      const normalizedType = normalizeCrawlTypeForSchedule(type);
+      
       const schedule = await storage.createCrawlSchedule({
         projectId,
         url: url || null,
-        type: type || "keywords",
+        type: normalizedType,
         frequency: frequency || "scheduled",
         scheduledTime,
         daysOfWeek: Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek),
@@ -1121,7 +1141,7 @@ export async function registerRoutes(
       if (scheduledTime !== undefined) updateData.scheduledTime = scheduledTime;
       if (daysOfWeek !== undefined) updateData.daysOfWeek = Array.isArray(daysOfWeek) ? daysOfWeek : Array.from(daysOfWeek);
       if (isActive !== undefined) updateData.isActive = isActive;
-      if (type !== undefined) updateData.type = type;
+      if (type !== undefined) updateData.type = normalizeCrawlTypeForSchedule(type);
       if (frequency !== undefined) updateData.frequency = frequency;
       if (config !== undefined) updateData.config = config;
       
@@ -1168,26 +1188,30 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Access denied: schedule belongs to a different project" });
       }
 
-      // Execute the crawl based on type
-      let result: any = { success: true, message: "Crawl queued" };
-      const validTypes = ["keywords", "pages", "competitors", "backlinks", "technical"];
+      // Normalize the stored type to canonical type for execution
+      const normalizedType = normalizeCrawlTypeForSchedule(schedule.type);
+      const validTypes = ["keyword_ranks", "pages_health", "competitors", "backlinks", "competitor_backlinks", "deep_discovery"];
       
-      if (!validTypes.includes(schedule.type)) {
-        return res.status(400).json({ error: "Invalid crawl type" });
+      if (!validTypes.includes(normalizedType)) {
+        return res.status(400).json({ error: `Invalid crawl type: ${schedule.type}. Valid types: ${validTypes.join(", ")}` });
       }
 
-      switch (schedule.type) {
-        case "keywords":
+      // Execute the crawl based on normalized type
+      let result: any = { success: true, message: "Crawl queued" };
+      
+      switch (normalizedType) {
+        case "keyword_ranks":
+        case "deep_discovery":
           result = await runRankingsSync(projectId);
           break;
-        case "pages":
+        case "pages_health":
           result = await runKeywordMetricsUpdate(projectId);
           break;
         case "competitors":
+        case "competitor_backlinks":
           result = await runCompetitorAnalysis(projectId);
           break;
         case "backlinks":
-        case "technical":
           result = await runKeywordMetricsUpdate(projectId);
           break;
         default:
