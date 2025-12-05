@@ -2633,6 +2633,598 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // CANNIBALIZATION DETECTION ROUTES
+  // ============================================
+  
+  // Get keyword page conflicts
+  app.get("/api/cannibalization", async (req, res) => {
+    try {
+      const { projectId, status, severity, keyword, limit } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const conflicts = await storage.getKeywordPageConflicts(projectId, {
+        status: status && typeof status === "string" ? status : undefined,
+        severity: severity && typeof severity === "string" ? severity : undefined,
+        keyword: keyword && typeof keyword === "string" ? keyword : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+
+      res.json({ conflicts });
+    } catch (error) {
+      console.error("Error fetching cannibalization conflicts:", error);
+      res.status(500).json({ error: "Failed to fetch cannibalization conflicts" });
+    }
+  });
+
+  // Get cannibalization summary
+  app.get("/api/cannibalization/summary", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const summary = await storage.getConflictsSummary(projectId);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching cannibalization summary:", error);
+      res.status(500).json({ error: "Failed to fetch cannibalization summary" });
+    }
+  });
+
+  // Run cannibalization scan
+  app.post("/api/cannibalization/scan", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const { runCannibalizationScan } = await import("./services/cannibalization-detector");
+      const result = await runCannibalizationScan(projectId);
+
+      res.json({
+        success: true,
+        message: `Cannibalization scan complete: ${result.newConflicts} new, ${result.updatedConflicts} updated, ${result.resolvedConflicts} resolved`,
+        ...result,
+      });
+    } catch (error) {
+      console.error("Error running cannibalization scan:", error);
+      res.status(500).json({ error: "Failed to run cannibalization scan" });
+    }
+  });
+
+  // Update conflict status
+  app.patch("/api/cannibalization/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes } = req.body;
+
+      if (!id || isNaN(Number(id))) {
+        return res.status(400).json({ error: "Valid conflict ID is required" });
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (status) {
+        updates.status = status;
+        if (status === 'resolved') {
+          updates.resolvedAt = new Date();
+        }
+      }
+      if (notes !== undefined) {
+        updates.notes = notes;
+      }
+
+      const updated = await storage.updateKeywordPageConflict(Number(id), updates);
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Conflict not found" });
+      }
+
+      res.json({ success: true, conflict: updated });
+    } catch (error) {
+      console.error("Error updating conflict:", error);
+      res.status(500).json({ error: "Failed to update conflict" });
+    }
+  });
+
+  // Delete a conflict
+  app.delete("/api/cannibalization/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!id || isNaN(Number(id))) {
+        return res.status(400).json({ error: "Valid conflict ID is required" });
+      }
+
+      await storage.deleteKeywordPageConflict(Number(id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting conflict:", error);
+      res.status(500).json({ error: "Failed to delete conflict" });
+    }
+  });
+
+  // Promote conflict to recommendation
+  app.post("/api/cannibalization/:id/promote", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!id || isNaN(Number(id))) {
+        return res.status(400).json({ error: "Valid conflict ID is required" });
+      }
+
+      const conflict = await storage.getKeywordPageConflict(Number(id));
+      
+      if (!conflict) {
+        return res.status(404).json({ error: "Conflict not found" });
+      }
+
+      const recommendation = await storage.createSeoRecommendation({
+        projectId: conflict.projectId,
+        url: conflict.primaryUrl,
+        type: "fix_cannibalization",
+        severity: conflict.severity === "high" ? "high" : conflict.severity === "medium" ? "medium" : "low",
+        title: `Fix keyword cannibalization for "${conflict.keyword}"`,
+        description: conflict.suggestedAction || `Multiple pages are competing for the keyword "${conflict.keyword}". Primary URL: ${conflict.primaryUrl} (position #${conflict.primaryPosition}), Conflicting URL: ${conflict.conflictingUrl} (position #${conflict.conflictingPosition}). Consider consolidating content or implementing canonical tags.`,
+        status: "open",
+        sourceSignals: {
+          type: "cannibalization",
+          conflictId: conflict.id,
+          keyword: conflict.keyword,
+          primaryUrl: conflict.primaryUrl,
+          conflictingUrl: conflict.conflictingUrl,
+          primaryPosition: conflict.primaryPosition,
+          conflictingPosition: conflict.conflictingPosition,
+          searchVolume: conflict.searchVolume,
+        },
+      });
+
+      res.json({ 
+        success: true, 
+        recommendation,
+        message: "Cannibalization issue promoted to recommendation" 
+      });
+    } catch (error) {
+      console.error("Error promoting conflict:", error);
+      res.status(500).json({ error: "Failed to promote conflict to recommendation" });
+    }
+  });
+
+  // ============================================
+  // SCHEDULED REPORTS ROUTES
+  // ============================================
+
+  // Get all scheduled reports for a project
+  app.get("/api/scheduled-reports", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const reports = await storage.getScheduledReports(projectId);
+      res.json({ reports });
+    } catch (error) {
+      console.error("Error fetching scheduled reports:", error);
+      res.status(500).json({ error: "Failed to fetch scheduled reports" });
+    }
+  });
+
+  // Get a single scheduled report
+  app.get("/api/scheduled-reports/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const report = await storage.getScheduledReport(Number(id));
+      
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      res.json(report);
+    } catch (error) {
+      console.error("Error fetching scheduled report:", error);
+      res.status(500).json({ error: "Failed to fetch scheduled report" });
+    }
+  });
+
+  // Create a new scheduled report
+  app.post("/api/scheduled-reports", async (req, res) => {
+    try {
+      const { projectId, name, reportType, frequency, dayOfWeek, dayOfMonth, timeOfDay, timezone, recipients, ...options } = req.body;
+
+      if (!projectId || !name || !reportType || !frequency || !recipients || recipients.length === 0) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const now = new Date();
+      const [hours, minutes] = (timeOfDay || "09:00").split(":").map(Number);
+      let nextScheduledAt = new Date(now);
+      nextScheduledAt.setHours(hours, minutes, 0, 0);
+      
+      if (nextScheduledAt <= now) {
+        nextScheduledAt.setDate(nextScheduledAt.getDate() + 1);
+      }
+
+      const report = await storage.createScheduledReport({
+        projectId,
+        name,
+        reportType,
+        frequency,
+        dayOfWeek: dayOfWeek ?? null,
+        dayOfMonth: dayOfMonth ?? null,
+        timeOfDay: timeOfDay || "09:00",
+        timezone: timezone || "America/Chicago",
+        recipients,
+        includeExecutiveSummary: options.includeExecutiveSummary ?? true,
+        includeTrends: options.includeTrends ?? true,
+        includeRecommendations: options.includeRecommendations ?? true,
+        includeCompetitors: options.includeCompetitors ?? false,
+        customSections: options.customSections ?? null,
+        isActive: true,
+      });
+
+      await storage.updateScheduledReport(report.id, { nextScheduledAt });
+
+      res.json({ success: true, report });
+    } catch (error) {
+      console.error("Error creating scheduled report:", error);
+      res.status(500).json({ error: "Failed to create scheduled report" });
+    }
+  });
+
+  // Update a scheduled report
+  app.patch("/api/scheduled-reports/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      const report = await storage.updateScheduledReport(Number(id), updates);
+      
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      res.json({ success: true, report });
+    } catch (error) {
+      console.error("Error updating scheduled report:", error);
+      res.status(500).json({ error: "Failed to update scheduled report" });
+    }
+  });
+
+  // Delete a scheduled report
+  app.delete("/api/scheduled-reports/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteScheduledReport(Number(id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting scheduled report:", error);
+      res.status(500).json({ error: "Failed to delete scheduled report" });
+    }
+  });
+
+  // Get report runs history
+  app.get("/api/report-runs", async (req, res) => {
+    try {
+      const { projectId, limit } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const runs = await storage.getReportRuns(projectId, limit ? Number(limit) : 20);
+      res.json({ runs });
+    } catch (error) {
+      console.error("Error fetching report runs:", error);
+      res.status(500).json({ error: "Failed to fetch report runs" });
+    }
+  });
+
+  // Send a manual report
+  app.post("/api/reports/send", async (req, res) => {
+    try {
+      const { projectId, reportType, recipients, ...options } = req.body;
+
+      if (!projectId || !reportType || !recipients || recipients.length === 0) {
+        return res.status(400).json({ error: "projectId, reportType, and recipients are required" });
+      }
+
+      const { executeManualReport } = await import("./services/email-service");
+      const run = await executeManualReport(projectId, reportType, recipients, options);
+
+      res.json({ 
+        success: run.status === "completed",
+        run,
+        message: run.status === "completed" 
+          ? `Report sent to ${recipients.length} recipient(s)` 
+          : `Report generation ${run.status}`,
+      });
+    } catch (error) {
+      console.error("Error sending manual report:", error);
+      res.status(500).json({ error: "Failed to send report" });
+    }
+  });
+
+  // Generate report preview (without sending)
+  app.post("/api/reports/preview", async (req, res) => {
+    try {
+      const { projectId, reportType, ...options } = req.body;
+
+      if (!projectId || !reportType) {
+        return res.status(400).json({ error: "projectId and reportType are required" });
+      }
+
+      const { generateReportData, formatReportAsHtml } = await import("./services/report-generator");
+      const data = await generateReportData(projectId, reportType, options);
+
+      if (!data) {
+        return res.status(404).json({ error: "Failed to generate report data" });
+      }
+
+      const html = formatReportAsHtml(data);
+      res.json({ data, html });
+    } catch (error) {
+      console.error("Error generating report preview:", error);
+      res.status(500).json({ error: "Failed to generate preview" });
+    }
+  });
+
+  // ============================================
+  // GOOGLE SEARCH CONSOLE ROUTES
+  // ============================================
+
+  // Get GSC credentials status for a project
+  app.get("/api/gsc/status", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const credentials = await storage.getGscCredentials(projectId);
+      
+      if (!credentials) {
+        return res.json({ connected: false });
+      }
+
+      res.json({
+        connected: true,
+        isConnected: credentials.isConnected,
+        siteUrl: credentials.siteUrl,
+        tokenExpired: credentials.tokenExpiresAt ? new Date(credentials.tokenExpiresAt) < new Date() : true,
+        lastSyncAt: credentials.lastSyncAt,
+      });
+    } catch (error) {
+      console.error("Error getting GSC status:", error);
+      res.status(500).json({ error: "Failed to get GSC status" });
+    }
+  });
+
+  // Get GSC OAuth URL
+  app.get("/api/gsc/auth-url", async (req, res) => {
+    try {
+      const { projectId, siteUrl } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const { getGscAuthUrl } = await import("./services/gsc-service");
+      
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const redirectUri = `${protocol}://${host}/api/gsc/callback`;
+      
+      const state = Buffer.from(JSON.stringify({ projectId, siteUrl })).toString("base64");
+      const authUrl = getGscAuthUrl(redirectUri, state);
+
+      if (!authUrl) {
+        return res.status(500).json({ error: "Google OAuth not configured. Please add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET." });
+      }
+
+      res.json({ authUrl, redirectUri });
+    } catch (error) {
+      console.error("Error generating GSC auth URL:", error);
+      res.status(500).json({ error: "Failed to generate auth URL" });
+    }
+  });
+
+  // GSC OAuth callback
+  app.get("/api/gsc/callback", async (req, res) => {
+    try {
+      const { code, state, error: authError } = req.query;
+
+      if (authError) {
+        console.error("GSC OAuth error:", authError);
+        return res.redirect("/?gsc_error=auth_denied");
+      }
+
+      if (!code || typeof code !== "string" || !state || typeof state !== "string") {
+        return res.redirect("/?gsc_error=missing_params");
+      }
+
+      const { projectId, siteUrl } = JSON.parse(Buffer.from(state, "base64").toString());
+
+      if (!projectId || !siteUrl) {
+        return res.redirect("/?gsc_error=invalid_state");
+      }
+
+      const { handleGscAuthCallback } = await import("./services/gsc-service");
+      
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host;
+      const redirectUri = `${protocol}://${host}/api/gsc/callback`;
+
+      const credentials = await handleGscAuthCallback(code, redirectUri, projectId, siteUrl);
+
+      if (!credentials) {
+        return res.redirect("/?gsc_error=token_exchange_failed");
+      }
+
+      res.redirect(`/?gsc_success=true&project=${projectId}`);
+    } catch (error) {
+      console.error("Error handling GSC callback:", error);
+      res.redirect("/?gsc_error=callback_failed");
+    }
+  });
+
+  // Disconnect GSC
+  app.delete("/api/gsc/disconnect", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      await storage.deleteGscCredentials(projectId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error disconnecting GSC:", error);
+      res.status(500).json({ error: "Failed to disconnect GSC" });
+    }
+  });
+
+  // Toggle GSC active status
+  app.patch("/api/gsc/toggle", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      const { isConnected } = req.body;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const credentials = await storage.updateGscCredentials(projectId, { isConnected });
+      
+      if (!credentials) {
+        return res.status(404).json({ error: "GSC credentials not found" });
+      }
+
+      res.json({ success: true, isConnected: credentials.isConnected });
+    } catch (error) {
+      console.error("Error toggling GSC status:", error);
+      res.status(500).json({ error: "Failed to toggle GSC status" });
+    }
+  });
+
+  // Sync GSC data
+  app.post("/api/gsc/sync", async (req, res) => {
+    try {
+      const { projectId, daysBack } = req.body;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const { syncSearchAnalytics } = await import("./services/gsc-service");
+      const result = await syncSearchAnalytics(projectId, daysBack || 7);
+
+      await storage.updateGscCredentials(projectId, { lastSyncAt: new Date() });
+
+      res.json({ 
+        success: true, 
+        synced: result.synced, 
+        errors: result.errors,
+      });
+    } catch (error) {
+      console.error("Error syncing GSC data:", error);
+      res.status(500).json({ error: "Failed to sync GSC data" });
+    }
+  });
+
+  // Get GSC summary
+  app.get("/api/gsc/summary", async (req, res) => {
+    try {
+      const { projectId, daysBack } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const { getGscSummary } = await import("./services/gsc-service");
+      const summary = await getGscSummary(projectId, daysBack ? Number(daysBack) : 7);
+
+      res.json(summary);
+    } catch (error) {
+      console.error("Error getting GSC summary:", error);
+      res.status(500).json({ error: "Failed to get GSC summary" });
+    }
+  });
+
+  // Get GSC query stats
+  app.get("/api/gsc/queries", async (req, res) => {
+    try {
+      const { projectId, startDate, endDate, query, page, limit } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const stats = await storage.getGscQueryStats(projectId, {
+        startDate: startDate as string,
+        endDate: endDate as string,
+        query: query as string,
+        page: page as string,
+        limit: limit ? Number(limit) : undefined,
+      });
+
+      res.json({ stats });
+    } catch (error) {
+      console.error("Error getting GSC queries:", error);
+      res.status(500).json({ error: "Failed to get GSC queries" });
+    }
+  });
+
+  // Inspect a URL
+  app.post("/api/gsc/inspect", async (req, res) => {
+    try {
+      const { projectId, url } = req.body;
+      
+      if (!projectId || !url) {
+        return res.status(400).json({ error: "projectId and url are required" });
+      }
+
+      const { inspectAndSaveUrl } = await import("./services/gsc-service");
+      const result = await inspectAndSaveUrl(projectId, url);
+
+      if (!result) {
+        return res.status(500).json({ error: "Failed to inspect URL" });
+      }
+
+      res.json({ success: true, inspection: result });
+    } catch (error) {
+      console.error("Error inspecting URL:", error);
+      res.status(500).json({ error: "Failed to inspect URL" });
+    }
+  });
+
+  // Get URL inspection results
+  app.get("/api/gsc/inspections", async (req, res) => {
+    try {
+      const { projectId, url } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const inspections = await storage.getGscUrlInspection(projectId, url as string);
+      res.json({ inspections });
+    } catch (error) {
+      console.error("Error getting URL inspections:", error);
+      res.status(500).json({ error: "Failed to get URL inspections" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;

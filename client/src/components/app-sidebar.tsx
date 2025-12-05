@@ -13,6 +13,7 @@ import {
   Database,
   Clock,
   Globe,
+  FileWarning,
 } from "lucide-react";
 import {
   Sidebar,
@@ -88,6 +89,16 @@ const analyticsItems = [
     title: "Site Audit",
     url: "/site-audit",
     icon: Globe,
+  },
+  {
+    title: "Search Console",
+    url: "/search-console",
+    icon: Search,
+  },
+  {
+    title: "Cannibalization",
+    url: "/cannibalization",
+    icon: FileWarning,
   },
   {
     title: "Reports",

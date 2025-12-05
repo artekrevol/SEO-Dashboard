@@ -22,6 +22,9 @@ import { FallingStarsPage } from "@/pages/falling-stars";
 import { RankingsPage } from "@/pages/rankings";
 import { SettingsPage } from "@/pages/settings";
 import { SiteAuditPage } from "@/pages/site-audit";
+import CannibalizationPage from "@/pages/cannibalization";
+import ReportsPage from "@/pages/reports";
+import SearchConsolePage from "@/pages/search-console";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -138,15 +141,14 @@ function AppContent() {
               <Route path="/site-audit">
                 <SiteAuditPage projectId={selectedProjectId} />
               </Route>
+              <Route path="/cannibalization">
+                <CannibalizationPage />
+              </Route>
               <Route path="/reports">
-                <div className="flex h-full items-center justify-center">
-                  <div className="text-center">
-                    <h2 className="text-xl font-semibold">Reports</h2>
-                    <p className="mt-2 text-muted-foreground">
-                      Custom SEO reports coming soon.
-                    </p>
-                  </div>
-                </div>
+                <ReportsPage />
+              </Route>
+              <Route path="/search-console">
+                <SearchConsolePage />
               </Route>
               <Route path="/settings">
                 <SettingsPage projectId={selectedProjectId} />

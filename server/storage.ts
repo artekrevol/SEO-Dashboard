@@ -285,6 +285,29 @@ export interface IStorage {
   getRunningCrawlsByType(projectId: string, type: string): Promise<CrawlResult[]>;
   getAllRunningCrawls(): Promise<CrawlResult[]>;
   updateCrawlProgress(id: number, itemsProcessed: number, stage?: string, itemsTotal?: number): Promise<CrawlResult | undefined>;
+  
+  // Scheduled Reports
+  getScheduledReports(projectId: string): Promise<ScheduledReport[]>;
+  getScheduledReport(id: number): Promise<ScheduledReport | undefined>;
+  getActiveScheduledReports(): Promise<ScheduledReport[]>;
+  getDueScheduledReports(): Promise<ScheduledReport[]>;
+  createScheduledReport(report: InsertScheduledReport): Promise<ScheduledReport>;
+  updateScheduledReport(id: number, updates: Partial<ScheduledReport>): Promise<ScheduledReport | undefined>;
+  deleteScheduledReport(id: number): Promise<void>;
+  
+  // Report Runs
+  getReportRuns(projectId: string, limit?: number): Promise<ReportRun[]>;
+  getReportRun(id: number): Promise<ReportRun | undefined>;
+  createReportRun(run: InsertReportRun): Promise<ReportRun>;
+  updateReportRun(id: number, updates: Partial<ReportRun>): Promise<ReportRun | undefined>;
+  
+  // Keyword Page Conflicts (Cannibalization)
+  getKeywordPageConflicts(projectId: string, filters?: { status?: string; severity?: string }): Promise<KeywordPageConflict[]>;
+  getKeywordPageConflict(id: number): Promise<KeywordPageConflict | undefined>;
+  createKeywordPageConflict(conflict: InsertKeywordPageConflict): Promise<KeywordPageConflict>;
+  updateKeywordPageConflict(id: number, updates: Partial<KeywordPageConflict>): Promise<KeywordPageConflict | undefined>;
+  deleteKeywordPageConflict(id: number): Promise<void>;
+  deleteKeywordPageConflictsByProject(projectId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2631,7 +2654,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async updateScheduledReport(id: number, updates: Partial<InsertScheduledReport>): Promise<ScheduledReport | undefined> {
+  async updateScheduledReport(id: number, updates: Partial<ScheduledReport>): Promise<ScheduledReport | undefined> {
     const [updated] = await db
       .update(scheduledReports)
       .set({ ...updates, updatedAt: new Date() })
