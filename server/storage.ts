@@ -41,6 +41,8 @@ import {
   type InsertPageAudit,
   type PageIssue,
   type InsertPageIssue,
+  type GlobalSetting,
+  type InsertGlobalSetting,
   users,
   projects,
   keywords,
@@ -63,6 +65,8 @@ import {
   techCrawls,
   pageAudits,
   pageIssues,
+  globalSettings,
+  crawlTypeDurations,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -253,6 +257,16 @@ export interface IStorage {
   
   // Get latest page audit scores indexed by normalized URL for integration with Pages table
   getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>>;
+  
+  // Global Settings
+  getGlobalSetting(key: string): Promise<GlobalSetting | undefined>;
+  setGlobalSetting(key: string, value: string, description?: string): Promise<GlobalSetting>;
+  getAllGlobalSettings(): Promise<GlobalSetting[]>;
+  
+  // Enhanced Crawl Management
+  getRunningCrawlsByType(projectId: string, type: string): Promise<CrawlResult[]>;
+  getAllRunningCrawls(): Promise<CrawlResult[]>;
+  updateCrawlProgress(id: number, itemsProcessed: number, stage?: string): Promise<CrawlResult | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2478,6 +2492,80 @@ export class DatabaseStorage implements IStorage {
     }
 
     return result;
+  }
+
+  // Global Settings Methods
+  async getGlobalSetting(key: string): Promise<GlobalSetting | undefined> {
+    const [setting] = await db
+      .select()
+      .from(globalSettings)
+      .where(eq(globalSettings.key, key));
+    return setting || undefined;
+  }
+
+  async setGlobalSetting(key: string, value: string, description?: string): Promise<GlobalSetting> {
+    const existing = await this.getGlobalSetting(key);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(globalSettings)
+        .set({ 
+          value, 
+          description: description ?? existing.description,
+          updatedAt: new Date() 
+        })
+        .where(eq(globalSettings.key, key))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db
+      .insert(globalSettings)
+      .values({ key, value, description })
+      .returning();
+    return created;
+  }
+
+  async getAllGlobalSettings(): Promise<GlobalSetting[]> {
+    return await db.select().from(globalSettings);
+  }
+
+  // Enhanced Crawl Management Methods
+  async getRunningCrawlsByType(projectId: string, type: string): Promise<CrawlResult[]> {
+    return await db
+      .select()
+      .from(crawlResults)
+      .where(
+        and(
+          eq(crawlResults.projectId, projectId),
+          eq(crawlResults.type, type),
+          eq(crawlResults.status, "running")
+        )
+      )
+      .orderBy(desc(crawlResults.startedAt));
+  }
+
+  async getAllRunningCrawls(): Promise<CrawlResult[]> {
+    return await db
+      .select()
+      .from(crawlResults)
+      .where(eq(crawlResults.status, "running"))
+      .orderBy(desc(crawlResults.startedAt));
+  }
+
+  async updateCrawlProgress(id: number, itemsProcessed: number, stage?: string): Promise<CrawlResult | undefined> {
+    const updates: Partial<CrawlResult> = { 
+      itemsProcessed,
+    };
+    if (stage) {
+      updates.currentStage = stage;
+    }
+    const [updated] = await db
+      .update(crawlResults)
+      .set(updates)
+      .where(eq(crawlResults.id, id))
+      .returning();
+    return updated || undefined;
   }
 }
 
