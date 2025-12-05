@@ -2404,9 +2404,12 @@ export async function registerRoutes(
           
           // Create recommendations for issues affecting multiple pages or critical single-page issues
           let recommendationsCreated = 0;
-          for (const [key, group] of issueGroups) {
+          const issueGroupEntries = Array.from(issueGroups.entries());
+          for (let i = 0; i < issueGroupEntries.length; i++) {
+            const [key, group] = issueGroupEntries[i];
             const [issueCode, category] = key.split("-");
-            const pagesAffected = group.urls.size;
+            const urlsArray = Array.from(group.urls);
+            const pagesAffected = urlsArray.length;
             
             // Create recommendation if it affects at least 1 page
             if (pagesAffected > 0) {
@@ -2422,13 +2425,14 @@ export async function registerRoutes(
               };
               
               const title = `${titleMap[category] || "Fix Technical Issue"}: ${group.label}`;
+              const firstUrl = urlsArray[0] || "";
               const description = pagesAffected > 1 
                 ? `This issue affects ${pagesAffected} pages across the site. Priority: ${group.severity}.`
-                : `This issue was found on: ${Array.from(group.urls)[0]}. Priority: ${group.severity}.`;
+                : `This issue was found on: ${firstUrl}. Priority: ${group.severity}.`;
               
               await storage.createSeoRecommendation({
                 projectId: crawl.projectId,
-                url: pagesAffected === 1 ? Array.from(group.urls)[0] : undefined,
+                url: pagesAffected === 1 ? firstUrl : undefined,
                 type: "technical_seo",
                 severity: group.severity === "critical" ? "critical" : "high",
                 title,
@@ -2439,7 +2443,7 @@ export async function registerRoutes(
                   category,
                   pagesAffected,
                   techCrawlId: crawlId,
-                  affectedUrls: Array.from(group.urls).slice(0, 10), // Store first 10 URLs
+                  affectedUrls: urlsArray.slice(0, 10), // Store first 10 URLs
                 },
               });
               recommendationsCreated++;
