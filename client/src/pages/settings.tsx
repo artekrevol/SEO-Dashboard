@@ -7,10 +7,29 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, TrendingUp, TrendingDown, Save, RotateCcw } from "lucide-react";
+import { Settings, TrendingUp, TrendingDown, Save, RotateCcw, Globe, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiRequest } from "@/lib/queryClient";
+
+const TIMEZONES = [
+  { value: "America/New_York", label: "Eastern Time (ET)", offset: "UTC-5/4" },
+  { value: "America/Chicago", label: "Central Time (CT)", offset: "UTC-6/5" },
+  { value: "America/Denver", label: "Mountain Time (MT)", offset: "UTC-7/6" },
+  { value: "America/Los_Angeles", label: "Pacific Time (PT)", offset: "UTC-8/7" },
+  { value: "America/Phoenix", label: "Arizona (MST)", offset: "UTC-7" },
+  { value: "America/Anchorage", label: "Alaska Time", offset: "UTC-9/8" },
+  { value: "Pacific/Honolulu", label: "Hawaii Time", offset: "UTC-10" },
+  { value: "Europe/London", label: "London (GMT/BST)", offset: "UTC+0/1" },
+  { value: "Europe/Paris", label: "Central European", offset: "UTC+1/2" },
+  { value: "Asia/Dubai", label: "Dubai (GST)", offset: "UTC+4" },
+  { value: "Asia/Kolkata", label: "India (IST)", offset: "UTC+5:30" },
+  { value: "Asia/Singapore", label: "Singapore (SGT)", offset: "UTC+8" },
+  { value: "Asia/Tokyo", label: "Japan (JST)", offset: "UTC+9" },
+  { value: "Australia/Sydney", label: "Sydney (AEST)", offset: "UTC+10/11" },
+  { value: "UTC", label: "UTC", offset: "UTC+0" },
+];
 
 interface QuickWinsSettings {
   id?: number;
@@ -63,6 +82,47 @@ export function SettingsPage({ projectId }: { projectId: string | null }) {
 
   const [quickWins, setQuickWins] = useState<QuickWinsSettings>(defaultQuickWins);
   const [fallingStars, setFallingStars] = useState<FallingStarsSettings>(defaultFallingStars);
+  const [timezone, setTimezone] = useState<string>("America/Chicago");
+
+  const { data: timezoneData, isLoading: timezoneLoading } = useQuery<{ timezone: string }>({
+    queryKey: ["/api/settings/timezone"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings/timezone");
+      if (!res.ok) throw new Error("Failed to fetch timezone");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (timezoneData?.timezone) {
+      setTimezone(timezoneData.timezone);
+    }
+  }, [timezoneData]);
+
+  const saveTimezoneMutation = useMutation({
+    mutationFn: async (newTimezone: string) => {
+      const res = await apiRequest("POST", "/api/settings/timezone", { timezone: newTimezone });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || "Failed to save timezone");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/timezone"] });
+      toast({
+        title: "Timezone saved",
+        description: "Scheduled crawls will now use the new timezone.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save timezone.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: quickWinsData, isLoading: quickWinsLoading } = useQuery<QuickWinsSettings>({
     queryKey: ["/api/settings/quick-wins", { projectId }],
@@ -171,15 +231,7 @@ export function SettingsPage({ projectId }: { projectId: string | null }) {
     });
   };
 
-  if (!projectId) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground">Select a project to view settings</p>
-      </div>
-    );
-  }
-
-  const isLoading = quickWinsLoading || fallingStarsLoading;
+  const isLoading = timezoneLoading || (projectId && (quickWinsLoading || fallingStarsLoading));
 
   if (isLoading) {
     return (
@@ -200,10 +252,80 @@ export function SettingsPage({ projectId }: { projectId: string | null }) {
         <h1 className="text-2xl font-bold" data-testid="text-settings-title">Settings</h1>
       </div>
       <p className="text-muted-foreground">
-        Configure thresholds for Quick Wins and Falling Stars detection.
+        Configure global settings and project-specific thresholds.
       </p>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-primary" />
+            <CardTitle>Global Settings</CardTitle>
+          </div>
+          <CardDescription>
+            Settings that apply across all projects.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-start gap-4">
+              <Clock className="mt-1 h-5 w-5 text-muted-foreground" />
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="timezone-select">Timezone for Scheduled Crawls</Label>
+                <div className="flex items-center gap-4">
+                  <Select
+                    value={timezone}
+                    onValueChange={(value) => setTimezone(value)}
+                  >
+                    <SelectTrigger className="w-80" data-testid="select-timezone">
+                      <SelectValue placeholder="Select timezone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          <div className="flex items-center justify-between gap-4">
+                            <span>{tz.label}</span>
+                            <span className="text-xs text-muted-foreground">{tz.offset}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={() => saveTimezoneMutation.mutate(timezone)}
+                    disabled={saveTimezoneMutation.isPending || timezone === timezoneData?.timezone}
+                    size="sm"
+                    data-testid="button-save-timezone"
+                  >
+                    {saveTimezoneMutation.isPending ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  All scheduled crawls will run according to this timezone. Changes take effect within 5 minutes.
+                </p>
+                {timezoneData?.timezone && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="secondary">
+                      Current: {TIMEZONES.find(tz => tz.value === timezoneData.timezone)?.label || timezoneData.timezone}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Local time: {new Date().toLocaleTimeString("en-US", { timeZone: timezoneData.timezone, hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {!projectId && (
+        <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+          Select a project above to configure Quick Wins and Falling Stars thresholds.
+        </div>
+      )}
+
+      {projectId && (
+        <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-4">
@@ -493,7 +615,8 @@ export function SettingsPage({ projectId }: { projectId: string | null }) {
             </div>
           </CardContent>
         </Card>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
