@@ -43,6 +43,18 @@ import {
   type InsertPageIssue,
   type GlobalSetting,
   type InsertGlobalSetting,
+  type ScheduledReport,
+  type InsertScheduledReport,
+  type ReportRun,
+  type InsertReportRun,
+  type GscCredentials,
+  type InsertGscCredentials,
+  type GscQueryStats,
+  type InsertGscQueryStats,
+  type GscUrlInspection,
+  type InsertGscUrlInspection,
+  type KeywordPageConflict,
+  type InsertKeywordPageConflict,
   users,
   projects,
   keywords,
@@ -66,6 +78,12 @@ import {
   pageAudits,
   pageIssues,
   globalSettings,
+  scheduledReports,
+  reportRuns,
+  gscCredentials,
+  gscQueryStats,
+  gscUrlInspection,
+  keywordPageConflicts,
   crawlTypeDurations,
 } from "@shared/schema";
 import { db } from "./db";
@@ -2569,6 +2587,352 @@ export class DatabaseStorage implements IStorage {
       .where(eq(crawlResults.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  // ============================================
+  // SCHEDULED REPORTS METHODS
+  // ============================================
+
+  async getScheduledReports(projectId: string): Promise<ScheduledReport[]> {
+    return await db.select()
+      .from(scheduledReports)
+      .where(eq(scheduledReports.projectId, projectId))
+      .orderBy(desc(scheduledReports.createdAt));
+  }
+
+  async getScheduledReport(id: number): Promise<ScheduledReport | undefined> {
+    const [report] = await db.select()
+      .from(scheduledReports)
+      .where(eq(scheduledReports.id, id));
+    return report || undefined;
+  }
+
+  async getActiveScheduledReports(): Promise<ScheduledReport[]> {
+    return await db.select()
+      .from(scheduledReports)
+      .where(eq(scheduledReports.isActive, true))
+      .orderBy(scheduledReports.nextScheduledAt);
+  }
+
+  async getDueScheduledReports(): Promise<ScheduledReport[]> {
+    const now = new Date();
+    return await db.select()
+      .from(scheduledReports)
+      .where(
+        and(
+          eq(scheduledReports.isActive, true),
+          lte(scheduledReports.nextScheduledAt, now)
+        )
+      );
+  }
+
+  async createScheduledReport(report: InsertScheduledReport): Promise<ScheduledReport> {
+    const [result] = await db.insert(scheduledReports).values(report).returning();
+    return result;
+  }
+
+  async updateScheduledReport(id: number, updates: Partial<InsertScheduledReport>): Promise<ScheduledReport | undefined> {
+    const [updated] = await db
+      .update(scheduledReports)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(scheduledReports.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteScheduledReport(id: number): Promise<void> {
+    await db.delete(scheduledReports).where(eq(scheduledReports.id, id));
+  }
+
+  async getReportRuns(projectId: string, limit?: number): Promise<ReportRun[]> {
+    let query = db.select()
+      .from(reportRuns)
+      .where(eq(reportRuns.projectId, projectId))
+      .orderBy(desc(reportRuns.startedAt));
+    
+    if (limit) {
+      query = query.limit(limit) as typeof query;
+    }
+    
+    return await query;
+  }
+
+  async getReportRun(id: number): Promise<ReportRun | undefined> {
+    const [run] = await db.select()
+      .from(reportRuns)
+      .where(eq(reportRuns.id, id));
+    return run || undefined;
+  }
+
+  async createReportRun(run: InsertReportRun): Promise<ReportRun> {
+    const [result] = await db.insert(reportRuns).values(run).returning();
+    return result;
+  }
+
+  async updateReportRun(id: number, updates: Partial<ReportRun>): Promise<ReportRun | undefined> {
+    const [updated] = await db
+      .update(reportRuns)
+      .set(updates)
+      .where(eq(reportRuns.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // ============================================
+  // GOOGLE SEARCH CONSOLE METHODS
+  // ============================================
+
+  async getGscCredentials(projectId: string): Promise<GscCredentials | undefined> {
+    const [creds] = await db.select()
+      .from(gscCredentials)
+      .where(eq(gscCredentials.projectId, projectId));
+    return creds || undefined;
+  }
+
+  async createGscCredentials(creds: InsertGscCredentials): Promise<GscCredentials> {
+    const [result] = await db.insert(gscCredentials).values(creds).returning();
+    return result;
+  }
+
+  async updateGscCredentials(projectId: string, updates: Partial<InsertGscCredentials>): Promise<GscCredentials | undefined> {
+    const [updated] = await db
+      .update(gscCredentials)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(gscCredentials.projectId, projectId))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteGscCredentials(projectId: string): Promise<void> {
+    await db.delete(gscCredentials).where(eq(gscCredentials.projectId, projectId));
+  }
+
+  async getGscQueryStats(projectId: string, options?: {
+    startDate?: string;
+    endDate?: string;
+    query?: string;
+    page?: string;
+    limit?: number;
+  }): Promise<GscQueryStats[]> {
+    const conditions = [eq(gscQueryStats.projectId, projectId)];
+    
+    if (options?.startDate) {
+      conditions.push(gte(gscQueryStats.date, options.startDate));
+    }
+    if (options?.endDate) {
+      conditions.push(lte(gscQueryStats.date, options.endDate));
+    }
+    if (options?.query) {
+      conditions.push(eq(gscQueryStats.query, options.query));
+    }
+    if (options?.page) {
+      conditions.push(eq(gscQueryStats.page, options.page));
+    }
+
+    let query = db.select()
+      .from(gscQueryStats)
+      .where(and(...conditions))
+      .orderBy(desc(gscQueryStats.date));
+
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+
+    return await query;
+  }
+
+  async createGscQueryStats(stats: InsertGscQueryStats): Promise<GscQueryStats> {
+    const [result] = await db.insert(gscQueryStats).values(stats).returning();
+    return result;
+  }
+
+  async upsertGscQueryStats(stats: InsertGscQueryStats): Promise<GscQueryStats> {
+    const existing = await db.select()
+      .from(gscQueryStats)
+      .where(
+        and(
+          eq(gscQueryStats.projectId, stats.projectId),
+          eq(gscQueryStats.query, stats.query),
+          stats.page ? eq(gscQueryStats.page, stats.page) : isNull(gscQueryStats.page),
+          eq(gscQueryStats.date, stats.date)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(gscQueryStats)
+        .set(stats)
+        .where(eq(gscQueryStats.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    return this.createGscQueryStats(stats);
+  }
+
+  async getGscUrlInspection(projectId: string, url?: string): Promise<GscUrlInspection[]> {
+    const conditions = [eq(gscUrlInspection.projectId, projectId)];
+    if (url) {
+      conditions.push(eq(gscUrlInspection.url, url));
+    }
+    return await db.select()
+      .from(gscUrlInspection)
+      .where(and(...conditions))
+      .orderBy(desc(gscUrlInspection.lastInspectedAt));
+  }
+
+  async upsertGscUrlInspection(inspection: InsertGscUrlInspection): Promise<GscUrlInspection> {
+    const existing = await db.select()
+      .from(gscUrlInspection)
+      .where(
+        and(
+          eq(gscUrlInspection.projectId, inspection.projectId),
+          eq(gscUrlInspection.url, inspection.url)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(gscUrlInspection)
+        .set({ ...inspection, updatedAt: new Date() })
+        .where(eq(gscUrlInspection.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [result] = await db.insert(gscUrlInspection).values(inspection).returning();
+    return result;
+  }
+
+  // ============================================
+  // CANNIBALIZATION DETECTION METHODS
+  // ============================================
+
+  async getKeywordPageConflicts(projectId: string, options?: {
+    status?: string;
+    severity?: string;
+    keyword?: string;
+    limit?: number;
+  }): Promise<KeywordPageConflict[]> {
+    const conditions = [eq(keywordPageConflicts.projectId, projectId)];
+    
+    if (options?.status) {
+      conditions.push(eq(keywordPageConflicts.status, options.status));
+    }
+    if (options?.severity) {
+      conditions.push(eq(keywordPageConflicts.severity, options.severity));
+    }
+    if (options?.keyword) {
+      conditions.push(sql`lower(${keywordPageConflicts.keyword}) LIKE lower(${'%' + options.keyword + '%'})`);
+    }
+
+    let query = db.select()
+      .from(keywordPageConflicts)
+      .where(and(...conditions))
+      .orderBy(
+        desc(sql`CASE WHEN ${keywordPageConflicts.severity} = 'high' THEN 0 WHEN ${keywordPageConflicts.severity} = 'medium' THEN 1 ELSE 2 END`),
+        desc(keywordPageConflicts.searchVolume)
+      );
+
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+
+    return await query;
+  }
+
+  async getKeywordPageConflict(id: number): Promise<KeywordPageConflict | undefined> {
+    const [conflict] = await db.select()
+      .from(keywordPageConflicts)
+      .where(eq(keywordPageConflicts.id, id));
+    return conflict || undefined;
+  }
+
+  async createKeywordPageConflict(conflict: InsertKeywordPageConflict): Promise<KeywordPageConflict> {
+    const [result] = await db.insert(keywordPageConflicts).values(conflict).returning();
+    return result;
+  }
+
+  async upsertKeywordPageConflict(conflict: InsertKeywordPageConflict): Promise<KeywordPageConflict> {
+    const existing = await db.select()
+      .from(keywordPageConflicts)
+      .where(
+        and(
+          eq(keywordPageConflicts.projectId, conflict.projectId),
+          eq(keywordPageConflicts.keyword, conflict.keyword),
+          eq(keywordPageConflicts.primaryUrl, conflict.primaryUrl),
+          eq(keywordPageConflicts.conflictingUrl, conflict.conflictingUrl)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(keywordPageConflicts)
+        .set({ ...conflict, updatedAt: new Date() })
+        .where(eq(keywordPageConflicts.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    return this.createKeywordPageConflict(conflict);
+  }
+
+  async updateKeywordPageConflict(id: number, updates: Partial<KeywordPageConflict>): Promise<KeywordPageConflict | undefined> {
+    const [updated] = await db
+      .update(keywordPageConflicts)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(keywordPageConflicts.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteKeywordPageConflict(id: number): Promise<void> {
+    await db.delete(keywordPageConflicts).where(eq(keywordPageConflicts.id, id));
+  }
+
+  async deleteResolvedConflicts(projectId: string): Promise<void> {
+    await db.delete(keywordPageConflicts)
+      .where(
+        and(
+          eq(keywordPageConflicts.projectId, projectId),
+          eq(keywordPageConflicts.status, 'resolved')
+        )
+      );
+  }
+
+  async getConflictsSummary(projectId: string): Promise<{
+    total: number;
+    active: number;
+    resolved: number;
+    ignored: number;
+    bySeverity: { high: number; medium: number; low: number };
+  }> {
+    const conflicts = await db.select()
+      .from(keywordPageConflicts)
+      .where(eq(keywordPageConflicts.projectId, projectId));
+
+    const summary = {
+      total: conflicts.length,
+      active: 0,
+      resolved: 0,
+      ignored: 0,
+      bySeverity: { high: 0, medium: 0, low: 0 },
+    };
+
+    for (const conflict of conflicts) {
+      if (conflict.status === 'active') summary.active++;
+      else if (conflict.status === 'resolved') summary.resolved++;
+      else if (conflict.status === 'ignored') summary.ignored++;
+
+      if (conflict.severity === 'high') summary.bySeverity.high++;
+      else if (conflict.severity === 'medium') summary.bySeverity.medium++;
+      else summary.bySeverity.low++;
+    }
+
+    return summary;
   }
 }
 

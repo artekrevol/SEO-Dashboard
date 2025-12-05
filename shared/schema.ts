@@ -896,3 +896,279 @@ export const crawlConcurrencyRules = {
     tech_audit: 1,
   },
 };
+
+// ============================================
+// SCHEDULED REPORTS - Email Delivery System
+// ============================================
+
+export const reportTypeEnum = z.enum(["weekly_summary", "monthly_report", "keyword_changes", "competitor_analysis", "technical_audit", "custom"]);
+export type ReportType = z.infer<typeof reportTypeEnum>;
+
+export const reportFrequencyEnum = z.enum(["daily", "weekly", "biweekly", "monthly"]);
+export type ReportFrequency = z.infer<typeof reportFrequencyEnum>;
+
+export const scheduledReports = pgTable("scheduled_reports", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  reportType: text("report_type").notNull(),
+  frequency: text("frequency").notNull(),
+  dayOfWeek: integer("day_of_week"),
+  dayOfMonth: integer("day_of_month"),
+  timeOfDay: text("time_of_day").default("09:00"),
+  timezone: text("timezone").default("America/Chicago"),
+  recipients: jsonb("recipients").$type<string[]>().notNull(),
+  includeExecutiveSummary: boolean("include_executive_summary").default(true),
+  includeTrends: boolean("include_trends").default(true),
+  includeRecommendations: boolean("include_recommendations").default(true),
+  includeCompetitors: boolean("include_competitors").default(false),
+  customSections: jsonb("custom_sections").$type<string[]>(),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastSentAt: timestamp("last_sent_at"),
+  nextScheduledAt: timestamp("next_scheduled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("scheduled_reports_project_id_idx").on(table.projectId),
+  isActiveIdx: index("scheduled_reports_is_active_idx").on(table.isActive),
+  nextScheduledAtIdx: index("scheduled_reports_next_scheduled_idx").on(table.nextScheduledAt),
+}));
+
+export const scheduledReportsRelations = relations(scheduledReports, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [scheduledReports.projectId],
+    references: [projects.id],
+  }),
+  runs: many(reportRuns),
+}));
+
+export const insertScheduledReportSchema = createInsertSchema(scheduledReports).omit({
+  id: true,
+  lastSentAt: true,
+  nextScheduledAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertScheduledReport = z.infer<typeof insertScheduledReportSchema>;
+export type ScheduledReport = typeof scheduledReports.$inferSelect;
+
+export const reportRunStatusEnum = z.enum(["pending", "generating", "sending", "completed", "failed"]);
+export type ReportRunStatus = z.infer<typeof reportRunStatusEnum>;
+
+export const reportRuns = pgTable("report_runs", {
+  id: serial("id").primaryKey(),
+  scheduledReportId: integer("scheduled_report_id").references(() => scheduledReports.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  reportType: text("report_type").notNull(),
+  status: text("status").notNull().default("pending"),
+  triggerType: text("trigger_type").default("scheduled"),
+  recipients: jsonb("recipients").$type<string[]>(),
+  reportData: jsonb("report_data").$type<Record<string, unknown>>(),
+  pdfUrl: text("pdf_url"),
+  emailsSent: integer("emails_sent").default(0),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  scheduledReportIdIdx: index("report_runs_scheduled_report_id_idx").on(table.scheduledReportId),
+  projectIdIdx: index("report_runs_project_id_idx").on(table.projectId),
+  statusIdx: index("report_runs_status_idx").on(table.status),
+  startedAtIdx: index("report_runs_started_at_idx").on(table.startedAt),
+}));
+
+export const reportRunsRelations = relations(reportRuns, ({ one }) => ({
+  scheduledReport: one(scheduledReports, {
+    fields: [reportRuns.scheduledReportId],
+    references: [scheduledReports.id],
+  }),
+  project: one(projects, {
+    fields: [reportRuns.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertReportRunSchema = createInsertSchema(reportRuns).omit({
+  id: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export type InsertReportRun = z.infer<typeof insertReportRunSchema>;
+export type ReportRun = typeof reportRuns.$inferSelect;
+
+// ============================================
+// GOOGLE SEARCH CONSOLE INTEGRATION
+// ============================================
+
+export const gscCredentials = pgTable("gsc_credentials", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }).unique(),
+  siteUrl: text("site_url").notNull(),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  scope: text("scope"),
+  isConnected: boolean("is_connected").default(false).notNull(),
+  lastSyncAt: timestamp("last_sync_at"),
+  syncErrorMessage: text("sync_error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("gsc_credentials_project_id_idx").on(table.projectId),
+}));
+
+export const gscCredentialsRelations = relations(gscCredentials, ({ one }) => ({
+  project: one(projects, {
+    fields: [gscCredentials.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertGscCredentialsSchema = createInsertSchema(gscCredentials).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGscCredentials = z.infer<typeof insertGscCredentialsSchema>;
+export type GscCredentials = typeof gscCredentials.$inferSelect;
+
+export const gscQueryStats = pgTable("gsc_query_stats", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  query: text("query").notNull(),
+  page: text("page"),
+  date: date("date").notNull(),
+  clicks: integer("clicks").default(0),
+  impressions: integer("impressions").default(0),
+  ctr: numeric("ctr", { precision: 6, scale: 4 }),
+  position: numeric("position", { precision: 5, scale: 2 }),
+  country: text("country"),
+  device: text("device"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("gsc_query_stats_project_id_idx").on(table.projectId),
+  queryIdx: index("gsc_query_stats_query_idx").on(table.query),
+  pageIdx: index("gsc_query_stats_page_idx").on(table.page),
+  dateIdx: index("gsc_query_stats_date_idx").on(table.date),
+  uniqueQueryDate: unique("gsc_query_stats_unique").on(table.projectId, table.query, table.page, table.date),
+}));
+
+export const gscQueryStatsRelations = relations(gscQueryStats, ({ one }) => ({
+  project: one(projects, {
+    fields: [gscQueryStats.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertGscQueryStatsSchema = createInsertSchema(gscQueryStats).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertGscQueryStats = z.infer<typeof insertGscQueryStatsSchema>;
+export type GscQueryStats = typeof gscQueryStats.$inferSelect;
+
+export const urlInspectionStatusEnum = z.enum(["indexed", "not_indexed", "pending", "error", "blocked"]);
+export type UrlInspectionStatus = z.infer<typeof urlInspectionStatusEnum>;
+
+export const gscUrlInspection = pgTable("gsc_url_inspection", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+  indexingStatus: text("indexing_status"),
+  coverageState: text("coverage_state"),
+  robotsTxtState: text("robots_txt_state"),
+  indexingState: text("indexing_state"),
+  lastCrawlTime: timestamp("last_crawl_time"),
+  pageFetchState: text("page_fetch_state"),
+  googleCanonical: text("google_canonical"),
+  userCanonical: text("user_canonical"),
+  mobileUsability: text("mobile_usability"),
+  richResultsStatus: text("rich_results_status"),
+  richResultsItems: jsonb("rich_results_items").$type<Record<string, unknown>[]>(),
+  lastInspectedAt: timestamp("last_inspected_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("gsc_url_inspection_project_id_idx").on(table.projectId),
+  urlIdx: index("gsc_url_inspection_url_idx").on(table.url),
+  indexingStatusIdx: index("gsc_url_inspection_indexing_status_idx").on(table.indexingStatus),
+  uniqueProjectUrl: unique("gsc_url_inspection_unique").on(table.projectId, table.url),
+}));
+
+export const gscUrlInspectionRelations = relations(gscUrlInspection, ({ one }) => ({
+  project: one(projects, {
+    fields: [gscUrlInspection.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertGscUrlInspectionSchema = createInsertSchema(gscUrlInspection).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertGscUrlInspection = z.infer<typeof insertGscUrlInspectionSchema>;
+export type GscUrlInspection = typeof gscUrlInspection.$inferSelect;
+
+// ============================================
+// CANNIBALIZATION DETECTION
+// ============================================
+
+export const conflictSeverityEnum = z.enum(["high", "medium", "low"]);
+export type ConflictSeverity = z.infer<typeof conflictSeverityEnum>;
+
+export const conflictStatusEnum = z.enum(["active", "resolved", "ignored"]);
+export type ConflictStatus = z.infer<typeof conflictStatusEnum>;
+
+export const keywordPageConflicts = pgTable("keyword_page_conflicts", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  keyword: text("keyword").notNull(),
+  keywordId: integer("keyword_id").references(() => keywords.id, { onDelete: "set null" }),
+  primaryUrl: text("primary_url").notNull(),
+  conflictingUrl: text("conflicting_url").notNull(),
+  primaryPosition: integer("primary_position"),
+  conflictingPosition: integer("conflicting_position"),
+  searchVolume: integer("search_volume"),
+  severity: text("severity").notNull().default("medium"),
+  status: text("status").notNull().default("active"),
+  conflictType: text("conflict_type").notNull(),
+  suggestedAction: text("suggested_action"),
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("keyword_page_conflicts_project_id_idx").on(table.projectId),
+  keywordIdx: index("keyword_page_conflicts_keyword_idx").on(table.keyword),
+  severityIdx: index("keyword_page_conflicts_severity_idx").on(table.severity),
+  statusIdx: index("keyword_page_conflicts_status_idx").on(table.status),
+  uniqueConflict: unique("keyword_page_conflicts_unique").on(table.projectId, table.keyword, table.primaryUrl, table.conflictingUrl),
+}));
+
+export const keywordPageConflictsRelations = relations(keywordPageConflicts, ({ one }) => ({
+  project: one(projects, {
+    fields: [keywordPageConflicts.projectId],
+    references: [projects.id],
+  }),
+  keywordRef: one(keywords, {
+    fields: [keywordPageConflicts.keywordId],
+    references: [keywords.id],
+  }),
+}));
+
+export const insertKeywordPageConflictSchema = createInsertSchema(keywordPageConflicts).omit({
+  id: true,
+  detectedAt: true,
+  resolvedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertKeywordPageConflict = z.infer<typeof insertKeywordPageConflictSchema>;
+export type KeywordPageConflict = typeof keywordPageConflicts.$inferSelect;
