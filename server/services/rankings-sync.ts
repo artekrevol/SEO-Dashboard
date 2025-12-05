@@ -1,6 +1,11 @@
 import { storage } from "../storage";
+import { db } from "../db";
 import { DataForSEOService, createDataForSEOService } from "./dataforseo";
 import type { Project, Keyword, InsertRankingsHistory, InsertKeywordCompetitorMetrics } from "@shared/schema";
+import { rankingsHistory } from "@shared/schema";
+import { eq, desc, and, inArray } from "drizzle-orm";
+
+const normalizeUrl = (url: string) => url.toLowerCase().replace(/\/+$/, '');
 
 interface RankingsSyncResult {
   success: boolean;
@@ -428,26 +433,104 @@ export class RankingsSyncService {
             p.url.toLowerCase().replace(/\/+$/, '') === normalizedUrl
           );
 
+          // Get keywords targeting this URL for position-based calculations
+          const pageKeywords = keywords.filter(kw => 
+            kw.targetUrl && normalizeUrl(kw.targetUrl) === normalizedUrl
+          );
+          const totalKeywordsForPage = pageKeywords.length;
+
+          // Get latest rankings for these keywords
+          const keywordIds = pageKeywords.map(k => k.id);
+          let rankedCount = 0;
+          let top10Count = 0;
+          let top3Count = 0;
+          let positionSum = 0;
+          let bestPos = 0;
+
+          if (keywordIds.length > 0) {
+            const latestRankings = await db
+              .select()
+              .from(rankingsHistory)
+              .where(
+                and(
+                  eq(rankingsHistory.projectId, projectId),
+                  inArray(rankingsHistory.keywordId, keywordIds)
+                )
+              )
+              .orderBy(desc(rankingsHistory.date));
+
+            const rankingsByKw = new Map<number, number>();
+            for (const r of latestRankings) {
+              if (!rankingsByKw.has(r.keywordId) && r.position && r.position > 0) {
+                rankingsByKw.set(r.keywordId, r.position);
+              }
+            }
+
+            for (const pos of Array.from(rankingsByKw.values())) {
+              rankedCount++;
+              positionSum += pos;
+              if (pos <= 10) top10Count++;
+              if (pos <= 3) top3Count++;
+              if (bestPos === 0 || pos < bestPos) bestPos = pos;
+            }
+          }
+
+          const avgPosition = rankedCount > 0 ? Math.round((positionSum / rankedCount) * 10) / 10 : 0;
+
+          // Calculate Tech Risk Score (0-100, higher = more risk)
+          // Factors: isIndexable, hasSchema, duplicateContent, coreWebVitalsOk
+          let techRisk = 0;
+          const hasSchema = existingPage?.hasSchema || false;
+          const isIndexable = existingPage?.isIndexable !== false;
+          const duplicateContent = existingPage?.duplicateContent || false;
+          const coreWebVitalsOk = existingPage?.coreWebVitalsOk !== false;
+          
+          if (!isIndexable) techRisk += 40;
+          if (!hasSchema) techRisk += 15;
+          if (duplicateContent) techRisk += 25;
+          if (!coreWebVitalsOk) techRisk += 20;
+          
+          // Calculate Content Gap Score (0-100, higher = bigger gap/more opportunity)
+          // Based on how many keywords have poor rankings (>20) or no rankings
+          let contentGap = 0;
+          if (totalKeywordsForPage > 0) {
+            const unrankedOrPoorRatio = (totalKeywordsForPage - top10Count) / totalKeywordsForPage;
+            contentGap = Math.round(unrankedOrPoorRatio * 100);
+          }
+
+          // Calculate Authority Gap Score (0-100, higher = weaker authority)
+          // Based on backlinks/referring domains relative to benchmarks
+          const backlinksCount = backlinks?.backlinksCount || 0;
+          const referringDomainsCount = backlinks?.referringDomains || 0;
+          let authorityGap = 100;
+          if (referringDomainsCount >= 100) authorityGap = 10;
+          else if (referringDomainsCount >= 50) authorityGap = 25;
+          else if (referringDomainsCount >= 20) authorityGap = 40;
+          else if (referringDomainsCount >= 10) authorityGap = 55;
+          else if (referringDomainsCount >= 5) authorityGap = 70;
+          else if (referringDomainsCount >= 1) authorityGap = 85;
+
           const pageData = {
             projectId,
             url: existingPage?.url || url,
             date: today,
-            backlinksCount: backlinks?.backlinksCount || 0,
-            referringDomains: backlinks?.referringDomains || 0,
+            backlinksCount: backlinksCount,
+            referringDomains: referringDomainsCount,
             newLinks7d: velocity.newLinks,
             lostLinks7d: velocity.lostLinks,
-            avgPosition: existingPage?.avgPosition || null,
-            bestPosition: existingPage?.bestPosition || null,
-            keywordsInTop10: existingPage?.keywordsInTop10 || 0,
-            totalKeywords: existingPage?.totalKeywords || 0,
+            avgPosition: avgPosition > 0 ? String(avgPosition) : null,
+            bestPosition: bestPos > 0 ? bestPos : null,
+            keywordsInTop10: top10Count,
+            keywordsInTop3: top3Count,
+            totalKeywords: totalKeywordsForPage,
             wordCount: existingPage?.wordCount || null,
-            hasSchema: existingPage?.hasSchema || false,
-            isIndexable: existingPage?.isIndexable !== false,
-            duplicateContent: existingPage?.duplicateContent || false,
-            coreWebVitalsOk: existingPage?.coreWebVitalsOk !== false,
-            contentGapScore: existingPage?.contentGapScore || null,
-            techRiskScore: existingPage?.techRiskScore || null,
-            authorityGapScore: existingPage?.authorityGapScore || null,
+            hasSchema: hasSchema,
+            isIndexable: isIndexable,
+            duplicateContent: duplicateContent,
+            coreWebVitalsOk: coreWebVitalsOk,
+            contentGapScore: String(contentGap),
+            techRiskScore: String(techRisk),
+            authorityGapScore: String(authorityGap),
           };
 
           if (existingPage) {

@@ -66,6 +66,10 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Data Ingestion**: Handles bulk CSV/XLSX imports for locations, keywords, rankings, and projects.
 - **Priority Classification**: Keywords are automatically tiered into P1 (High), P2 (Medium), and P3 (Low) based on intent and current ranking.
 - **Automated Crawl Schedules**: Predefined schedules for keyword rankings (3x weekly), page metrics (4x weekly), and competitor analysis (2x weekly).
+- **Pages Health Scoring**: The `syncPageMetrics` function calculates three key metrics during pages_health crawls:
+    - **techRiskScore**: 0-100 based on schema presence (-15 if missing), indexability (+50 if not indexable), Core Web Vitals (+20 if failing), duplicate content (+15 if detected)
+    - **contentGapScore**: 0-100 based on keyword coverage - percentage of keywords not ranking in top 10 for the page
+    - **authorityGapScore**: 0-100 based on backlink authority vs benchmark (100 referringDomains), higher gaps indicate weaker authority
 
 ### Feature Specifications
 - **SEO Health Score**: Aggregated 0-100 score based on various SEO factors.
