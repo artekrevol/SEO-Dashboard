@@ -1359,6 +1359,210 @@ export async function registerRoutes(
     }
   });
 
+  // Get all running crawls across all projects (for global status)
+  app.get("/api/crawl-results/all-running", async (req, res) => {
+    try {
+      const runningCrawls = await storage.getAllRunningCrawls();
+      
+      // Enrich with project info
+      const projects = await storage.getProjects();
+      const projectMap = new Map(projects.map(p => [p.id, p]));
+      
+      const enriched = runningCrawls.map(c => ({
+        ...c,
+        projectName: projectMap.get(c.projectId)?.name || 'Unknown',
+        projectDomain: projectMap.get(c.projectId)?.domain || 'Unknown',
+        elapsedSec: c.startedAt ? Math.floor((Date.now() - new Date(c.startedAt).getTime()) / 1000) : 0,
+        progress: c.itemsTotal && c.itemsTotal > 0 
+          ? Math.round((c.itemsProcessed || 0) / c.itemsTotal * 100) 
+          : null,
+      }));
+      
+      res.json({ running: enriched });
+    } catch (error) {
+      console.error("Error fetching all running crawls:", error);
+      res.status(500).json({ error: "Failed to fetch running crawls" });
+    }
+  });
+
+  // Trigger a manual crawl for a project
+  app.post("/api/crawl/trigger", async (req, res) => {
+    try {
+      const { projectId, crawlType } = req.body;
+      
+      if (!projectId || !crawlType) {
+        return res.status(400).json({ error: "projectId and crawlType are required" });
+      }
+      
+      const validTypes = ["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks", "competitor_backlinks"];
+      if (!validTypes.includes(crawlType)) {
+        return res.status(400).json({ error: `Invalid crawlType. Must be one of: ${validTypes.join(", ")}` });
+      }
+      
+      // Check if a crawl of this type is already running for this project
+      const runningCrawls = await storage.getRunningCrawlsByType(projectId, crawlType);
+      if (runningCrawls.length > 0) {
+        return res.status(409).json({ 
+          error: `A ${crawlType} crawl is already running for this project`,
+          runningCrawl: runningCrawls[0]
+        });
+      }
+      
+      // Get the project to verify it exists
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
+      // Find the schedule for this crawl type (if exists, for configuration)
+      const schedules = await storage.getCrawlSchedules(projectId);
+      const schedule = schedules.find(s => s.type === crawlType);
+      
+      // Create a crawl result with manual trigger
+      const crawlTypeDurations: Record<string, number> = {
+        keyword_ranks: 120,
+        competitors: 180,
+        pages_health: 90,
+        deep_discovery: 300,
+        backlinks: 240,
+        competitor_backlinks: 300,
+      };
+      
+      const crawlResult = await storage.createCrawlResult({
+        projectId,
+        scheduleId: schedule?.id || null,
+        type: crawlType,
+        status: "running",
+        triggerType: "manual",
+        message: `Manual ${crawlType} crawl started...`,
+        estimatedDurationSec: crawlTypeDurations[crawlType] || 120,
+        itemsTotal: 0,
+        itemsProcessed: 0,
+        currentStage: "initializing",
+      });
+      
+      // Execute the crawl asynchronously
+      if (schedule) {
+        crawlSchedulerService.executeSchedule(schedule).catch(err => {
+          console.error(`Error executing manual crawl for ${crawlType}:`, err);
+        });
+      } else {
+        // Create a temporary schedule object for execution
+        const tempSchedule = {
+          id: -1,
+          projectId,
+          type: crawlType,
+          url: null,
+          frequency: "manual",
+          scheduledTime: "00:00",
+          daysOfWeek: [],
+          isActive: false,
+          config: null,
+          lastRunAt: null,
+          nextRunAt: null,
+          lastRunStatus: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        crawlSchedulerService.executeSchedule(tempSchedule).catch(err => {
+          console.error(`Error executing manual crawl for ${crawlType}:`, err);
+        });
+      }
+      
+      res.json({ 
+        success: true, 
+        crawlResultId: crawlResult.id,
+        message: `${crawlType} crawl triggered successfully`,
+        crawlResult
+      });
+    } catch (error) {
+      console.error("Error triggering crawl:", error);
+      res.status(500).json({ error: "Failed to trigger crawl" });
+    }
+  });
+
+  // Global Settings API
+  app.get("/api/settings/global", async (req, res) => {
+    try {
+      const settings = await storage.getAllGlobalSettings();
+      const settingsMap: Record<string, string> = {};
+      for (const s of settings) {
+        settingsMap[s.key] = s.value;
+      }
+      res.json(settingsMap);
+    } catch (error) {
+      console.error("Error fetching global settings:", error);
+      res.status(500).json({ error: "Failed to fetch global settings" });
+    }
+  });
+
+  app.get("/api/settings/global/:key", async (req, res) => {
+    try {
+      const setting = await storage.getGlobalSetting(req.params.key);
+      if (!setting) {
+        return res.status(404).json({ error: "Setting not found" });
+      }
+      res.json(setting);
+    } catch (error) {
+      console.error("Error fetching global setting:", error);
+      res.status(500).json({ error: "Failed to fetch global setting" });
+    }
+  });
+
+  app.post("/api/settings/global", async (req, res) => {
+    try {
+      const { key, value, description } = req.body;
+      if (!key || value === undefined) {
+        return res.status(400).json({ error: "key and value are required" });
+      }
+      const setting = await storage.setGlobalSetting(key, value, description);
+      res.json(setting);
+    } catch (error) {
+      console.error("Error saving global setting:", error);
+      res.status(500).json({ error: "Failed to save global setting" });
+    }
+  });
+
+  // Get timezone setting with default fallback
+  app.get("/api/settings/timezone", async (req, res) => {
+    try {
+      const setting = await storage.getGlobalSetting("timezone");
+      const timezone = setting?.value || "America/Chicago";
+      res.json({ timezone });
+    } catch (error) {
+      console.error("Error fetching timezone setting:", error);
+      res.status(500).json({ error: "Failed to fetch timezone setting" });
+    }
+  });
+
+  // Set timezone setting
+  app.post("/api/settings/timezone", async (req, res) => {
+    try {
+      const { timezone } = req.body;
+      if (!timezone) {
+        return res.status(400).json({ error: "timezone is required" });
+      }
+      
+      // Validate timezone format (basic check)
+      try {
+        new Date().toLocaleString("en-US", { timeZone: timezone });
+      } catch (e) {
+        return res.status(400).json({ error: "Invalid timezone identifier" });
+      }
+      
+      const setting = await storage.setGlobalSetting(
+        "timezone", 
+        timezone, 
+        "Default timezone for scheduled crawls and time displays"
+      );
+      
+      res.json({ success: true, timezone: setting.value });
+    } catch (error) {
+      console.error("Error saving timezone setting:", error);
+      res.status(500).json({ error: "Failed to save timezone setting" });
+    }
+  });
+
   // Quick Wins API - high-opportunity keywords close to top positions
   app.get("/api/quick-wins", async (req, res) => {
     try {
