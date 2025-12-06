@@ -43,9 +43,10 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Google Search Console Data**: Displays performance overview and URL inspection results.
 - **Site Audit**: Technical SEO crawling and issue identification, automatically generating recommendations from critical issues.
 - **Link Building Tracker**: Manages backlinks, detects spam scores, identifies lost links, and performs competitor backlink gap analysis with opportunity scoring and promotion to recommendations.
+- **Task Execution Logs**: System-wide logging for background tasks (crawls, syncs, reports) with filtering by category, level, and search. Provides diagnostic visibility into system operations with error tracking, execution summaries, and auto-refresh. Accessible via System > System Logs in sidebar.
 
 ### System Design Choices
-- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, and `cannibalization_conflicts`.
+- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, and `task_execution_logs`.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
 
 ## External Dependencies
