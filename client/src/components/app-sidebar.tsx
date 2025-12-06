@@ -14,6 +14,7 @@ import {
   Clock,
   Globe,
   FileWarning,
+  ScrollText,
 } from "lucide-react";
 import {
   Sidebar,
@@ -107,6 +108,14 @@ const analyticsItems = [
   },
 ];
 
+const systemItems = [
+  {
+    title: "System Logs",
+    url: "/system-logs",
+    icon: ScrollText,
+  },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
 
@@ -188,6 +197,30 @@ export function AppSidebar() {
                     className="gap-3"
                   >
                     <Link href={item.url} data-testid={`nav-link-${item.title.toLowerCase()}`}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup className="mt-4">
+          <SidebarGroupLabel className="px-4 text-xs font-medium text-muted-foreground">
+            System
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {systemItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location === item.url}
+                    className="gap-3"
+                  >
+                    <Link href={item.url} data-testid={`nav-link-${item.title.toLowerCase().replace(' ', '-')}`}>
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>

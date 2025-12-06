@@ -25,6 +25,7 @@ import { SiteAuditPage } from "@/pages/site-audit";
 import CannibalizationPage from "@/pages/cannibalization";
 import ReportsPage from "@/pages/reports";
 import SearchConsolePage from "@/pages/search-console";
+import SystemLogsPage from "@/pages/system-logs";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -152,6 +153,9 @@ function AppContent() {
               </Route>
               <Route path="/settings">
                 <SettingsPage projectId={selectedProjectId} />
+              </Route>
+              <Route path="/system-logs">
+                <SystemLogsPage />
               </Route>
               <Route component={NotFound} />
             </Switch>
