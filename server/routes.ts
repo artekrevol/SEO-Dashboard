@@ -3145,6 +3145,9 @@ export async function registerRoutes(
 
   // Sync GSC data
   app.post("/api/gsc/sync", async (req, res) => {
+    const { TaskLogger } = await import("./services/task-logger");
+    const taskContext = TaskLogger.createContext("gsc_sync", "sync", { projectId: req.body.projectId });
+    
     try {
       const { projectId, daysBack } = req.body;
       
@@ -3152,10 +3155,22 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
+      await TaskLogger.info(taskContext, "Starting GSC data sync", {
+        projectId,
+        daysBack: daysBack || 28,
+        triggerType: "manual",
+      });
+
       const { syncSearchAnalytics } = await import("./services/gsc-service");
-      const result = await syncSearchAnalytics(projectId, daysBack || 7);
+      const result = await syncSearchAnalytics(projectId, daysBack || 28);
 
       await storage.updateGscCredentials(projectId, { lastSyncAt: new Date() });
+
+      await TaskLogger.complete(taskContext, result.errors === 0, {
+        synced: result.synced,
+        errors: result.errors,
+        message: `Synced ${result.synced} records with ${result.errors} errors`,
+      });
 
       res.json({ 
         success: true, 
@@ -3163,6 +3178,8 @@ export async function registerRoutes(
         errors: result.errors,
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await TaskLogger.error(taskContext, `GSC sync failed: ${errorMessage}`, error);
       console.error("Error syncing GSC data:", error);
       res.status(500).json({ error: "Failed to sync GSC data" });
     }

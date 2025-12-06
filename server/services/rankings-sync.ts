@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { db } from "../db";
 import { DataForSEOService, createDataForSEOService } from "./dataforseo";
+import { TaskLogger, TaskContext } from "./task-logger";
 import type { Project, Keyword, InsertRankingsHistory, InsertKeywordCompetitorMetrics } from "@shared/schema";
 import { rankingsHistory } from "@shared/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
@@ -172,7 +173,7 @@ export class RankingsSyncService {
       .filter(Boolean);
   }
 
-  async syncRankingsForProject(projectId: string, keywordLimit?: number, crawlResultId?: number): Promise<RankingsSyncResult> {
+  async syncRankingsForProject(projectId: string, keywordLimit?: number, crawlResultId?: number, taskContext?: TaskContext): Promise<RankingsSyncResult> {
     const errors: string[] = [];
     let keywordsUpdated = 0;
     let competitorsFound = 0;
@@ -180,6 +181,9 @@ export class RankingsSyncService {
     try {
       const project = await storage.getProject(projectId);
       if (!project) {
+        if (taskContext) {
+          await TaskLogger.error(taskContext, `Project ${projectId} not found`);
+        }
         return {
           success: false,
           message: `Project ${projectId} not found`,
@@ -190,6 +194,9 @@ export class RankingsSyncService {
       }
 
       if (!this.dataForSEO) {
+        if (taskContext) {
+          await TaskLogger.error(taskContext, "DataForSEO API credentials not configured");
+        }
         return {
           success: false,
           message: "DataForSEO not configured",
@@ -207,6 +214,9 @@ export class RankingsSyncService {
       }
 
       if (activeKeywords.length === 0) {
+        if (taskContext) {
+          await TaskLogger.info(taskContext, "No active keywords to sync", { projectId });
+        }
         return {
           success: true,
           message: "No active keywords to sync",
@@ -223,13 +233,35 @@ export class RankingsSyncService {
         await storage.updateCrawlProgress(crawlResultId, 0, "fetching_rankings", totalKeywords);
       }
 
+      if (taskContext) {
+        await TaskLogger.info(taskContext, `Processing ${totalKeywords} active keywords`, {
+          projectId,
+          domain: project.domain,
+          totalKeywords,
+          keywordLimit: keywordLimit || "none",
+        });
+      }
+
       console.log(`[RankingsSync] Starting sync for ${totalKeywords} keywords (processing one at a time)`);
 
       for (let i = 0; i < activeKeywords.length; i++) {
         const kw = activeKeywords[i];
+        const progressPercent = Math.round((i + 1) / totalKeywords * 100);
 
         if (i % 10 === 0 || i === totalKeywords - 1) {
-          console.log(`[RankingsSync] Progress: ${i + 1}/${totalKeywords} (${Math.round((i + 1) / totalKeywords * 100)}%)`);
+          console.log(`[RankingsSync] Progress: ${i + 1}/${totalKeywords} (${progressPercent}%)`);
+        }
+
+        // Log progress at 25%, 50%, 75% milestones
+        if (taskContext && (i === Math.floor(totalKeywords * 0.25) || 
+            i === Math.floor(totalKeywords * 0.5) || 
+            i === Math.floor(totalKeywords * 0.75))) {
+          await TaskLogger.info(taskContext, `Keyword crawl progress: ${progressPercent}%`, {
+            processed: i + 1,
+            total: totalKeywords,
+            keywordsUpdated,
+            competitorsFound,
+          });
         }
 
         if (crawlResultId && (i % 5 === 0 || i === totalKeywords - 1)) {
@@ -272,12 +304,20 @@ export class RankingsSyncService {
                 await storage.upsertKeywordCompetitorMetrics(competitorData);
                 competitorsFound++;
               } catch (err) {
-                errors.push(`Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`);
+                const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
+                errors.push(errMsg);
+                if (taskContext) {
+                  await TaskLogger.warn(taskContext, errMsg, { keyword: kw.keyword, competitor: competitor.domain });
+                }
               }
             }
           }
         } catch (err) {
-          errors.push(`Failed to process keyword ${kw.keyword}: ${err}`);
+          const errMsg = `Failed to process keyword ${kw.keyword}: ${err}`;
+          errors.push(errMsg);
+          if (taskContext) {
+            await TaskLogger.warn(taskContext, errMsg, { keyword: kw.keyword });
+          }
         }
 
         if (i < activeKeywords.length - 1) {
@@ -286,6 +326,14 @@ export class RankingsSyncService {
       }
 
       console.log(`[RankingsSync] Completed: ${keywordsUpdated}/${totalKeywords} keywords synced`);
+
+      if (taskContext) {
+        await TaskLogger.info(taskContext, `Ranking sync completed: ${keywordsUpdated}/${totalKeywords} keywords`, {
+          keywordsUpdated,
+          competitorsFound,
+          errorsCount: errors.length,
+        });
+      }
 
       return {
         success: errors.length === 0,
@@ -300,6 +348,9 @@ export class RankingsSyncService {
         },
       };
     } catch (error) {
+      if (taskContext) {
+        await TaskLogger.error(taskContext, `Rankings sync failed: ${error}`, error);
+      }
       return {
         success: false,
         message: `Rankings sync failed: ${error}`,

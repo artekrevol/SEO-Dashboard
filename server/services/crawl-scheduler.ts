@@ -175,7 +175,7 @@ export class CrawlSchedulerService {
       switch (scheduleType) {
         case "keyword_ranks":
           await storage.updateCrawlProgress(crawlResult.id, 0, "fetching_rankings");
-          const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId, undefined, crawlResult.id);
+          const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId, undefined, crawlResult.id, taskContext);
           result = { 
             success: rankResult.success, 
             message: rankResult.message,
