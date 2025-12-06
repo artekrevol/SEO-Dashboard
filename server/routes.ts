@@ -1342,6 +1342,32 @@ export async function registerRoutes(
     }
   });
 
+  // Stop a running crawl
+  app.post("/api/crawl-results/:id/stop", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid crawl result ID" });
+      }
+      
+      const crawl = await storage.getCrawlResult(id);
+      if (!crawl) {
+        return res.status(404).json({ error: "Crawl not found" });
+      }
+      
+      if (crawl.status !== "running") {
+        return res.status(400).json({ error: "Can only stop running crawls" });
+      }
+      
+      const stopped = await storage.stopCrawl(id);
+      console.log(`[Crawl] Manually stopped crawl ${id} (${crawl.type})`);
+      res.json({ success: true, crawl: stopped });
+    } catch (error) {
+      console.error("Error stopping crawl:", error);
+      res.status(500).json({ error: "Failed to stop crawl" });
+    }
+  });
+
   // Get all running crawls across all projects (for global status)
   app.get("/api/crawl-results/all-running", async (req, res) => {
     try {

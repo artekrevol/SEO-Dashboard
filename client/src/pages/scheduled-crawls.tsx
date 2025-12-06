@@ -24,7 +24,8 @@ import {
   RefreshCw,
   AlertCircle,
   Timer,
-  Activity
+  Activity,
+  Square
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
@@ -305,6 +306,25 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       setRunningCrawl(null);
     },
   });
+
+  const stopCrawlMutation = useMutation({
+    mutationFn: async (crawlId: number) => {
+      const response = await apiRequest("POST", `/api/crawl-results/${crawlId}/stop`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crawl-results", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/crawl-results/running", projectId] });
+      toast({ title: "Crawl Stopped", description: "The crawl has been cancelled." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to stop crawl", variant: "destructive" });
+    },
+  });
+
+  const handleStopCrawl = (crawlId: number) => {
+    stopCrawlMutation.mutate(crawlId);
+  };
 
   const resetForm = () => {
     setFormData({
@@ -624,7 +644,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
           </CardHeader>
           <CardContent className="space-y-4">
             {runningCrawls.map((crawl) => (
-              <RunningCrawlCard key={crawl.id} crawl={crawl} />
+              <RunningCrawlCard key={crawl.id} crawl={crawl} onStop={handleStopCrawl} />
             ))}
           </CardContent>
         </Card>
@@ -1010,7 +1030,7 @@ function CrawlHistoryItem({ result }: { result: CrawlResultWithCST }) {
   );
 }
 
-function RunningCrawlCard({ crawl }: { crawl: RunningCrawlProgress }) {
+function RunningCrawlCard({ crawl, onStop }: { crawl: RunningCrawlProgress; onStop: (id: number) => void }) {
   const getCrawlTypeLabel = (type: string) => {
     const typeMap: Record<string, string> = {
       keyword_ranks: "Keyword Rankings",
@@ -1090,6 +1110,15 @@ function RunningCrawlCard({ crawl }: { crawl: RunningCrawlProgress }) {
               {formatEstimatedRemaining(crawl.estimatedDurationSec, crawl.elapsedSec)}
             </span>
           )}
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => onStop(crawl.id)}
+            data-testid={`button-stop-crawl-${crawl.id}`}
+          >
+            <Square className="w-3 h-3 mr-1" />
+            Stop
+          </Button>
         </div>
       </div>
 

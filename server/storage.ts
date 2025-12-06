@@ -2612,6 +2612,27 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
+  async stopCrawl(id: number): Promise<CrawlResult | undefined> {
+    const [updated] = await db
+      .update(crawlResults)
+      .set({
+        status: "cancelled",
+        completedAt: new Date(),
+        errorMessage: "Crawl was manually stopped by user",
+      })
+      .where(eq(crawlResults.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async getCrawlResult(id: number): Promise<CrawlResult | undefined> {
+    const [result] = await db
+      .select()
+      .from(crawlResults)
+      .where(eq(crawlResults.id, id));
+    return result || undefined;
+  }
+
   // ============================================
   // SCHEDULED REPORTS METHODS
   // ============================================
