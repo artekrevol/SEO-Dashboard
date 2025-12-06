@@ -2521,6 +2521,36 @@ export async function registerRoutes(
     }
   });
 
+  // Cancel a running tech crawl
+  app.post("/api/tech-crawls/:id/cancel", async (req, res) => {
+    try {
+      const crawlId = Number(req.params.id);
+      const crawl = await storage.getTechCrawl(crawlId);
+      
+      if (!crawl) {
+        return res.status(404).json({ error: "Tech crawl not found" });
+      }
+
+      if (crawl.status !== "running" && crawl.status !== "queued" && crawl.status !== "in_progress") {
+        return res.status(400).json({ error: "Crawl is not running" });
+      }
+
+      // Update the crawl status to cancelled
+      const updatedCrawl = await storage.updateTechCrawl(crawlId, {
+        status: "cancelled",
+        errorMessage: "Cancelled by user",
+        completedAt: new Date(),
+      });
+
+      console.log(`[Tech Audit] Cancelled crawl ${crawlId}`);
+
+      res.json({ success: true, crawl: updatedCrawl });
+    } catch (error) {
+      console.error("Error cancelling tech crawl:", error);
+      res.status(500).json({ error: "Failed to cancel tech crawl" });
+    }
+  });
+
   // Get page audits for a project
   app.get("/api/page-audits", async (req, res) => {
     try {

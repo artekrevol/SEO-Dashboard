@@ -24,6 +24,7 @@ import {
   FileText,
   ChevronRight,
   ExternalLink,
+  XCircle,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { PageAudit } from "@shared/schema";
@@ -152,6 +153,27 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
     },
   });
 
+  const cancelCrawlMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/tech-crawls/${latestCrawl?.id}/cancel`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Audit Cancelled",
+        description: "The site audit has been cancelled. You can start a new one.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/tech-crawls/latest"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Cancel",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handlePageClick = (url: string) => {
     setSelectedAuditUrl(url);
     setDrawerOpen(true);
@@ -185,7 +207,7 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
     );
   }
 
-  const isRunning = latestCrawl?.status === "queued" || latestCrawl?.status === "in_progress";
+  const isRunning = latestCrawl?.status === "queued" || latestCrawl?.status === "in_progress" || latestCrawl?.status === "running";
   const isCompleted = latestCrawl?.status === "completed";
   const audits = pageAudits?.audits || [];
   const issues = issuesSummary?.issues || [];
@@ -288,6 +310,17 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
               </p>
             </div>
             <Progress value={((latestCrawl.pagesCrawled || 0) / (latestCrawl.maxPages || 500)) * 100} className="w-32" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => cancelCrawlMutation.mutate()}
+              disabled={cancelCrawlMutation.isPending}
+              className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
+              data-testid="button-cancel-audit"
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              {cancelCrawlMutation.isPending ? "Cancelling..." : "Cancel"}
+            </Button>
           </CardContent>
         </Card>
       )}
