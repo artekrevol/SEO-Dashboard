@@ -55,6 +55,8 @@ import {
   type InsertGscUrlInspection,
   type KeywordPageConflict,
   type InsertKeywordPageConflict,
+  type TaskExecutionLog,
+  type InsertTaskExecutionLog,
   users,
   projects,
   keywords,
@@ -85,6 +87,7 @@ import {
   gscUrlInspection,
   keywordPageConflicts,
   crawlTypeDurations,
+  taskExecutionLogs,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -308,6 +311,31 @@ export interface IStorage {
   updateKeywordPageConflict(id: number, updates: Partial<KeywordPageConflict>): Promise<KeywordPageConflict | undefined>;
   deleteKeywordPageConflict(id: number): Promise<void>;
   deleteKeywordPageConflictsByProject(projectId: string): Promise<void>;
+  
+  // Task Execution Logs
+  getTaskLogs(options?: {
+    projectId?: string;
+    taskId?: string;
+    category?: string;
+    level?: string;
+    limit?: number;
+    offset?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<TaskExecutionLog[]>;
+  getTaskLog(id: number): Promise<TaskExecutionLog | undefined>;
+  createTaskLog(log: InsertTaskExecutionLog): Promise<TaskExecutionLog>;
+  deleteOldTaskLogs(olderThan: Date): Promise<number>;
+  getTaskLogsByTaskId(taskId: string): Promise<TaskExecutionLog[]>;
+  getTaskLogsSummary(options?: { projectId?: string; startDate?: Date; endDate?: Date }): Promise<{
+    totalLogs: number;
+    errorCount: number;
+    warnCount: number;
+    infoCount: number;
+    debugCount: number;
+    byCategory: Record<string, number>;
+    recentErrors: TaskExecutionLog[];
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2975,6 +3003,147 @@ export class DatabaseStorage implements IStorage {
       else if (conflict.severity === 'medium') summary.bySeverity.medium++;
       else summary.bySeverity.low++;
     }
+
+    return summary;
+  }
+
+  // Task Execution Logs
+  async getTaskLogs(options?: {
+    projectId?: string;
+    taskId?: string;
+    category?: string;
+    level?: string;
+    limit?: number;
+    offset?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<TaskExecutionLog[]> {
+    const conditions = [];
+    
+    if (options?.projectId) {
+      conditions.push(eq(taskExecutionLogs.projectId, options.projectId));
+    }
+    if (options?.taskId) {
+      conditions.push(eq(taskExecutionLogs.taskId, options.taskId));
+    }
+    if (options?.category) {
+      conditions.push(eq(taskExecutionLogs.category, options.category));
+    }
+    if (options?.level) {
+      conditions.push(eq(taskExecutionLogs.level, options.level));
+    }
+    if (options?.startDate) {
+      conditions.push(gte(taskExecutionLogs.createdAt, options.startDate));
+    }
+    if (options?.endDate) {
+      conditions.push(lte(taskExecutionLogs.createdAt, options.endDate));
+    }
+
+    let query = db.select()
+      .from(taskExecutionLogs)
+      .orderBy(desc(taskExecutionLogs.createdAt));
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
+    }
+
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+    if (options?.offset) {
+      query = query.offset(options.offset) as typeof query;
+    }
+
+    return await query;
+  }
+
+  async getTaskLog(id: number): Promise<TaskExecutionLog | undefined> {
+    const [log] = await db.select()
+      .from(taskExecutionLogs)
+      .where(eq(taskExecutionLogs.id, id));
+    return log || undefined;
+  }
+
+  async createTaskLog(log: InsertTaskExecutionLog): Promise<TaskExecutionLog> {
+    const [created] = await db.insert(taskExecutionLogs)
+      .values(log)
+      .returning();
+    return created;
+  }
+
+  async deleteOldTaskLogs(olderThan: Date): Promise<number> {
+    const result = await db.delete(taskExecutionLogs)
+      .where(lte(taskExecutionLogs.createdAt, olderThan))
+      .returning();
+    return result.length;
+  }
+
+  async getTaskLogsByTaskId(taskId: string): Promise<TaskExecutionLog[]> {
+    return await db.select()
+      .from(taskExecutionLogs)
+      .where(eq(taskExecutionLogs.taskId, taskId))
+      .orderBy(taskExecutionLogs.createdAt);
+  }
+
+  async getTaskLogsSummary(options?: { projectId?: string; startDate?: Date; endDate?: Date }): Promise<{
+    totalLogs: number;
+    errorCount: number;
+    warnCount: number;
+    infoCount: number;
+    debugCount: number;
+    byCategory: Record<string, number>;
+    recentErrors: TaskExecutionLog[];
+  }> {
+    const conditions = [];
+    
+    if (options?.projectId) {
+      conditions.push(eq(taskExecutionLogs.projectId, options.projectId));
+    }
+    if (options?.startDate) {
+      conditions.push(gte(taskExecutionLogs.createdAt, options.startDate));
+    }
+    if (options?.endDate) {
+      conditions.push(lte(taskExecutionLogs.createdAt, options.endDate));
+    }
+
+    let query = db.select().from(taskExecutionLogs);
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
+    }
+
+    const logs = await query;
+    
+    const summary = {
+      totalLogs: logs.length,
+      errorCount: 0,
+      warnCount: 0,
+      infoCount: 0,
+      debugCount: 0,
+      byCategory: {} as Record<string, number>,
+      recentErrors: [] as TaskExecutionLog[],
+    };
+
+    for (const log of logs) {
+      if (log.level === 'error') {
+        summary.errorCount++;
+        if (summary.recentErrors.length < 10) {
+          summary.recentErrors.push(log);
+        }
+      } else if (log.level === 'warn') {
+        summary.warnCount++;
+      } else if (log.level === 'info') {
+        summary.infoCount++;
+      } else if (log.level === 'debug') {
+        summary.debugCount++;
+      }
+
+      summary.byCategory[log.category] = (summary.byCategory[log.category] || 0) + 1;
+    }
+
+    // Sort recent errors by date descending
+    summary.recentErrors.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     return summary;
   }

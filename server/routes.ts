@@ -3251,6 +3251,97 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // TASK EXECUTION LOGS
+  // ============================================
+
+  // Get task execution logs with filtering
+  app.get("/api/task-logs", async (req, res) => {
+    try {
+      const { projectId, taskId, category, level, limit, offset, startDate, endDate } = req.query;
+      
+      const logs = await storage.getTaskLogs({
+        projectId: projectId as string | undefined,
+        taskId: taskId as string | undefined,
+        category: category as string | undefined,
+        level: level as string | undefined,
+        limit: limit ? parseInt(limit as string, 10) : 100,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      });
+      
+      res.json({ logs });
+    } catch (error) {
+      console.error("Error getting task logs:", error);
+      res.status(500).json({ error: "Failed to get task logs" });
+    }
+  });
+
+  // Get task logs summary/stats
+  app.get("/api/task-logs/summary", async (req, res) => {
+    try {
+      const { projectId, startDate, endDate } = req.query;
+      
+      const summary = await storage.getTaskLogsSummary({
+        projectId: projectId as string | undefined,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+      });
+      
+      res.json({ summary });
+    } catch (error) {
+      console.error("Error getting task logs summary:", error);
+      res.status(500).json({ error: "Failed to get task logs summary" });
+    }
+  });
+
+  // Get logs for a specific task ID
+  app.get("/api/task-logs/task/:taskId", async (req, res) => {
+    try {
+      const { taskId } = req.params;
+      const logs = await storage.getTaskLogsByTaskId(taskId);
+      res.json({ logs });
+    } catch (error) {
+      console.error("Error getting task logs by ID:", error);
+      res.status(500).json({ error: "Failed to get task logs" });
+    }
+  });
+
+  // Get single log entry
+  app.get("/api/task-logs/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const log = await storage.getTaskLog(id);
+      
+      if (!log) {
+        return res.status(404).json({ error: "Log not found" });
+      }
+      
+      res.json({ log });
+    } catch (error) {
+      console.error("Error getting task log:", error);
+      res.status(500).json({ error: "Failed to get task log" });
+    }
+  });
+
+  // Delete old logs (cleanup endpoint)
+  app.delete("/api/task-logs/cleanup", async (req, res) => {
+    try {
+      const { olderThanDays } = req.query;
+      const days = olderThanDays ? parseInt(olderThanDays as string, 10) : 30;
+      
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      
+      const deletedCount = await storage.deleteOldTaskLogs(cutoffDate);
+      res.json({ success: true, deletedCount, cutoffDate: cutoffDate.toISOString() });
+    } catch (error) {
+      console.error("Error cleaning up task logs:", error);
+      res.status(500).json({ error: "Failed to cleanup task logs" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;
