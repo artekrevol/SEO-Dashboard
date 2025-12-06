@@ -51,6 +51,51 @@ interface GscUrlInspectionResult {
   };
 }
 
+interface GscSiteEntry {
+  siteUrl: string;
+  permissionLevel: string;
+}
+
+// List all sites the authenticated user has access to in GSC
+export async function listAvailableSites(projectId: string): Promise<{
+  sites: GscSiteEntry[];
+  error?: string;
+}> {
+  const accessToken = await getValidAccessToken(projectId);
+  if (!accessToken) {
+    return { sites: [], error: "No valid access token" };
+  }
+
+  try {
+    const response = await fetch(`${GSC_API_BASE}/sites`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[GSC] Sites list API error:", response.status, errorText);
+      return { sites: [], error: `API error: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log("[GSC] Available sites:", JSON.stringify(data, null, 2));
+    
+    const sites: GscSiteEntry[] = (data.siteEntry || []).map((entry: { siteUrl: string; permissionLevel: string }) => ({
+      siteUrl: entry.siteUrl,
+      permissionLevel: entry.permissionLevel,
+    }));
+    
+    return { sites };
+  } catch (error) {
+    console.error("[GSC] Error listing sites:", error);
+    return { sites: [], error: String(error) };
+  }
+}
+
 async function refreshAccessToken(credentials: GscCredentials): Promise<string | null> {
   if (!credentials.refreshToken) {
     console.error("[GSC] No refresh token available");
@@ -121,6 +166,11 @@ async function getValidAccessToken(projectId: string): Promise<string | null> {
   return refreshAccessToken(credentials);
 }
 
+interface FetchSearchAnalyticsResult {
+  rows: GscSearchAnalyticsRow[];
+  error?: string;
+}
+
 export async function fetchSearchAnalytics(
   projectId: string,
   options: {
@@ -130,16 +180,16 @@ export async function fetchSearchAnalytics(
     rowLimit?: number;
     startRow?: number;
   }
-): Promise<GscSearchAnalyticsRow[]> {
+): Promise<FetchSearchAnalyticsResult> {
   const credentials = await storage.getGscCredentials(projectId);
   if (!credentials?.siteUrl) {
     console.error("[GSC] No site URL configured for project:", projectId);
-    return [];
+    return { rows: [], error: "No site URL configured" };
   }
 
   const accessToken = await getValidAccessToken(projectId);
   if (!accessToken) {
-    return [];
+    return { rows: [], error: "No valid access token - please re-authorize GSC" };
   }
 
   try {
@@ -164,15 +214,34 @@ export async function fetchSearchAnalytics(
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[GSC] Search Analytics API error:", response.status, errorText);
-      return [];
+      
+      // Parse error message if possible
+      try {
+        const errorJson = JSON.parse(errorText);
+        const message = errorJson.error?.message || `API error: ${response.status}`;
+        
+        // Store the error message
+        await storage.updateGscCredentials(projectId, { syncErrorMessage: message });
+        
+        return { rows: [], error: message };
+      } catch {
+        const error = `API error: ${response.status}`;
+        await storage.updateGscCredentials(projectId, { syncErrorMessage: error });
+        return { rows: [], error };
+      }
     }
+
+    // Clear any previous error on success
+    await storage.updateGscCredentials(projectId, { syncErrorMessage: null });
 
     const data: GscSearchAnalyticsResponse = await response.json();
     console.log(`[GSC] API returned ${data.rows?.length || 0} rows`);
-    return data.rows || [];
+    return { rows: data.rows || [] };
   } catch (error) {
     console.error("[GSC] Error fetching search analytics:", error);
-    return [];
+    const errorMessage = `Connection error: ${error}`;
+    await storage.updateGscCredentials(projectId, { syncErrorMessage: errorMessage });
+    return { rows: [], error: errorMessage };
   }
 }
 
@@ -223,7 +292,7 @@ export async function inspectUrl(
 export async function syncSearchAnalytics(
   projectId: string,
   daysBack: number = 28
-): Promise<{ synced: number; errors: number }> {
+): Promise<{ synced: number; errors: number; apiError?: string }> {
   console.log(`[GSC] Starting search analytics sync for project ${projectId}`);
 
   // GSC data has a 2-3 day delay, so end date should be 3 days ago
@@ -235,16 +304,21 @@ export async function syncSearchAnalytics(
 
   console.log(`[GSC] Fetching data from ${formatDate(startDate)} to ${formatDate(endDate)}`);
 
-  const rows = await fetchSearchAnalytics(projectId, {
+  const result = await fetchSearchAnalytics(projectId, {
     startDate: formatDate(startDate),
     endDate: formatDate(endDate),
     dimensions: ["query", "page", "date"],
     rowLimit: 5000,
   });
 
-  console.log(`[GSC] Received ${rows.length} rows from API`);
+  console.log(`[GSC] Received ${result.rows.length} rows from API`);
 
-  if (rows.length === 0) {
+  if (result.error) {
+    console.log(`[GSC] API error: ${result.error}`);
+    return { synced: 0, errors: 0, apiError: result.error };
+  }
+
+  if (result.rows.length === 0) {
     console.log("[GSC] No data to sync - this could mean the site has no GSC data for this period");
     return { synced: 0, errors: 0 };
   }
@@ -252,7 +326,7 @@ export async function syncSearchAnalytics(
   let synced = 0;
   let errors = 0;
 
-  for (const row of rows) {
+  for (const row of result.rows) {
     const [query, page, date] = row.keys;
     try {
       await storage.upsertGscQueryStats({

@@ -3173,6 +3173,59 @@ export async function registerRoutes(
     }
   });
 
+  // List available GSC sites for the authenticated user
+  app.get("/api/gsc/sites", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const { listAvailableSites } = await import("./services/gsc-service");
+      const result = await listAvailableSites(projectId);
+
+      if (result.error) {
+        return res.status(400).json({ error: result.error, sites: [] });
+      }
+
+      res.json({ sites: result.sites });
+    } catch (error) {
+      console.error("Error listing GSC sites:", error);
+      res.status(500).json({ error: "Failed to list GSC sites" });
+    }
+  });
+
+  // Update GSC site URL
+  app.patch("/api/gsc/site-url", async (req, res) => {
+    try {
+      const { projectId } = req.query;
+      const { siteUrl } = req.body;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      if (!siteUrl || typeof siteUrl !== "string") {
+        return res.status(400).json({ error: "siteUrl is required" });
+      }
+
+      const credentials = await storage.updateGscCredentials(projectId, { 
+        siteUrl,
+        syncErrorMessage: null, // Clear any previous error
+      });
+      
+      if (!credentials) {
+        return res.status(404).json({ error: "GSC credentials not found" });
+      }
+
+      res.json({ success: true, siteUrl: credentials.siteUrl });
+    } catch (error) {
+      console.error("Error updating GSC site URL:", error);
+      res.status(500).json({ error: "Failed to update GSC site URL" });
+    }
+  });
+
   // Sync GSC data
   app.post("/api/gsc/sync", async (req, res) => {
     const { TaskLogger } = await import("./services/task-logger");
@@ -3196,16 +3249,21 @@ export async function registerRoutes(
 
       await storage.updateGscCredentials(projectId, { lastSyncAt: new Date() });
 
-      await TaskLogger.complete(taskContext, result.errors === 0, {
+      const success = !result.apiError && result.errors === 0;
+      await TaskLogger.complete(taskContext, success, {
         synced: result.synced,
         errors: result.errors,
-        message: `Synced ${result.synced} records with ${result.errors} errors`,
+        apiError: result.apiError,
+        message: result.apiError 
+          ? `GSC sync failed: ${result.apiError}` 
+          : `Synced ${result.synced} records with ${result.errors} errors`,
       });
 
       res.json({ 
-        success: true, 
+        success, 
         synced: result.synced, 
         errors: result.errors,
+        apiError: result.apiError,
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
