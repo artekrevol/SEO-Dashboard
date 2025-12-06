@@ -162,12 +162,13 @@ export async function fetchSearchAnalytics(
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("[GSC] Search Analytics API error:", errorData);
+      const errorText = await response.text();
+      console.error("[GSC] Search Analytics API error:", response.status, errorText);
       return [];
     }
 
     const data: GscSearchAnalyticsResponse = await response.json();
+    console.log(`[GSC] API returned ${data.rows?.length || 0} rows`);
     return data.rows || [];
   } catch (error) {
     console.error("[GSC] Error fetching search analytics:", error);
@@ -221,14 +222,18 @@ export async function inspectUrl(
 
 export async function syncSearchAnalytics(
   projectId: string,
-  daysBack: number = 7
+  daysBack: number = 28
 ): Promise<{ synced: number; errors: number }> {
   console.log(`[GSC] Starting search analytics sync for project ${projectId}`);
 
-  const endDate = new Date();
+  // GSC data has a 2-3 day delay, so end date should be 3 days ago
+  const today = new Date();
+  const endDate = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
   const startDate = new Date(endDate.getTime() - daysBack * 24 * 60 * 60 * 1000);
 
   const formatDate = (d: Date) => d.toISOString().split("T")[0];
+
+  console.log(`[GSC] Fetching data from ${formatDate(startDate)} to ${formatDate(endDate)}`);
 
   const rows = await fetchSearchAnalytics(projectId, {
     startDate: formatDate(startDate),
@@ -237,8 +242,10 @@ export async function syncSearchAnalytics(
     rowLimit: 5000,
   });
 
+  console.log(`[GSC] Received ${rows.length} rows from API`);
+
   if (rows.length === 0) {
-    console.log("[GSC] No data to sync");
+    console.log("[GSC] No data to sync - this could mean the site has no GSC data for this period");
     return { synced: 0, errors: 0 };
   }
 
@@ -304,7 +311,7 @@ export async function inspectAndSaveUrl(
   }
 }
 
-export async function getGscSummary(projectId: string, daysBack: number = 7): Promise<{
+export async function getGscSummary(projectId: string, daysBack: number = 28): Promise<{
   totalClicks: number;
   totalImpressions: number;
   avgCtr: number;
@@ -312,7 +319,9 @@ export async function getGscSummary(projectId: string, daysBack: number = 7): Pr
   topQueries: Array<{ query: string; clicks: number; impressions: number; position: number }>;
   topPages: Array<{ page: string; clicks: number; impressions: number; position: number }>;
 }> {
-  const endDate = new Date();
+  // GSC data has 2-3 day delay, so adjust dates accordingly
+  const today = new Date();
+  const endDate = new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000);
   const startDate = new Date(endDate.getTime() - daysBack * 24 * 60 * 60 * 1000);
   const formatDate = (d: Date) => d.toISOString().split("T")[0];
 
