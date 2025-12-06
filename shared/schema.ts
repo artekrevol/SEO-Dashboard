@@ -1172,3 +1172,64 @@ export const insertKeywordPageConflictSchema = createInsertSchema(keywordPageCon
 
 export type InsertKeywordPageConflict = z.infer<typeof insertKeywordPageConflictSchema>;
 export type KeywordPageConflict = typeof keywordPageConflicts.$inferSelect;
+
+// ============================================
+// TASK EXECUTION LOGS
+// ============================================
+
+export const taskLogLevelEnum = z.enum(["debug", "info", "warn", "error"]);
+export type TaskLogLevel = z.infer<typeof taskLogLevelEnum>;
+
+export const taskLogCategoryEnum = z.enum([
+  "crawl",
+  "sync",
+  "import",
+  "export",
+  "api",
+  "scheduled_job",
+  "report",
+  "gsc",
+  "system"
+]);
+export type TaskLogCategory = z.infer<typeof taskLogCategoryEnum>;
+
+export const taskExecutionLogs = pgTable("task_execution_logs", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).references(() => projects.id, { onDelete: "cascade" }),
+  taskId: text("task_id").notNull(),
+  taskType: text("task_type").notNull(),
+  category: text("category").notNull().default("system"),
+  level: text("level").notNull().default("info"),
+  message: text("message").notNull(),
+  details: jsonb("details"),
+  errorStack: text("error_stack"),
+  crawlResultId: integer("crawl_result_id").references(() => crawlResults.id, { onDelete: "set null" }),
+  duration: integer("duration"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("task_execution_logs_project_id_idx").on(table.projectId),
+  taskIdIdx: index("task_execution_logs_task_id_idx").on(table.taskId),
+  taskTypeIdx: index("task_execution_logs_task_type_idx").on(table.taskType),
+  categoryIdx: index("task_execution_logs_category_idx").on(table.category),
+  levelIdx: index("task_execution_logs_level_idx").on(table.level),
+  createdAtIdx: index("task_execution_logs_created_at_idx").on(table.createdAt),
+}));
+
+export const taskExecutionLogsRelations = relations(taskExecutionLogs, ({ one }) => ({
+  project: one(projects, {
+    fields: [taskExecutionLogs.projectId],
+    references: [projects.id],
+  }),
+  crawlResult: one(crawlResults, {
+    fields: [taskExecutionLogs.crawlResultId],
+    references: [crawlResults.id],
+  }),
+}));
+
+export const insertTaskExecutionLogSchema = createInsertSchema(taskExecutionLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTaskExecutionLog = z.infer<typeof insertTaskExecutionLogSchema>;
+export type TaskExecutionLog = typeof taskExecutionLogs.$inferSelect;
