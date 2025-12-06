@@ -603,29 +603,37 @@ export class DataForSEOService {
       rank: number;
     }>();
 
-    console.log(`[DataForSEO] Syncing backlinks for ${urls.length} pages using Summary API`);
+    const concurrencyLimit = 5; // Process 5 URLs concurrently
+    console.log(`[DataForSEO] Syncing backlinks for ${urls.length} pages using Summary API (${concurrencyLimit} concurrent)`);
 
-    for (let i = 0; i < urls.length; i++) {
-      const url = urls[i];
+    let processed = 0;
+    
+    // Process URLs in concurrent batches
+    for (let i = 0; i < urls.length; i += concurrencyLimit) {
+      const batch = urls.slice(i, Math.min(i + concurrencyLimit, urls.length));
       
-      try {
-        const data = await this.getPageBacklinksSummary(url);
-        if (data) {
-          results.set(url.toLowerCase().replace(/\/+$/, ''), data);
-          console.log(`  ✓ ${url}: ${data.backlinksCount} backlinks, ${data.referringDomains} domains`);
-        } else {
-          console.log(`  ! ${url}: No data returned`);
+      await Promise.all(batch.map(async (url) => {
+        try {
+          const data = await this.getPageBacklinksSummary(url);
+          if (data) {
+            results.set(url.toLowerCase().replace(/\/+$/, ''), data);
+            console.log(`  ✓ ${url}: ${data.backlinksCount} backlinks, ${data.referringDomains} domains`);
+          } else {
+            console.log(`  ! ${url}: No data returned`);
+          }
+        } catch (error) {
+          console.error(`  ! ${url}: Error - ${error}`);
         }
-      } catch (error) {
-        console.error(`  ! ${url}: Error - ${error}`);
-      }
+      }));
       
+      processed += batch.length;
       if (onProgress) {
-        onProgress(i + 1, urls.length);
+        onProgress(processed, urls.length);
       }
       
-      if (i < urls.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300));
+      // Small delay between batches
+      if (i + concurrencyLimit < urls.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 

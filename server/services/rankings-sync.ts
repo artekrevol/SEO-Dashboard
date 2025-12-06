@@ -36,10 +36,40 @@ interface SerpResultWithCompetitors {
 
 export class RankingsSyncService {
   private dataForSEO: DataForSEOService | null;
-  private requestDelay: number = 500;
+  private requestDelay: number = 200; // Reduced delay for concurrent processing
+  private concurrencyLimit: number = 5; // Process 5 keywords concurrently
 
   constructor() {
     this.dataForSEO = createDataForSEOService();
+  }
+
+  // Process keywords in concurrent batches
+  private async processKeywordsBatch<T>(
+    items: T[],
+    processor: (item: T, index: number) => Promise<void>,
+    onProgress?: (processed: number) => void
+  ): Promise<void> {
+    let processed = 0;
+    
+    // Process in chunks of concurrencyLimit
+    for (let i = 0; i < items.length; i += this.concurrencyLimit) {
+      const batch = items.slice(i, Math.min(i + this.concurrencyLimit, items.length));
+      
+      // Process batch concurrently
+      await Promise.all(batch.map((item, batchIndex) => 
+        processor(item, i + batchIndex)
+      ));
+      
+      processed += batch.length;
+      if (onProgress) {
+        onProgress(processed);
+      }
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + this.concurrencyLimit < items.length) {
+        await new Promise(resolve => setTimeout(resolve, this.requestDelay));
+      }
+    }
   }
 
   async getSerpResultForSingleKeyword(
@@ -242,88 +272,88 @@ export class RankingsSyncService {
         });
       }
 
-      console.log(`[RankingsSync] Starting sync for ${totalKeywords} keywords (processing one at a time)`);
+      console.log(`[RankingsSync] Starting sync for ${totalKeywords} keywords (${this.concurrencyLimit} concurrent)`);
 
-      for (let i = 0; i < activeKeywords.length; i++) {
-        const kw = activeKeywords[i];
-        const progressPercent = Math.round((i + 1) / totalKeywords * 100);
+      let lastProgressLog = 0;
+      let lastProgressUpdate = 0;
 
-        if (i % 10 === 0 || i === totalKeywords - 1) {
-          console.log(`[RankingsSync] Progress: ${i + 1}/${totalKeywords} (${progressPercent}%)`);
-        }
+      // Process keywords concurrently in batches
+      await this.processKeywordsBatch(
+        activeKeywords,
+        async (kw, index) => {
+          try {
+            const result = await this.getSerpResultForSingleKeyword(kw.keyword, project.domain);
 
-        // Log progress at 25%, 50%, 75% milestones
-        if (taskContext && (i === Math.floor(totalKeywords * 0.25) || 
-            i === Math.floor(totalKeywords * 0.5) || 
-            i === Math.floor(totalKeywords * 0.75))) {
-          await TaskLogger.info(taskContext, `Keyword crawl progress: ${progressPercent}%`, {
-            processed: i + 1,
-            total: totalKeywords,
-            keywordsUpdated,
-            competitorsFound,
-          });
-        }
+            if (result) {
+              const historyData: Omit<InsertRankingsHistory, "keywordId" | "date"> = {
+                projectId,
+                position: result.position,
+                url: result.url,
+                device: "desktop",
+                locationId: kw.locationId,
+                serpFeatures: result.serpFeatures,
+              };
 
-        if (crawlResultId && (i % 5 === 0 || i === totalKeywords - 1)) {
-          await storage.updateCrawlProgress(crawlResultId, i + 1, "fetching_rankings");
-        }
+              await storage.upsertRankingsHistory(kw.id, today, historyData);
+              keywordsUpdated++;
 
-        try {
-          const result = await this.getSerpResultForSingleKeyword(kw.keyword, project.domain);
+              // Process competitors concurrently for each keyword
+              await Promise.all(result.competitors.map(async (competitor) => {
+                try {
+                  const competitorData: InsertKeywordCompetitorMetrics = {
+                    projectId,
+                    keywordId: kw.id,
+                    competitorDomain: competitor.domain,
+                    competitorUrl: competitor.url,
+                    latestPosition: competitor.position,
+                    ourPosition: result.position || null,
+                    avgPosition: competitor.position.toFixed(2),
+                    visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
+                    serpFeatures: result.serpFeatures,
+                    isDirectCompetitor: competitor.position <= 10,
+                    clickShareEstimate: this.estimateClickShare(competitor.position).toFixed(4),
+                    lastSeenAt: new Date(),
+                  };
 
-          if (result) {
-            const historyData: Omit<InsertRankingsHistory, "keywordId" | "date"> = {
-              projectId,
-              position: result.position,
-              url: result.url,
-              device: "desktop",
-              locationId: kw.locationId,
-              serpFeatures: result.serpFeatures,
-            };
-
-            await storage.upsertRankingsHistory(kw.id, today, historyData);
-            keywordsUpdated++;
-
-            for (const competitor of result.competitors) {
-              try {
-                const competitorData: InsertKeywordCompetitorMetrics = {
-                  projectId,
-                  keywordId: kw.id,
-                  competitorDomain: competitor.domain,
-                  competitorUrl: competitor.url,
-                  latestPosition: competitor.position,
-                  ourPosition: result.position || null,
-                  avgPosition: competitor.position.toFixed(2),
-                  visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
-                  serpFeatures: result.serpFeatures,
-                  isDirectCompetitor: competitor.position <= 10,
-                  clickShareEstimate: this.estimateClickShare(competitor.position).toFixed(4),
-                  lastSeenAt: new Date(),
-                };
-
-                await storage.upsertKeywordCompetitorMetrics(competitorData);
-                competitorsFound++;
-              } catch (err) {
-                const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
-                errors.push(errMsg);
-                if (taskContext) {
-                  await TaskLogger.warn(taskContext, errMsg, { keyword: kw.keyword, competitor: competitor.domain });
+                  await storage.upsertKeywordCompetitorMetrics(competitorData);
+                  competitorsFound++;
+                } catch (err) {
+                  const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
+                  errors.push(errMsg);
                 }
-              }
+              }));
             }
+          } catch (err) {
+            const errMsg = `Failed to process keyword ${kw.keyword}: ${err}`;
+            errors.push(errMsg);
           }
-        } catch (err) {
-          const errMsg = `Failed to process keyword ${kw.keyword}: ${err}`;
-          errors.push(errMsg);
-          if (taskContext) {
-            await TaskLogger.warn(taskContext, errMsg, { keyword: kw.keyword });
+        },
+        async (processed) => {
+          const progressPercent = Math.round(processed / totalKeywords * 100);
+          
+          // Log progress every 10 keywords or at milestones
+          if (processed - lastProgressLog >= 10 || processed === totalKeywords) {
+            console.log(`[RankingsSync] Progress: ${processed}/${totalKeywords} (${progressPercent}%)`);
+            lastProgressLog = processed;
           }
-        }
 
-        if (i < activeKeywords.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, this.requestDelay));
+          // Update crawl progress every 5 keywords
+          if (crawlResultId && (processed - lastProgressUpdate >= 5 || processed === totalKeywords)) {
+            await storage.updateCrawlProgress(crawlResultId, processed, "fetching_rankings");
+            lastProgressUpdate = processed;
+          }
+
+          // Log progress at milestones
+          if (taskContext && (progressPercent === 25 || progressPercent === 50 || progressPercent === 75)) {
+            await TaskLogger.info(taskContext, `Keyword crawl progress: ${progressPercent}%`, {
+              processed,
+              total: totalKeywords,
+              keywordsUpdated,
+              competitorsFound,
+            });
+          }
         }
-      }
+      );
 
       console.log(`[RankingsSync] Completed: ${keywordsUpdated}/${totalKeywords} keywords synced`);
 
