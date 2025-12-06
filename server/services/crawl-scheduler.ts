@@ -2,7 +2,8 @@ import { storage } from "../storage";
 import { rankingsSyncService } from "./rankings-sync";
 import { runCompetitorAnalysis, runDailySEOSnapshot, runKeywordMetricsUpdate } from "./jobs";
 import { createDataForSEOService } from "./dataforseo";
-import type { CrawlSchedule, CrawlResult } from "@shared/schema";
+import { TaskLogger, TaskContext } from "./task-logger";
+import type { CrawlSchedule, CrawlResult, TaskLogCategory } from "@shared/schema";
 import * as cron from "node-cron";
 
 interface CrawlRunResult {
@@ -72,9 +73,20 @@ export class CrawlSchedulerService {
   async executeSchedule(schedule: CrawlSchedule): Promise<CrawlRunResult> {
     const startTime = Date.now();
     const scheduleType = normalizeCrawlType(schedule.type || "keyword_ranks");
+    
+    // Create task logging context
+    const taskContext = TaskLogger.createContext(
+      `crawl_${scheduleType}`,
+      "crawl" as TaskLogCategory,
+      { projectId: schedule.projectId }
+    );
 
     // Check if this schedule is already running (prevents duplicate runs)
     if (schedule.id > 0 && this.runningSchedules.has(schedule.id)) {
+      await TaskLogger.warn(taskContext, "Schedule already running, skipping duplicate", {
+        scheduleId: schedule.id,
+        type: scheduleType,
+      });
       return {
         scheduleId: schedule.id,
         type: scheduleType,
@@ -87,6 +99,11 @@ export class CrawlSchedulerService {
     // Also check for running crawls of the same type for this project
     const existingRunning = await storage.getRunningCrawlsByType(schedule.projectId, scheduleType);
     if (existingRunning.length > 0) {
+      await TaskLogger.warn(taskContext, "Crawl of same type already running", {
+        scheduleId: schedule.id,
+        type: scheduleType,
+        existingCrawlId: existingRunning[0].id,
+      });
       return {
         scheduleId: schedule.id,
         type: scheduleType,
@@ -99,6 +116,12 @@ export class CrawlSchedulerService {
     if (schedule.id > 0) {
       this.runningSchedules.add(schedule.id);
     }
+    
+    await TaskLogger.info(taskContext, `Starting ${scheduleType} crawl`, {
+      scheduleId: schedule.id,
+      projectId: schedule.projectId,
+      triggerType: schedule.id > 0 ? "scheduled" : "manual",
+    });
 
     // Get estimated item count based on crawl type
     let estimatedItems = 0;
@@ -216,6 +239,16 @@ export class CrawlSchedulerService {
         await storage.updateCrawlScheduleLastRun(schedule.id, status);
       }
 
+      // Log completion
+      await TaskLogger.complete(taskContext, result.success, {
+        crawlResultId: crawlResult.id,
+        scheduleId: schedule.id,
+        type: scheduleType,
+        itemsProcessed: result.itemsProcessed ?? estimatedItems,
+        keywordsUpdated: result.keywordsUpdated,
+        message: result.message,
+      });
+
       console.log(`[CrawlScheduler] ${scheduleType} completed in ${duration}ms: ${result.message}`);
 
       return {
@@ -245,6 +278,14 @@ export class CrawlSchedulerService {
       if (schedule.id > 0) {
         await storage.updateCrawlScheduleLastRun(schedule.id, "failed");
       }
+
+      // Log error with full stack trace
+      await TaskLogger.error(taskContext, `Crawl failed: ${errorMessage}`, error, {
+        crawlResultId: crawlResult.id,
+        scheduleId: schedule.id,
+        type: scheduleType,
+        duration,
+      });
 
       console.error(`[CrawlScheduler] ${scheduleType} failed:`, error);
 
