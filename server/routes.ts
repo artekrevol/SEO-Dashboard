@@ -3239,8 +3239,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
+      // Get current credentials to log the site URL being used
+      const credentials = await storage.getGscCredentials(projectId);
+      console.log(`[GSC Sync] Starting sync for project ${projectId}, siteUrl: ${credentials?.siteUrl}`);
+
       await TaskLogger.info(taskContext, "Starting GSC data sync", {
         projectId,
+        siteUrl: credentials?.siteUrl,
         daysBack: daysBack || 28,
         triggerType: "manual",
       });
@@ -3248,13 +3253,18 @@ export async function registerRoutes(
       const { syncSearchAnalytics } = await import("./services/gsc-service");
       const result = await syncSearchAnalytics(projectId, daysBack || 28);
 
-      await storage.updateGscCredentials(projectId, { lastSyncAt: new Date() });
+      // Update lastSyncAt and also store any error message
+      await storage.updateGscCredentials(projectId, { 
+        lastSyncAt: new Date(),
+        syncErrorMessage: result.apiError || null,
+      });
 
       const success = !result.apiError && result.errors === 0;
       await TaskLogger.complete(taskContext, success, {
         synced: result.synced,
         errors: result.errors,
         apiError: result.apiError,
+        siteUrl: credentials?.siteUrl,
         message: result.apiError 
           ? `GSC sync failed: ${result.apiError}` 
           : `Synced ${result.synced} records with ${result.errors} errors`,
