@@ -39,6 +39,12 @@ interface GscStatus {
   siteUrl?: string;
   tokenExpired?: boolean;
   lastSyncAt?: string | null;
+  syncErrorMessage?: string | null;
+}
+
+interface GscSite {
+  siteUrl: string;
+  permissionLevel: string;
 }
 
 interface GscSummary {
@@ -124,6 +130,12 @@ export default function SearchConsolePage() {
     enabled: !!selectedProjectId && gscStatus?.connected && gscStatus?.isConnected,
   });
 
+  // Fetch available GSC sites for the connected account
+  const { data: sitesData, isLoading: sitesLoading, refetch: refetchSites } = useQuery<{ sites: GscSite[]; error?: string }>({
+    queryKey: [`/api/gsc/sites?projectId=${selectedProjectId}`],
+    enabled: !!selectedProjectId && gscStatus?.connected,
+  });
+
   const getAuthUrlMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch(`/api/gsc/auth-url?projectId=${selectedProjectId}&siteUrl=${encodeURIComponent(siteUrl)}`);
@@ -185,6 +197,22 @@ export default function SearchConsolePage() {
     },
     onError: (error) => {
       toast({ title: "Inspection failed", description: String(error), variant: "destructive" });
+    },
+  });
+
+  const updateSiteUrlMutation = useMutation({
+    mutationFn: async (newSiteUrl: string) => {
+      const response = await apiRequest("PATCH", `/api/gsc/site-url?projectId=${selectedProjectId}`, { siteUrl: newSiteUrl });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Site URL updated", description: "Syncing data with new site..." });
+      queryClient.invalidateQueries({ queryKey: [`/api/gsc/status?projectId=${selectedProjectId}`] });
+      // Trigger a sync after changing site URL
+      syncMutation.mutate();
+    },
+    onError: (error) => {
+      toast({ title: "Failed to update site URL", description: String(error), variant: "destructive" });
     },
   });
 
@@ -369,10 +397,68 @@ export default function SearchConsolePage() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
                 Last synced: {formatDate(gscStatus.lastSyncAt || null)}
               </p>
+              
+              {/* Site Selector */}
+              {sitesData?.sites && sitesData.sites.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 pt-2 border-t">
+                  <Label className="text-sm font-medium">Switch Property:</Label>
+                  <Select 
+                    value={gscStatus.siteUrl || ""} 
+                    onValueChange={(value) => {
+                      if (value && value !== gscStatus.siteUrl) {
+                        updateSiteUrlMutation.mutate(value);
+                      }
+                    }}
+                    disabled={updateSiteUrlMutation.isPending}
+                  >
+                    <SelectTrigger className="w-[300px]" data-testid="select-gsc-site">
+                      <SelectValue placeholder="Select a site" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sitesData.sites.map((site) => (
+                        <SelectItem 
+                          key={site.siteUrl} 
+                          value={site.siteUrl}
+                          data-testid={`site-option-${site.siteUrl}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{site.siteUrl}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {site.permissionLevel === "siteFullUser" ? "Full Access" : 
+                               site.permissionLevel === "siteOwner" ? "Owner" :
+                               site.permissionLevel === "siteUnverifiedUser" ? "Unverified" : 
+                               site.permissionLevel}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {updateSiteUrlMutation.isPending && (
+                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+              )}
+
+              {/* Error Message Display */}
+              {gscStatus.syncErrorMessage && (
+                <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-destructive">Sync Error</p>
+                    <p className="text-sm text-destructive/80">{gscStatus.syncErrorMessage}</p>
+                    {gscStatus.syncErrorMessage.includes("permission") && sitesData?.sites && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Try switching to a property with "Full Access" above.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

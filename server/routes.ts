@@ -3058,6 +3058,7 @@ export async function registerRoutes(
         siteUrl: credentials.siteUrl,
         tokenExpired: credentials.tokenExpiresAt ? new Date(credentials.tokenExpiresAt) < new Date() : true,
         lastSyncAt: credentials.lastSyncAt,
+        syncErrorMessage: credentials.syncErrorMessage,
       });
     } catch (error) {
       console.error("Error getting GSC status:", error);
