@@ -758,7 +758,44 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
 
             {manualCrawlType === "selected_keywords" && (
               <div className="space-y-2">
-                <Label>Select Keywords ({selectedKeywords.length} selected)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Select Keywords ({selectedKeywords.length} selected)</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const zeroRankingKeywords = keywords
+                          .filter((kw: any) => !kw.currentPosition || kw.currentPosition === 0)
+                          .map((kw: any) => kw.id);
+                        setSelectedKeywords(zeroRankingKeywords);
+                      }}
+                      data-testid="button-select-zero-ranking"
+                    >
+                      <AlertCircle className="w-3 h-3 mr-1" />
+                      Select 0 Ranking ({keywords.filter((kw: any) => !kw.currentPosition || kw.currentPosition === 0).length})
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedKeywords(keywords.map((kw: any) => kw.id))}
+                      data-testid="button-select-all"
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedKeywords([])}
+                      data-testid="button-clear-all"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -777,7 +814,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                       No keywords match "{keywordSearch}"
                     </p>
                   ) : (
-                    filteredKeywords.map((kw) => (
+                    filteredKeywords.map((kw: any) => (
                       <label 
                         key={kw.id} 
                         className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer"
@@ -794,7 +831,12 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                           }}
                           className="rounded"
                         />
-                        <span className="text-sm">{kw.keyword}</span>
+                        <span className="text-sm flex-1">{kw.keyword}</span>
+                        {(!kw.currentPosition || kw.currentPosition === 0) ? (
+                          <Badge variant="destructive" className="text-xs">No rank</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">#{kw.currentPosition}</Badge>
+                        )}
                         {kw.cluster && (
                           <Badge variant="outline" className="text-xs">{kw.cluster}</Badge>
                         )}

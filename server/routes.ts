@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules } from "@shared/schema";
+import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules, keywords, keywordMetrics } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { DataForSEOService } from "./services/dataforseo";
@@ -611,8 +611,23 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
       
-      const keywords = await storage.getKeywords(projectId);
-      res.json({ keywords });
+      // Get keywords with their latest position from keyword_metrics
+      const keywordsWithMetrics = await db
+        .select({
+          keyword: keywords,
+          position: keywordMetrics.position,
+        })
+        .from(keywords)
+        .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
+        .where(eq(keywords.projectId, projectId));
+      
+      // Transform to include currentPosition
+      const keywordsWithPosition = keywordsWithMetrics.map(row => ({
+        ...row.keyword,
+        currentPosition: row.position || 0,
+      }));
+      
+      res.json({ keywords: keywordsWithPosition });
     } catch (error) {
       console.error("Error fetching keywords:", error);
       res.status(500).json({ error: "Failed to fetch keywords" });
