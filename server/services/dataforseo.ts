@@ -125,11 +125,15 @@ export class DataForSEOService {
         if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
           const result = taskResult.result[0];
           const organicItems = (result.items || []).filter(item => item.type === 'organic');
-          const domainResult = organicItems.find(item => 
-            item.domain === domain || 
-            item.domain?.includes(domain) ||
-            item.url?.includes(domain)
-          );
+          // Case-insensitive domain matching
+          const domainLower = domain.toLowerCase();
+          const domainResult = organicItems.find(item => {
+            const itemDomain = item.domain?.toLowerCase() || '';
+            const itemUrl = item.url?.toLowerCase() || '';
+            return itemDomain === domainLower || 
+              itemDomain.includes(domainLower) ||
+              itemUrl.includes(domainLower);
+          });
 
           if (domainResult) {
             results.set(keyword, {
@@ -243,11 +247,15 @@ export class DataForSEOService {
           const result = taskResult.result[0];
           const organicItems = (result.items || []).filter(item => item.type === 'organic');
 
-          const domainResult = organicItems.find(item => 
-            item.domain === domain || 
-            item.domain?.includes(domain) ||
-            item.url?.includes(domain)
-          );
+          // Case-insensitive domain matching
+          const domainLower = domain.toLowerCase();
+          const domainResult = organicItems.find(item => {
+            const itemDomain = item.domain?.toLowerCase() || '';
+            const itemUrl = item.url?.toLowerCase() || '';
+            return itemDomain === domainLower || 
+              itemDomain.includes(domainLower) ||
+              itemUrl.includes(domainLower);
+          });
 
           if (domainResult) {
             rankings.set(keyword, {
@@ -268,11 +276,13 @@ export class DataForSEOService {
           }
 
           const top10Competitors = organicItems
-            .filter(item => 
-              item.domain !== domain && 
-              !item.domain?.includes(domain) &&
-              !item.url?.includes(domain)
-            )
+            .filter(item => {
+              const itemDomain = item.domain?.toLowerCase() || '';
+              const itemUrl = item.url?.toLowerCase() || '';
+              return itemDomain !== domainLower && 
+                !itemDomain.includes(domainLower) &&
+                !itemUrl.includes(domainLower);
+            })
             .slice(0, 10)
             .map(item => ({
               domain: item.domain || '',

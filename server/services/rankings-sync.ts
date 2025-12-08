@@ -126,14 +126,18 @@ export class RankingsSyncService {
       const organicItems = result.items.filter(item => item.type === 'organic');
       const serpFeatures = this.extractSerpFeatures(result.item_types || []);
 
-      const domainResult = organicItems.find(item =>
-        item.domain === domain ||
-        item.domain?.includes(domain) ||
-        item.url?.includes(domain)
-      );
+      // Case-insensitive domain matching
+      const domainLower = domain.toLowerCase();
+      const domainResult = organicItems.find(item => {
+        const itemDomain = item.domain?.toLowerCase() || '';
+        const itemUrl = item.url?.toLowerCase() || '';
+        return itemDomain === domainLower ||
+          itemDomain.includes(domainLower) ||
+          itemUrl.includes(domainLower);
+      });
 
       const competitors = organicItems
-        .filter(item => item.domain && !item.domain.includes(domain))
+        .filter(item => item.domain && !item.domain.toLowerCase().includes(domainLower))
         .slice(0, 10)
         .map(item => ({
           domain: item.domain || '',

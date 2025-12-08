@@ -209,7 +209,6 @@ export async function runFullCrawl(projectId: string, onProgress?: (progress: Cr
       wordCount: 0,
       isIndexable: true,
       hasSchema: false,
-      issues: onPageIssues,
     };
     await storage.createPageMetrics(pageMetrics);
     pagesAnalyzed = onPageData.crawledPages;
