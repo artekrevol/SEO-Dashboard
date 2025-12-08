@@ -3821,6 +3821,103 @@ export async function registerRoutes(
     }
   });
 
+  // Debug endpoint to test DataForSEO response for specific keywords
+  app.post("/api/debug/serp-test", async (req, res) => {
+    try {
+      const { keywords, domain, locationCode } = req.body;
+      
+      if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+        return res.status(400).json({ error: "keywords array is required" });
+      }
+      
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+      
+      const login = process.env.DATAFORSEO_API_LOGIN;
+      const password = process.env.DATAFORSEO_API_PASSWORD;
+      
+      if (!login || !password) {
+        return res.status(500).json({ error: "DataForSEO credentials not configured" });
+      }
+      
+      const dataForSEO = new DataForSEOService({ login, password });
+      
+      console.log(`[Debug SERP Test] Testing ${keywords.length} keywords for domain ${domain}`);
+      
+      // Make direct API call to see raw response
+      const results: any[] = [];
+      
+      for (const keyword of keywords.slice(0, 5)) { // Limit to 5 for safety
+        const task = [{
+          keyword,
+          location_code: locationCode || 2840,
+          language_code: "en",
+          device: "desktop",
+          os: "windows",
+          depth: 100,
+        }];
+        
+        try {
+          const response = await fetch("https://api.dataforseo.com/v3/serp/google/organic/live/advanced", {
+            method: "POST",
+            headers: {
+              "Authorization": "Basic " + Buffer.from(`${login}:${password}`).toString("base64"),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(task),
+          });
+          
+          const data = await response.json();
+          
+          const taskResult = data.tasks?.[0];
+          const organicItems = taskResult?.result?.[0]?.items?.filter((item: any) => item.type === "organic") || [];
+          
+          // Find domain in results
+          const domainLower = domain.toLowerCase();
+          const domainResult = organicItems.find((item: any) => {
+            const itemDomain = item.domain?.toLowerCase() || "";
+            const itemUrl = item.url?.toLowerCase() || "";
+            return itemDomain === domainLower || itemDomain.includes(domainLower) || itemUrl.includes(domainLower);
+          });
+          
+          results.push({
+            keyword,
+            found: !!domainResult,
+            position: domainResult ? domainResult.rank_absolute : null,
+            rank_group: domainResult ? domainResult.rank_group : null,
+            url: domainResult?.url || null,
+            totalOrganicResults: organicItems.length,
+            top5Domains: organicItems.slice(0, 5).map((item: any) => ({
+              position: item.rank_absolute,
+              domain: item.domain,
+              url: item.url
+            })),
+            rawTaskStatus: taskResult?.status_code,
+            rawTaskMessage: taskResult?.status_message,
+          });
+        } catch (error) {
+          results.push({
+            keyword,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+        
+        // Small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      res.json({ 
+        domain,
+        locationCode: locationCode || 2840,
+        results 
+      });
+    } catch (error) {
+      console.error("Error in debug SERP test:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+
   startScheduledJobs();
 
   return httpServer;

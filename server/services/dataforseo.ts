@@ -278,12 +278,22 @@ export class DataForSEOService {
           console.warn(`[DataForSEO] Mismatch: sent ${batch.length} keywords but received ${response.tasks.length} tasks`);
         }
 
+        // Check if bulk requests are not supported (account limitation)
+        // If first succeeds but others have "one task at a time" error, process failed ones sequentially
+        const keywordsNeedingSequentialProcessing: string[] = [];
+        
         for (let taskIndex = 0; taskIndex < response.tasks.length; taskIndex++) {
           const taskResult = response.tasks[taskIndex];
           const keyword = batch[taskIndex] || batch[taskIndex % batch.length]; // Fallback if index mismatch
           
           if (!keyword) {
             console.warn(`[DataForSEO] No keyword found for task index ${taskIndex}`);
+            continue;
+          }
+          
+          // Detect "one task at a time" error and queue for sequential processing
+          if (taskResult?.status_message?.includes("only one task at a time")) {
+            keywordsNeedingSequentialProcessing.push(keyword);
             continue;
           }
 
@@ -352,12 +362,22 @@ export class DataForSEOService {
                   !itemUrl.includes(domainLower);
               })
               .slice(0, 10)
-              .map(item => ({
-                domain: item.domain || '',
-                position: item.rank_group,
-                url: item.url || '',
-                title: item.title || '',
-              }));
+              .map(item => {
+                // Ensure position is a valid number (use rank_group or rank_absolute)
+                const position = typeof item.rank_group === 'number' && item.rank_group > 0
+                  ? item.rank_group
+                  : (typeof item.rank_absolute === 'number' && item.rank_absolute > 0
+                      ? item.rank_absolute
+                      : null);
+                
+                return {
+                  domain: item.domain || '',
+                  position: position || 100, // Default to 100 if invalid
+                  url: item.url || '',
+                  title: item.title || '',
+                };
+              })
+              .filter(comp => comp.position !== null); // Filter out invalid positions
 
             competitors.set(keyword, top10Competitors);
 
@@ -367,12 +387,123 @@ export class DataForSEOService {
               .filter(Boolean);
             serpFeatures.set(keyword, features);
           } else {
-            // Handle API errors for individual keywords in batch
-            rankings.set(keyword, null);
-            competitors.set(keyword, []);
-            serpFeatures.set(keyword, []);
-            if (taskResult?.status_message) {
-              console.log(`[DataForSEO] API error for "${keyword}": ${taskResult.status_message}`);
+            // Handle API errors for individual keywords in batch (but not "one task at a time" which is queued separately)
+            if (!taskResult?.status_message?.includes("only one task at a time")) {
+              rankings.set(keyword, null);
+              competitors.set(keyword, []);
+              serpFeatures.set(keyword, []);
+              if (taskResult?.status_message) {
+                console.log(`[DataForSEO] API error for "${keyword}": ${taskResult.status_message}`);
+              }
+            }
+          }
+        }
+        
+        // Process keywords that failed with "one task at a time" error sequentially
+        if (keywordsNeedingSequentialProcessing.length > 0) {
+          console.log(`[DataForSEO] Bulk not supported - processing ${keywordsNeedingSequentialProcessing.length} keywords sequentially`);
+          
+          for (const keyword of keywordsNeedingSequentialProcessing) {
+            try {
+              await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting delay
+              
+              const singleResponse = await this.makeRequest<{
+                tasks: Array<{
+                  status_code: number;
+                  status_message: string;
+                  result: Array<{
+                    keyword: string;
+                    item_types?: string[];
+                    items: Array<{
+                      type: string;
+                      rank_group: number;
+                      rank_absolute: number;
+                      domain?: string;
+                      url?: string;
+                      title?: string;
+                      description?: string;
+                      breadcrumb?: string;
+                    }>;
+                  }>;
+                }>;
+              }>("/serp/google/organic/live/advanced", "POST", [{
+                keyword,
+                location_code: locationCode,
+                language_code: "en",
+                device: "desktop",
+                os: "windows",
+                depth: 100,
+              }], 60000);
+              
+              const task = singleResponse.tasks?.[0];
+              if (task && task.status_code === 20000 && task.result?.[0]) {
+                const result = task.result[0];
+                const organicItems = (result.items || []).filter(item => item.type === 'organic');
+                
+                // Find our domain's ranking
+                const domainResult = organicItems.find(item => {
+                  const itemDomain = item.domain?.toLowerCase() || '';
+                  const itemUrl = item.url?.toLowerCase() || '';
+                  return itemDomain === domainLower || 
+                    itemDomain.includes(domainLower) ||
+                    itemUrl.includes(domainLower);
+                });
+                
+                if (domainResult) {
+                  const rankAbsolute = domainResult.rank_absolute;
+                  const fallbackPosition = domainResult.rank_group > 0 ? domainResult.rank_group : null;
+                  rankings.set(keyword, {
+                    keyword,
+                    rank_group: domainResult.rank_group,
+                    rank_absolute: rankAbsolute > 0 ? rankAbsolute : (fallbackPosition || 0),
+                    domain: domainResult.domain || '',
+                    url: domainResult.url || '',
+                    title: domainResult.title || '',
+                    description: domainResult.description || '',
+                    breadcrumb: domainResult.breadcrumb || '',
+                    is_featured_snippet: false,
+                    is_image: false,
+                    is_video: false,
+                  });
+                  console.log(`[DataForSEO] Sequential: "${keyword}" position ${domainResult.rank_group}`);
+                } else {
+                  rankings.set(keyword, null);
+                  console.log(`[DataForSEO] Sequential: "${keyword}" not in top 100`);
+                }
+                
+                // Get competitors for this keyword
+                const top10Competitors = organicItems
+                  .filter(item => {
+                    const itemDomain = item.domain?.toLowerCase() || '';
+                    const itemUrl = item.url?.toLowerCase() || '';
+                    return itemDomain !== domainLower && 
+                      !itemDomain.includes(domainLower) &&
+                      !itemUrl.includes(domainLower);
+                  })
+                  .slice(0, 10)
+                  .map(item => ({
+                    domain: item.domain || '',
+                    position: item.rank_group > 0 ? item.rank_group : (item.rank_absolute > 0 ? item.rank_absolute : 100),
+                    url: item.url || '',
+                    title: item.title || '',
+                  }));
+                competitors.set(keyword, top10Competitors);
+                
+                // Extract SERP features
+                const itemTypes = result.item_types || [];
+                const features = itemTypes.map(type => featureMapping[type]).filter(Boolean);
+                serpFeatures.set(keyword, features);
+              } else {
+                rankings.set(keyword, null);
+                competitors.set(keyword, []);
+                serpFeatures.set(keyword, []);
+                console.log(`[DataForSEO] Sequential: "${keyword}" failed - ${task?.status_message || 'unknown error'}`);
+              }
+            } catch (error) {
+              console.error(`[DataForSEO] Sequential error for "${keyword}":`, error);
+              rankings.set(keyword, null);
+              competitors.set(keyword, []);
+              serpFeatures.set(keyword, []);
             }
           }
         }

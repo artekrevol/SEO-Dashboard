@@ -884,8 +884,11 @@ export class DatabaseStorage implements IStorage {
     date: string,
     data: Omit<InsertRankingsHistory, "keywordId" | "date">
   ): Promise<RankingsHistory> {
+    // Check for existing record first (most common case is update)
     const existing = await this.getRankingsHistoryForDate(keywordId, date);
+    
     if (existing) {
+      // Update existing record
       const updateData: Record<string, unknown> = {
         projectId: data.projectId,
         position: data.position,
@@ -896,13 +899,25 @@ export class DatabaseStorage implements IStorage {
       if (data.serpFeatures !== undefined) {
         updateData.serpFeatures = data.serpFeatures;
       }
-      const [updated] = await db
-        .update(rankingsHistory)
-        .set(updateData)
-        .where(and(eq(rankingsHistory.keywordId, keywordId), eq(rankingsHistory.date, date)))
-        .returning();
-      return updated;
+      
+      try {
+        const [updated] = await db
+          .update(rankingsHistory)
+          .set(updateData)
+          .where(and(eq(rankingsHistory.keywordId, keywordId), eq(rankingsHistory.date, date)))
+          .returning();
+        
+        if (updated) {
+          return updated;
+        }
+        // If update returned nothing, record might have been deleted, fall through to insert
+      } catch (error) {
+        console.error(`[Storage] Error updating rankings history for keyword ${keywordId} on ${date}:`, error);
+        // Fall through to insert attempt
+      }
     }
+    
+    // Insert new record (or retry if update failed)
     const insertData: InsertRankingsHistory = {
       keywordId,
       date,
@@ -913,7 +928,35 @@ export class DatabaseStorage implements IStorage {
       locationId: data.locationId,
       serpFeatures: data.serpFeatures as string[] | undefined,
     };
-    return this.createRankingsHistory(insertData);
+    
+    try {
+      return await this.createRankingsHistory(insertData);
+    } catch (error: any) {
+      // If insert fails due to duplicate (race condition), try to get the existing record
+      if (error?.code === '23505' || error?.message?.includes('duplicate') || error?.message?.includes('unique')) {
+        const existingAfterConflict = await this.getRankingsHistoryForDate(keywordId, date);
+        if (existingAfterConflict) {
+          // Update the existing record that was created by another process
+          const updateData: Record<string, unknown> = {
+            projectId: data.projectId,
+            position: data.position,
+            url: data.url,
+            device: data.device,
+            locationId: data.locationId,
+          };
+          if (data.serpFeatures !== undefined) {
+            updateData.serpFeatures = data.serpFeatures;
+          }
+          const [updated] = await db
+            .update(rankingsHistory)
+            .set(updateData)
+            .where(and(eq(rankingsHistory.keywordId, keywordId), eq(rankingsHistory.date, date)))
+            .returning();
+          return updated || existingAfterConflict;
+        }
+      }
+      throw error;
+    }
   }
 
   async getQuickWins(projectId: string, filters?: { location?: string; cluster?: string; intent?: string }): Promise<any[]> {
@@ -2512,12 +2555,72 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>> {
-    const latestCrawl = await this.getLatestTechCrawl(projectId);
+    // Get the latest completed tech crawl, or fall back to latest crawl with audits
+    let latestCrawl = await this.getLatestTechCrawl(projectId);
+    
+    // If latest crawl is not completed, try to find the latest completed one
     if (!latestCrawl || latestCrawl.status !== "completed") {
+      const completedCrawls = await db.select()
+        .from(techCrawls)
+        .where(and(
+          eq(techCrawls.projectId, projectId),
+          eq(techCrawls.status, "completed")
+        ))
+        .orderBy(desc(techCrawls.createdAt))
+        .limit(1);
+      
+      if (completedCrawls.length > 0) {
+        latestCrawl = completedCrawls[0];
+      } else {
+        // If no completed crawl, check if there are any audits at all (might be from a crawl in progress)
+        const anyAudits = await db.select({ techCrawlId: pageAudits.techCrawlId })
+          .from(pageAudits)
+          .where(eq(pageAudits.projectId, projectId))
+          .limit(1);
+        
+        if (anyAudits.length > 0 && latestCrawl) {
+          // Use latest crawl even if not completed, if it has audits
+          const auditsForCrawl = await db.select({ id: pageAudits.id })
+            .from(pageAudits)
+            .where(and(
+              eq(pageAudits.projectId, projectId),
+              eq(pageAudits.techCrawlId, latestCrawl.id)
+            ))
+            .limit(1);
+          
+          if (auditsForCrawl.length === 0) {
+            // Latest crawl has no audits, try to find a crawl that does
+            const crawlsWithAudits = await db.select({
+              techCrawlId: pageAudits.techCrawlId,
+            })
+              .from(pageAudits)
+              .where(eq(pageAudits.projectId, projectId))
+              .groupBy(pageAudits.techCrawlId)
+              .orderBy(desc(sql`max(${pageAudits.createdAt})`))
+              .limit(1);
+            
+            if (crawlsWithAudits.length > 0) {
+              const crawlWithAudits = await db.select()
+                .from(techCrawls)
+                .where(eq(techCrawls.id, crawlsWithAudits[0].techCrawlId))
+                .limit(1);
+              
+              if (crawlWithAudits.length > 0) {
+                latestCrawl = crawlWithAudits[0];
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (!latestCrawl) {
       return new Map();
     }
 
+    // Get all audits for this crawl
     const audits = await db.select({
+      id: pageAudits.id,
       url: pageAudits.url,
       onpageScore: pageAudits.onpageScore,
     })
@@ -2527,48 +2630,43 @@ export class DatabaseStorage implements IStorage {
         eq(pageAudits.techCrawlId, latestCrawl.id)
       ));
 
-    const issues = await db.select({
-      pageAuditId: pageIssues.pageAuditId,
-      count: sql<number>`count(*)`.as("count"),
-    })
-      .from(pageIssues)
-      .innerJoin(pageAudits, eq(pageIssues.pageAuditId, pageAudits.id))
-      .where(and(
-        eq(pageAudits.projectId, projectId),
-        eq(pageAudits.techCrawlId, latestCrawl.id)
-      ))
-      .groupBy(pageIssues.pageAuditId);
+    if (audits.length === 0) {
+      return new Map();
+    }
+
+    // Get issue counts for these audits
+    const auditIds = audits.map(a => a.id);
+    let issues: Array<{ pageAuditId: number; count: number }> = [];
+    if (auditIds.length > 0) {
+      // Use a subquery or join to get issue counts
+      const issuesResult = await db.select({
+        pageAuditId: pageIssues.pageAuditId,
+        count: sql<number>`count(*)`.as("count"),
+      })
+        .from(pageIssues)
+        .innerJoin(pageAudits, eq(pageIssues.pageAuditId, pageAudits.id))
+        .where(and(
+          eq(pageAudits.projectId, projectId),
+          eq(pageAudits.techCrawlId, latestCrawl.id)
+        ))
+        .groupBy(pageIssues.pageAuditId);
+      issues = issuesResult;
+    }
 
     const issueCountByAuditId = new Map<number, number>();
     for (const i of issues) {
       issueCountByAuditId.set(i.pageAuditId, Number(i.count));
     }
 
-    const auditsByUrl = await db.select({
-      id: pageAudits.id,
-      url: pageAudits.url,
-    })
-      .from(pageAudits)
-      .where(and(
-        eq(pageAudits.projectId, projectId),
-        eq(pageAudits.techCrawlId, latestCrawl.id)
-      ));
-
-    const auditIdByUrl = new Map<string, number>();
-    for (const a of auditsByUrl) {
-      const normalizedUrl = a.url.toLowerCase().replace(/\/+$/, "");
-      auditIdByUrl.set(normalizedUrl, a.id);
-    }
-
+    // Build result map with normalized URLs
     const result = new Map<string, { onpageScore: number | null; issueCount: number }>();
     for (const audit of audits) {
       const normalizedUrl = audit.url.toLowerCase().replace(/\/+$/, "");
-      const auditId = auditIdByUrl.get(normalizedUrl);
       result.set(normalizedUrl, {
         onpageScore: audit.onpageScore !== null && audit.onpageScore !== undefined 
           ? Number(audit.onpageScore) 
           : null,
-        issueCount: auditId ? (issueCountByAuditId.get(auditId) || 0) : 0,
+        issueCount: issueCountByAuditId.get(audit.id) || 0,
       });
     }
 

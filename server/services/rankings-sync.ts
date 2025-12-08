@@ -332,19 +332,29 @@ export class RankingsSyncService {
               // Process competitors for this keyword (only if we have a valid result)
               if (position && position > 0) {
                 for (const competitor of kwCompetitors) {
+                  // Ensure competitor.position is a valid number
+                  const compPosition = typeof competitor.position === 'number' && competitor.position > 0 
+                    ? competitor.position 
+                    : null;
+                  
+                  if (!compPosition) {
+                    console.warn(`[RankingsSync] Invalid competitor position for ${competitor.domain}: ${competitor.position}`);
+                    continue;
+                  }
+                  
                   dbOperations.push(
                     storage.upsertKeywordCompetitorMetrics({
                       projectId,
                       keywordId: kw.id,
                       competitorDomain: competitor.domain,
                       competitorUrl: competitor.url,
-                      latestPosition: competitor.position,
+                      latestPosition: compPosition,
                       ourPosition: result.rank_absolute || null,
-                      avgPosition: competitor.position.toFixed(2),
-                      visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
+                      avgPosition: compPosition.toFixed(2),
+                      visibilityScore: this.calculateVisibilityScore(compPosition).toFixed(2),
                       serpFeatures: features,
-                      isDirectCompetitor: competitor.position <= 10,
-                      clickShareEstimate: this.estimateClickShare(competitor.position).toFixed(4),
+                      isDirectCompetitor: compPosition <= 10,
+                      clickShareEstimate: this.estimateClickShare(compPosition).toFixed(4),
                       lastSeenAt: new Date(),
                     }).then(() => {
                       competitorsFound++;
@@ -363,7 +373,12 @@ export class RankingsSyncService {
           }
 
           // Execute all database operations concurrently
-          await Promise.all(dbOperations);
+          // Use Promise.allSettled to ensure all operations complete even if some fail
+          const results = await Promise.allSettled(dbOperations);
+          const failed = results.filter(r => r.status === 'rejected').length;
+          if (failed > 0) {
+            console.warn(`[RankingsSync] ${failed} database operations failed in batch ${Math.floor(i / this.bulkBatchSize) + 1}`);
+          }
 
           const processed = Math.min(i + batch.length, totalKeywords);
           const progressPercent = Math.round(processed / totalKeywords * 100);
@@ -518,12 +533,18 @@ export class RankingsSyncService {
       }
 
       // Also include ALL existing pages in page_metrics (even those without keywords)
+      // Fetch once and reuse (performance optimization - was being called inside loop before)
       const existingPages = await storage.getPageMetrics(projectId);
       for (const page of existingPages) {
         if (page.url) {
           urlSet.add(page.url.toLowerCase().replace(/\/+$/, ''));
         }
       }
+
+      // Create a map for quick lookup (reuse the fetched pages)
+      const existingPagesMap = new Map(
+        existingPages.map(p => [p.url.toLowerCase().replace(/\/+$/, ''), p])
+      );
 
       let urls = Array.from(urlSet);
       if (urls.length === 0) {
@@ -565,10 +586,8 @@ export class RankingsSyncService {
             console.log(`[PageMetrics] Could not get velocity for ${url}`);
           }
 
-          const existingPages = await storage.getPageMetrics(projectId);
-          const existingPage = existingPages.find(p => 
-            p.url.toLowerCase().replace(/\/+$/, '') === normalizedUrl
-          );
+          // Use the pre-fetched pages map instead of querying each time
+          const existingPage = existingPagesMap.get(normalizedUrl);
 
           // Get keywords targeting this URL for position-based calculations
           const pageKeywords = keywords.filter(kw => 
@@ -721,6 +740,12 @@ export class RankingsSyncService {
       const onPageData = await this.dataForSEO.getOnPagePagesData(taskId, urls);
       console.log(`[OnPage] Retrieved data for ${onPageData.size} pages`);
 
+      // Fetch existing pages once outside the loop (performance optimization)
+      const existingPages = await storage.getPageMetrics(projectId);
+      const existingPagesMap = new Map(
+        existingPages.map(p => [p.url.toLowerCase().replace(/\/+$/, ''), p])
+      );
+
       let pagesUpdated = 0;
       const today = new Date().toISOString().split('T')[0];
 
@@ -728,10 +753,8 @@ export class RankingsSyncService {
       for (const entry of onPageEntries) {
         const url = entry[0];
         const data = entry[1];
-        const existingPages = await storage.getPageMetrics(projectId);
-        const existingPage = existingPages.find(p => 
-          p.url.toLowerCase().replace(/\/+$/, '') === url.toLowerCase().replace(/\/+$/, '')
-        );
+        const normalizedUrl = url.toLowerCase().replace(/\/+$/, '');
+        const existingPage = existingPagesMap.get(normalizedUrl);
 
         const techRiskScore = Math.max(0, 100 - (data.pageScore || 50));
 
