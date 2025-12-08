@@ -603,6 +603,22 @@ export async function registerRoutes(
     }
   });
 
+  // Get keywords list for a project (used by scheduled crawls for keyword selection)
+  app.get("/api/keywords", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      
+      const keywords = await storage.getKeywords(projectId);
+      res.json({ keywords });
+    } catch (error) {
+      console.error("Error fetching keywords:", error);
+      res.status(500).json({ error: "Failed to fetch keywords" });
+    }
+  });
+
   app.post("/api/keywords", async (req, res) => {
     try {
       const parsed = insertKeywordSchema.safeParse(req.body);
