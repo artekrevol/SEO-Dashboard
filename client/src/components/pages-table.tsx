@@ -347,35 +347,31 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
                           </div>
                         </Button>
                       ) : (
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              {getRiskLabel(item.techRiskScore)}
-                            </span>
-                            <span className="font-mono">{item.techRiskScore}%</span>
-                          </div>
-                          <Progress
-                            value={item.techRiskScore}
-                            className="h-2"
-                            indicatorClassName={getRiskColor(item.techRiskScore)}
-                          />
+                        <div className="flex items-center justify-center text-xs text-muted-foreground">
+                          <span>Run audit</span>
                         </div>
                       )}
                     </TableCell>
                     <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">
-                            {getRiskLabel(item.contentGapScore)}
-                          </span>
-                          <span className="font-mono">{item.contentGapScore}%</span>
+                      {item.hasAuditData ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {getRiskLabel(item.contentGapScore)}
+                            </span>
+                            <span className="font-mono">{item.contentGapScore}%</span>
+                          </div>
+                          <Progress
+                            value={item.contentGapScore}
+                            className="h-2"
+                            indicatorClassName={getRiskColor(item.contentGapScore)}
+                          />
                         </div>
-                        <Progress
-                          value={item.contentGapScore}
-                          className="h-2"
-                          indicatorClassName={getRiskColor(item.contentGapScore)}
-                        />
-                      </div>
+                      ) : (
+                        <div className="flex items-center justify-center text-xs text-muted-foreground">
+                          <span>Run audit</span>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

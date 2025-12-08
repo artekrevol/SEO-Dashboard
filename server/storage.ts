@@ -568,9 +568,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(rankingsHistory.projectId, projectId))
       .orderBy(desc(rankingsHistory.date));
     
+    // Get the most recent ranking WITH a valid position for each keyword
     const rankingsByKeywordId = new Map<number, RankingsHistory>();
     for (const r of allRankings) {
-      if (!rankingsByKeywordId.has(r.keywordId)) {
+      // Only consider rankings with valid positions (not null and > 0)
+      if (!rankingsByKeywordId.has(r.keywordId) && r.position !== null && r.position > 0) {
         rankingsByKeywordId.set(r.keywordId, r);
       }
     }
