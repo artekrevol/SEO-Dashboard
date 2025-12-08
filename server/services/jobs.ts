@@ -433,7 +433,15 @@ export async function runRankingsSyncWithLimit(projectId: string, limit?: number
       return { success: false, message: "Rankings sync service not available" };
     }
 
-    const result = await rankingsSyncService.syncRankingsForProject(projectId, limit);
+    // If a limit is specified, fetch keywords and get only the first N IDs
+    let keywordIds: number[] | undefined = undefined;
+    if (limit && limit > 0) {
+      const keywords = await storage.getKeywords(projectId);
+      const activeKeywords = keywords.filter(k => k.isActive);
+      keywordIds = activeKeywords.slice(0, limit).map(k => k.id);
+    }
+
+    const result = await rankingsSyncService.syncRankingsForProject(projectId, keywordIds);
     return {
       success: result.success,
       message: result.message,

@@ -207,7 +207,7 @@ export class RankingsSyncService {
       .filter(Boolean);
   }
 
-  async syncRankingsForProject(projectId: string, keywordLimit?: number, crawlResultId?: number, taskContext?: TaskContext): Promise<RankingsSyncResult> {
+  async syncRankingsForProject(projectId: string, keywordIds?: number[], crawlResultId?: number, taskContext?: TaskContext): Promise<RankingsSyncResult> {
     const errors: string[] = [];
     let keywordsUpdated = 0;
     let competitorsFound = 0;
@@ -243,20 +243,33 @@ export class RankingsSyncService {
       const keywords = await storage.getKeywords(projectId);
       let activeKeywords = keywords.filter(k => k.isActive);
 
-      if (keywordLimit && keywordLimit > 0) {
-        activeKeywords = activeKeywords.slice(0, keywordLimit);
+      // If specific keyword IDs are provided, filter to only those keywords
+      if (keywordIds && keywordIds.length > 0) {
+        const keywordIdSet = new Set(keywordIds);
+        activeKeywords = activeKeywords.filter(k => keywordIdSet.has(k.id));
+        console.log(`[RankingsSync] Filtered to ${activeKeywords.length} selected keywords from ${keywordIds.length} requested IDs`);
+        
+        // Warn if some requested keywords weren't found
+        if (activeKeywords.length < keywordIds.length) {
+          const foundIds = new Set(activeKeywords.map(k => k.id));
+          const missingIds = keywordIds.filter(id => !foundIds.has(id));
+          console.log(`[RankingsSync] Warning: ${missingIds.length} requested keyword IDs not found or inactive`);
+        }
       }
 
       if (activeKeywords.length === 0) {
+        const message = keywordIds && keywordIds.length > 0
+          ? `None of the ${keywordIds.length} selected keywords were found or active`
+          : "No active keywords to sync";
         if (taskContext) {
-          await TaskLogger.info(taskContext, "No active keywords to sync", { projectId });
+          await TaskLogger.info(taskContext, message, { projectId, requestedIds: keywordIds?.length });
         }
         return {
-          success: true,
-          message: "No active keywords to sync",
+          success: keywordIds ? false : true, // Failure if user selected specific keywords but none matched
+          message,
           keywordsUpdated: 0,
           competitorsFound: 0,
-          errors: [],
+          errors: keywordIds ? [message] : [],
         };
       }
 
@@ -272,7 +285,7 @@ export class RankingsSyncService {
           projectId,
           domain: project.domain,
           totalKeywords,
-          keywordLimit: keywordLimit || "none",
+          selectedKeywordIds: keywordIds?.length || "all",
         });
       }
 

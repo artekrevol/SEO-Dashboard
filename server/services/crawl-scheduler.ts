@@ -70,7 +70,7 @@ export class CrawlSchedulerService {
     return CRAWL_TYPE_DURATIONS[crawlType] || 120;
   }
 
-  async executeSchedule(schedule: CrawlSchedule): Promise<CrawlRunResult> {
+  async executeSchedule(schedule: CrawlSchedule, keywordIds?: number[]): Promise<CrawlRunResult> {
     const startTime = Date.now();
     const scheduleType = normalizeCrawlType(schedule.type || "keyword_ranks");
     
@@ -78,7 +78,7 @@ export class CrawlSchedulerService {
     const taskContext = TaskLogger.createContext(
       `crawl_${scheduleType}`,
       "crawl" as TaskLogCategory,
-      { projectId: schedule.projectId }
+      { projectId: schedule.projectId, keywordIds: keywordIds?.length }
     );
 
     // Check if this schedule is already running (prevents duplicate runs)
@@ -127,8 +127,14 @@ export class CrawlSchedulerService {
     let estimatedItems = 0;
     try {
       if (scheduleType === "keyword_ranks" || scheduleType === "deep_discovery") {
-        const keywords = await storage.getKeywords(schedule.projectId);
-        estimatedItems = keywords.length;
+        // If specific keywords are selected, use that count; otherwise use all keywords
+        if (keywordIds && keywordIds.length > 0) {
+          estimatedItems = keywordIds.length;
+          console.log(`[CrawlScheduler] Using ${keywordIds.length} selected keywords for crawl`);
+        } else {
+          const keywords = await storage.getKeywords(schedule.projectId);
+          estimatedItems = keywords.length;
+        }
       } else if (scheduleType === "pages_health") {
         // For pages_health, count unique target URLs from keywords (same as what gets synced)
         const keywords = await storage.getKeywords(schedule.projectId);
@@ -175,7 +181,8 @@ export class CrawlSchedulerService {
       switch (scheduleType) {
         case "keyword_ranks":
           await storage.updateCrawlProgress(crawlResult.id, 0, "fetching_rankings");
-          const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId, undefined, crawlResult.id, taskContext);
+          // Pass keywordIds if provided (for selected keyword crawls), otherwise sync all
+          const rankResult = await rankingsSyncService.syncRankingsForProject(schedule.projectId, keywordIds, crawlResult.id, taskContext);
           result = { 
             success: rankResult.success, 
             message: rankResult.message,

@@ -1604,7 +1604,7 @@ export async function registerRoutes(
   // Trigger a manual crawl for a project
   app.post("/api/crawl/trigger", async (req, res) => {
     try {
-      const { projectId, crawlType } = req.body;
+      const { projectId, crawlType, keywordIds } = req.body;
       
       if (!projectId || !crawlType) {
         return res.status(400).json({ error: "projectId and crawlType are required" });
@@ -1652,14 +1652,34 @@ export async function registerRoutes(
         updatedAt: new Date(),
       };
       
+      // Parse and validate keywordIds if provided - coerce strings to numbers
+      let validKeywordIds: number[] | undefined = undefined;
+      if (Array.isArray(keywordIds) && keywordIds.length > 0) {
+        validKeywordIds = keywordIds
+          .map((id: unknown) => typeof id === 'number' ? id : parseInt(String(id), 10))
+          .filter((id: number) => !isNaN(id) && id > 0);
+        
+        // If user selected keywords but none were valid, return error
+        if (validKeywordIds.length === 0) {
+          return res.status(400).json({ error: "No valid keyword IDs provided" });
+        }
+        
+        console.log(`[API] Crawl triggered with ${validKeywordIds.length} selected keywords`);
+      }
+      
       // Execute the crawl asynchronously - scheduler creates the crawl result record
-      crawlSchedulerService.executeSchedule(tempSchedule).catch(err => {
+      crawlSchedulerService.executeSchedule(tempSchedule, validKeywordIds).catch(err => {
         console.error(`Error executing manual crawl for ${crawlType}:`, err);
       });
       
+      const keywordCount = validKeywordIds?.length;
+      const message = keywordCount 
+        ? `${crawlType} crawl triggered for ${keywordCount} selected keywords. Check the Active Crawls section for progress.`
+        : `${crawlType} crawl triggered successfully. Check the Active Crawls section for progress.`;
+      
       res.json({ 
         success: true, 
-        message: `${crawlType} crawl triggered successfully. Check the Active Crawls section for progress.`,
+        message,
       });
     } catch (error) {
       console.error("Error triggering crawl:", error);
