@@ -631,6 +631,39 @@ export async function registerRoutes(
     }
   });
 
+  // Update keyword fields (targetUrl, cluster, priority, etc.)
+  app.patch("/api/keywords/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid keyword ID" });
+      }
+
+      const updateSchema = z.object({
+        targetUrl: z.string().url().nullable().optional(),
+        cluster: z.string().nullable().optional(),
+        priority: z.string().nullable().optional(),
+        intentHint: z.string().nullable().optional(),
+        isActive: z.boolean().optional(),
+        trackDaily: z.boolean().optional(),
+      });
+
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid update data", details: parsed.error.errors });
+      }
+
+      const updated = await storage.updateKeyword(id, parsed.data);
+      if (!updated) {
+        return res.status(404).json({ error: "Keyword not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating keyword:", error);
+      res.status(500).json({ error: "Failed to update keyword" });
+    }
+  });
+
   app.get("/api/system/status", async (req, res) => {
     res.json({
       dataForSEOConfigured: DataForSEOService.isConfigured(),

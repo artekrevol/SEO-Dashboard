@@ -28,7 +28,15 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Trash2, Plus, Settings, FileText, Globe, ExternalLink, Users, TrendingUp, Search } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Trash2, Plus, Settings, FileText, Globe, ExternalLink, Users, TrendingUp, Search, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -48,6 +56,8 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
   const [newKeyword, setNewKeyword] = useState<string>("");
   const [newKeywordUrl, setNewKeywordUrl] = useState<string>("");
   const [newCompetitorDomain, setNewCompetitorDomain] = useState<string>("");
+  const [editUrlKeyword, setEditUrlKeyword] = useState<{ id: number; keyword: string; currentUrl: string } | null>(null);
+  const [editTargetUrl, setEditTargetUrl] = useState<string>("");
 
   const { data: keywords, isLoading: keywordsLoading } = useQuery({
     queryKey: ["/api/dashboard/keywords", { projectId }],
@@ -231,6 +241,46 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
       });
     },
   });
+
+  const updateKeywordUrlMutation = useMutation({
+    mutationFn: async ({ keywordId, targetUrl }: { keywordId: number; targetUrl: string | null }) => {
+      return await apiRequest("PATCH", `/api/keywords/${keywordId}`, { targetUrl });
+    },
+    onSuccess: () => {
+      // Invalidate all keyword queries to ensure data is refreshed
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/keywords"], exact: false });
+      setEditUrlKeyword(null);
+      setEditTargetUrl("");
+      toast({
+        title: "Target URL updated",
+        description: "The keyword's target URL has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update target URL.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openEditUrlDialog = (keyword: any) => {
+    setEditUrlKeyword({
+      id: keyword.keywordId,
+      keyword: keyword.keyword,
+      currentUrl: keyword.url || "",
+    });
+    setEditTargetUrl(keyword.url || "");
+  };
+
+  const handleSaveTargetUrl = () => {
+    if (!editUrlKeyword) return;
+    updateKeywordUrlMutation.mutate({
+      keywordId: editUrlKeyword.id,
+      targetUrl: editTargetUrl.trim() || null,
+    });
+  };
 
   const addCompetitorMutation = useMutation({
     mutationFn: async (domain: string) => {
@@ -541,12 +591,13 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
                             />
                           </TableHead>
                           <TableHead>Keyword</TableHead>
+                          <TableHead>Target URL</TableHead>
                           <TableHead>Position</TableHead>
                           <TableHead>Difficulty</TableHead>
                           <TableHead>Intent</TableHead>
                           <TableHead>Search Volume</TableHead>
                           <TableHead>Opportunity</TableHead>
-                          <TableHead className="w-20 text-right">Actions</TableHead>
+                          <TableHead className="w-24 text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -560,6 +611,32 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
                               />
                             </TableCell>
                             <TableCell className="font-medium">{keyword.keyword}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1 max-w-[200px]">
+                                {keyword.url ? (
+                                  <a
+                                    href={keyword.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-muted-foreground hover:text-foreground truncate"
+                                    data-testid={`link-url-${keyword.keywordId}`}
+                                  >
+                                    {keyword.url.replace(/^https?:\/\//, "")}
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground italic">No URL</span>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 flex-shrink-0"
+                                  onClick={() => openEditUrlDialog(keyword)}
+                                  data-testid={`button-edit-url-${keyword.keywordId}`}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
                                 <span data-testid={`text-position-${keyword.keywordId}`}>{keyword.currentPosition}</span>
@@ -970,6 +1047,45 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={editUrlKeyword !== null} onOpenChange={(open) => !open && setEditUrlKeyword(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Target URL</DialogTitle>
+            <DialogDescription>
+              Set or update the target URL for "{editUrlKeyword?.keyword}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium mb-2 block">Target URL</label>
+            <Input
+              value={editTargetUrl}
+              onChange={(e) => setEditTargetUrl(e.target.value)}
+              placeholder="https://example.com/page"
+              data-testid="input-edit-target-url-dm"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              Leave empty to clear the target URL. The URL should be a full URL including https://
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditUrlKeyword(null)}
+              data-testid="button-cancel-edit-url-dm"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveTargetUrl}
+              disabled={updateKeywordUrlMutation.isPending}
+              data-testid="button-save-target-url-dm"
+            >
+              {updateKeywordUrlMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -23,12 +23,23 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
-import { ArrowUp, ArrowDown, Minus, Search, ExternalLink, TrendingUp, Filter, X, ChevronDown, History } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, Search, ExternalLink, TrendingUp, Filter, X, ChevronDown, History, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import { KeywordHistoryModal } from "@/components/keyword-history-modal";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { ExportColumn } from "@/lib/export-utils";
 
 interface KeywordData {
@@ -126,6 +137,49 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
   const [opportunityPreset, setOpportunityPreset] = useState<OpportunityPreset>(null);
   const [difficultyPreset, setDifficultyPreset] = useState<DifficultyPreset>(null);
   const [historyModalKeyword, setHistoryModalKeyword] = useState<{ id: number; name: string } | null>(null);
+  const [editUrlKeyword, setEditUrlKeyword] = useState<{ id: number; keyword: string; currentUrl: string } | null>(null);
+  const [newTargetUrl, setNewTargetUrl] = useState("");
+  const { toast } = useToast();
+
+  const updateTargetUrlMutation = useMutation({
+    mutationFn: async ({ keywordId, targetUrl }: { keywordId: number; targetUrl: string | null }) => {
+      return await apiRequest("PATCH", `/api/keywords/${keywordId}`, { targetUrl });
+    },
+    onSuccess: () => {
+      // Invalidate all keyword queries to ensure data is refreshed
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/keywords"], exact: false });
+      setEditUrlKeyword(null);
+      setNewTargetUrl("");
+      toast({
+        title: "Target URL updated",
+        description: "The keyword's target URL has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update target URL.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openEditUrlDialog = (item: KeywordData) => {
+    setEditUrlKeyword({
+      id: item.keywordId,
+      keyword: item.keyword,
+      currentUrl: item.url || "",
+    });
+    setNewTargetUrl(item.url || "");
+  };
+
+  const handleSaveTargetUrl = () => {
+    if (!editUrlKeyword) return;
+    updateTargetUrlMutation.mutate({
+      keywordId: editUrlKeyword.id,
+      targetUrl: newTargetUrl.trim() || null,
+    });
+  };
 
   const uniqueClusters = useMemo(() => {
     const clusters = new Set<string>();
@@ -977,19 +1031,33 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
                               {item.cluster}
                             </Badge>
                           )}
-                          {item.url && (
-                            <a
-                              href={item.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                          <div className="flex items-center gap-1">
+                            {item.url ? (
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                                data-testid={`link-keyword-url-${item.keywordId}`}
+                              >
+                                <span className="max-w-[150px] truncate font-mono">
+                                  {item.url.replace(/^https?:\/\//, "")}
+                                </span>
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">No URL set</span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 ml-1"
+                              onClick={() => openEditUrlDialog(item)}
+                              data-testid={`button-edit-url-${item.keywordId}`}
                             >
-                              <span className="max-w-[150px] truncate font-mono">
-                                {item.url.replace(/^https?:\/\//, "")}
-                              </span>
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </TableCell>
@@ -1079,6 +1147,45 @@ export function KeywordsTable({ data, isLoading, onFilteredDataChange }: Keyword
         keywordId={historyModalKeyword?.id ?? 0}
         keywordName={historyModalKeyword?.name ?? ""}
       />
+
+      <Dialog open={editUrlKeyword !== null} onOpenChange={(open) => !open && setEditUrlKeyword(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Target URL</DialogTitle>
+            <DialogDescription>
+              Set or update the target URL for "{editUrlKeyword?.keyword}"
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium mb-2 block">Target URL</label>
+            <Input
+              value={newTargetUrl}
+              onChange={(e) => setNewTargetUrl(e.target.value)}
+              placeholder="https://example.com/page"
+              data-testid="input-edit-target-url"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              Leave empty to clear the target URL. The URL should be a full URL including https://
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditUrlKeyword(null)}
+              data-testid="button-cancel-edit-url"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveTargetUrl}
+              disabled={updateTargetUrlMutation.isPending}
+              data-testid="button-save-target-url"
+            >
+              {updateTargetUrlMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
