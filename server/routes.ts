@@ -2,8 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules, keywords, keywordMetrics } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules, keywords, keywordMetrics, rankingsHistory } from "@shared/schema";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { z } from "zod";
 import { DataForSEOService } from "./services/dataforseo";
 import { 
@@ -611,20 +611,53 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
       
-      // Get keywords with their latest position from keyword_metrics
-      const keywordsWithMetrics = await db
-        .select({
-          keyword: keywords,
-          position: keywordMetrics.position,
-        })
+      // Get all keywords for the project
+      const projectKeywords = await db
+        .select()
         .from(keywords)
-        .leftJoin(keywordMetrics, eq(keywordMetrics.keywordId, keywords.id))
         .where(eq(keywords.projectId, projectId));
       
-      // Transform to include currentPosition
-      const keywordsWithPosition = keywordsWithMetrics.map(row => ({
-        ...row.keyword,
-        currentPosition: row.position || 0,
+      if (projectKeywords.length === 0) {
+        return res.json({ keywords: [] });
+      }
+      
+      // Get latest rankings for each keyword from rankings_history (more accurate than keyword_metrics)
+      const keywordIds = projectKeywords.map(k => k.id);
+      let latestRankings: Array<{ keywordId: number; position: number | null; date: string }> = [];
+      
+      if (keywordIds.length > 0) {
+        // Use a subquery to get the latest ranking per keyword
+        latestRankings = await db
+          .select({
+            keywordId: rankingsHistory.keywordId,
+            position: rankingsHistory.position,
+            date: rankingsHistory.date,
+          })
+          .from(rankingsHistory)
+          .where(
+            and(
+              eq(rankingsHistory.projectId, projectId),
+              sql`${rankingsHistory.keywordId} = ANY(${keywordIds})`
+            )
+          )
+          .orderBy(desc(rankingsHistory.date), desc(rankingsHistory.keywordId));
+      }
+      
+      // Build a map: keywordId -> latest position (only the most recent ranking per keyword)
+      const positionMap = new Map<number, number | null>();
+      const seenKeywords = new Set<number>();
+      for (const ranking of latestRankings) {
+        if (!seenKeywords.has(ranking.keywordId)) {
+          // Only take the first (latest) ranking for each keyword
+          positionMap.set(ranking.keywordId, ranking.position);
+          seenKeywords.add(ranking.keywordId);
+        }
+      }
+      
+      // Transform keywords to include currentPosition (null if not ranking, not 0)
+      const keywordsWithPosition = projectKeywords.map(keyword => ({
+        ...keyword,
+        currentPosition: positionMap.get(keyword.id) ?? null, // Use null for keywords that have never ranked
       }));
       
       res.json({ keywords: keywordsWithPosition });

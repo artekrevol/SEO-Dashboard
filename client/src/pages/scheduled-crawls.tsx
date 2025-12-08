@@ -767,14 +767,14 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                       size="sm"
                       onClick={() => {
                         const zeroRankingKeywords = keywords
-                          .filter((kw: any) => !kw.currentPosition || kw.currentPosition === 0)
+                          .filter((kw: any) => kw.currentPosition === null || kw.currentPosition === undefined || kw.currentPosition === 0)
                           .map((kw: any) => kw.id);
                         setSelectedKeywords(zeroRankingKeywords);
                       }}
                       data-testid="button-select-zero-ranking"
                     >
                       <AlertCircle className="w-3 h-3 mr-1" />
-                      Select 0 Ranking ({keywords.filter((kw: any) => !kw.currentPosition || kw.currentPosition === 0).length})
+                      Select 0 Ranking ({keywords.filter((kw: any) => kw.currentPosition === null || kw.currentPosition === undefined || kw.currentPosition === 0).length})
                     </Button>
                     <Button
                       type="button"
@@ -832,7 +832,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                           className="rounded"
                         />
                         <span className="text-sm flex-1">{kw.keyword}</span>
-                        {(!kw.currentPosition || kw.currentPosition === 0) ? (
+                        {(kw.currentPosition === null || kw.currentPosition === undefined || kw.currentPosition === 0) ? (
                           <Badge variant="destructive" className="text-xs">No rank</Badge>
                         ) : (
                           <Badge variant="secondary" className="text-xs">#{kw.currentPosition}</Badge>

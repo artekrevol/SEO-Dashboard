@@ -410,7 +410,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
           </div>
         </CardHeader>
         <CardContent className="p-0">
-            <Table className="min-w-[1100px]">
+            <Table className="min-w-[1100px] w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead 
