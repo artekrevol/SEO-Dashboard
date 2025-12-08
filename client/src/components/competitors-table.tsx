@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   BarChart,
   Bar,
   XAxis,
@@ -31,11 +38,14 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus, Link2, Loader2 } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
 import { CompetitorBacklinksDrawer } from "@/components/competitor-backlinks-drawer";
+
+type CompetitorSortField = "competitorDomain" | "sharedKeywords" | "aboveUsKeywords" | "pressureIndex" | "avgTheirPosition";
+type SortDirection = "asc" | "desc";
 
 interface CompetitorData {
   competitorDomain: string;
@@ -84,7 +94,27 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
   const [search, setSearch] = useState("");
   const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
   const [backlinksDrawerDomain, setBacklinksDrawerDomain] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<CompetitorSortField>("sharedKeywords");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [pressureFilter, setPressureFilter] = useState<string>("all");
+  const [threatFilter, setThreatFilter] = useState<string>("all");
   const { toast } = useToast();
+
+  const handleSort = (field: CompetitorSortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: CompetitorSortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+    return sortDirection === "asc" 
+      ? <ArrowUp className="h-3 w-3 ml-1" /> 
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
 
   const crawlAllBacklinksMutation = useMutation({
     mutationFn: async () => {
@@ -135,11 +165,64 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
     enabled: !!selectedCompetitor && !!projectId,
   });
 
-  const filteredData = data.filter((item) =>
-    item.competitorDomain.toLowerCase().includes(search.toLowerCase())
-  );
+  const sortedData = useMemo(() => {
+    let result = data.filter((item) =>
+      item.competitorDomain.toLowerCase().includes(search.toLowerCase())
+    );
 
-  const sortedData = [...filteredData].sort((a, b) => b.sharedKeywords - a.sharedKeywords);
+    if (pressureFilter !== "all") {
+      result = result.filter((item) => {
+        if (pressureFilter === "low") return item.pressureIndex < 30;
+        if (pressureFilter === "medium") return item.pressureIndex >= 30 && item.pressureIndex <= 60;
+        if (pressureFilter === "high") return item.pressureIndex > 60;
+        return true;
+      });
+    }
+
+    if (threatFilter !== "all") {
+      result = result.filter((item) => {
+        if (threatFilter === "low") return item.trafficThreat === "low";
+        if (threatFilter === "medium") return item.trafficThreat === "medium";
+        if (threatFilter === "high") return item.trafficThreat === "high";
+        return true;
+      });
+    }
+
+    result.sort((a, b) => {
+      let aVal: number | string = 0;
+      let bVal: number | string = 0;
+      
+      switch (sortField) {
+        case "competitorDomain":
+          aVal = a.competitorDomain.toLowerCase();
+          bVal = b.competitorDomain.toLowerCase();
+          break;
+        case "sharedKeywords":
+          aVal = a.sharedKeywords;
+          bVal = b.sharedKeywords;
+          break;
+        case "aboveUsKeywords":
+          aVal = a.aboveUsKeywords;
+          bVal = b.aboveUsKeywords;
+          break;
+        case "pressureIndex":
+          aVal = a.pressureIndex;
+          bVal = b.pressureIndex;
+          break;
+        case "avgTheirPosition":
+          aVal = a.avgTheirPosition || 999;
+          bVal = b.avgTheirPosition || 999;
+          break;
+      }
+
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+
+    return result;
+  }, [data, search, sortField, sortDirection, pressureFilter, threatFilter]);
 
   const getPressureColor = (index: number) => {
     if (index >= 60) return "hsl(var(--destructive))";
@@ -251,44 +334,79 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
       </Card>
 
       <Card data-testid="competitors-table">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 pb-4">
-          <CardTitle className="text-lg font-medium">Organic Search Competitors <span className="text-xs text-muted-foreground ml-2">v2.1</span></CardTitle>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search competitors..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-64 pl-9"
-                data-testid="input-competitor-search"
+        <CardHeader className="flex flex-col gap-4 pb-4">
+          <div className="flex flex-row flex-wrap items-center justify-between gap-4">
+            <CardTitle className="text-lg font-medium">Organic Search Competitors</CardTitle>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search competitors..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-48 pl-9"
+                  data-testid="input-competitor-search"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => crawlAllBacklinksMutation.mutate()}
+                disabled={!projectId || crawlAllBacklinksMutation.isPending || data.length === 0}
+                data-testid="button-crawl-all-backlinks"
+              >
+                {crawlAllBacklinksMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Crawling...
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="mr-2 h-4 w-4" />
+                    Crawl All Backlinks
+                  </>
+                )}
+              </Button>
+              <ExportButton
+                data={sortedData}
+                columns={competitorExportColumns}
+                filename="competitors"
+                sheetName="Competitors"
               />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => crawlAllBacklinksMutation.mutate()}
-              disabled={!projectId || crawlAllBacklinksMutation.isPending || data.length === 0}
-              data-testid="button-crawl-all-backlinks"
-            >
-              {crawlAllBacklinksMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Crawling...
-                </>
-              ) : (
-                <>
-                  <Link2 className="mr-2 h-4 w-4" />
-                  Crawl All Backlinks
-                </>
-              )}
-            </Button>
-            <ExportButton
-              data={sortedData}
-              columns={competitorExportColumns}
-              filename="competitors"
-              sheetName="Competitors"
-            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Pressure:</span>
+              <Select value={pressureFilter} onValueChange={setPressureFilter}>
+                <SelectTrigger className="w-32" data-testid="select-pressure-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="low">Low (&lt;30)</SelectItem>
+                  <SelectItem value="medium">Medium (30-60)</SelectItem>
+                  <SelectItem value="high">High (60+)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Threat:</span>
+              <Select value={threatFilter} onValueChange={setThreatFilter}>
+                <SelectTrigger className="w-28" data-testid="select-threat-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Badge variant="outline" className="ml-auto">
+              {sortedData.length} of {data.length} competitors
+            </Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -297,13 +415,53 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
               <Table className="min-w-[1100px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[220px]">Competitor</TableHead>
-                  <TableHead className="text-center">Shared KWs</TableHead>
-                  <TableHead className="text-center">Above Us</TableHead>
-                  <TableHead className="text-center">Avg Pos (Us vs Them)</TableHead>
+                  <TableHead 
+                    className="w-[220px] cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("competitorDomain")}
+                  >
+                    <div className="flex items-center">
+                      Competitor
+                      <SortIcon field="competitorDomain" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-center cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("sharedKeywords")}
+                  >
+                    <div className="flex items-center justify-center">
+                      Shared KWs
+                      <SortIcon field="sharedKeywords" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-center cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("aboveUsKeywords")}
+                  >
+                    <div className="flex items-center justify-center">
+                      Above Us
+                      <SortIcon field="aboveUsKeywords" />
+                    </div>
+                  </TableHead>
+                  <TableHead 
+                    className="text-center cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("avgTheirPosition")}
+                  >
+                    <div className="flex items-center justify-center">
+                      Avg Pos (Us vs Them)
+                      <SortIcon field="avgTheirPosition" />
+                    </div>
+                  </TableHead>
                   <TableHead className="text-center">Backlinks</TableHead>
                   <TableHead className="text-center">Traffic Threat</TableHead>
-                  <TableHead className="w-[180px]">Pressure</TableHead>
+                  <TableHead 
+                    className="w-[180px] cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("pressureIndex")}
+                  >
+                    <div className="flex items-center">
+                      Pressure
+                      <SortIcon field="pressureIndex" />
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>

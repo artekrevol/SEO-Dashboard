@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Search,
   ExternalLink,
   CheckCircle2,
@@ -26,12 +33,18 @@ import {
   Link2,
   FileCode,
   Eye,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
 import { BacklinkDetailDrawer } from "@/components/backlink-detail-drawer";
 import { PageAuditDrawer } from "@/components/page-audit-drawer";
+
+type SortField = "url" | "avgPosition" | "keywordsInTop10" | "backlinksCount" | "techRiskScore" | "contentGapScore";
+type SortDirection = "asc" | "desc";
 
 interface PageData {
   url: string;
@@ -91,10 +104,94 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
   const [selectedPageUrl, setSelectedPageUrl] = useState<string | null>(null);
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [selectedAuditUrl, setSelectedAuditUrl] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>("keywordsInTop10");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [techRiskFilter, setTechRiskFilter] = useState<string>("all");
+  const [healthFilter, setHealthFilter] = useState<string>("all");
 
-  const filteredData = data.filter((item) =>
-    item.url.toLowerCase().includes(search.toLowerCase())
-  );
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+    return sortDirection === "asc" 
+      ? <ArrowUp className="h-3 w-3 ml-1" /> 
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
+  const filteredAndSortedData = useMemo(() => {
+    let result = data.filter((item) =>
+      item.url.toLowerCase().includes(search.toLowerCase())
+    );
+
+    if (techRiskFilter !== "all") {
+      result = result.filter((item) => {
+        if (techRiskFilter === "low") return item.techRiskScore < 30;
+        if (techRiskFilter === "medium") return item.techRiskScore >= 30 && item.techRiskScore <= 60;
+        if (techRiskFilter === "high") return item.techRiskScore > 60;
+        return true;
+      });
+    }
+
+    if (healthFilter !== "all") {
+      result = result.filter((item) => {
+        if (healthFilter === "indexable") return item.isIndexable;
+        if (healthFilter === "not_indexable") return !item.isIndexable;
+        if (healthFilter === "has_schema") return item.hasSchema;
+        if (healthFilter === "no_schema") return !item.hasSchema;
+        if (healthFilter === "cwv_ok") return item.coreWebVitalsOk;
+        if (healthFilter === "cwv_issues") return !item.coreWebVitalsOk;
+        return true;
+      });
+    }
+
+    result.sort((a, b) => {
+      let aVal: number | string = 0;
+      let bVal: number | string = 0;
+      
+      switch (sortField) {
+        case "url":
+          aVal = a.url.toLowerCase();
+          bVal = b.url.toLowerCase();
+          break;
+        case "avgPosition":
+          aVal = a.avgPosition || 999;
+          bVal = b.avgPosition || 999;
+          break;
+        case "keywordsInTop10":
+          aVal = a.keywordsInTop10;
+          bVal = b.keywordsInTop10;
+          break;
+        case "backlinksCount":
+          aVal = a.backlinksCount;
+          bVal = b.backlinksCount;
+          break;
+        case "techRiskScore":
+          aVal = a.techRiskScore;
+          bVal = b.techRiskScore;
+          break;
+        case "contentGapScore":
+          aVal = a.contentGapScore;
+          bVal = b.contentGapScore;
+          break;
+      }
+
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      }
+      return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+    });
+
+    return result;
+  }, [data, search, sortField, sortDirection, techRiskFilter, healthFilter]);
+
+  const filteredData = filteredAndSortedData;
 
   const getRiskColor = (score: number) => {
     if (score < 30) return "bg-emerald-500";
@@ -129,25 +226,63 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
 
   return (
     <Card data-testid="pages-table">
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 pb-4">
-        <CardTitle className="text-lg font-medium">Page Analytics</CardTitle>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search URLs..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-80 pl-9"
-              data-testid="input-page-search"
+      <CardHeader className="flex flex-col gap-4 pb-4">
+        <div className="flex flex-row flex-wrap items-center justify-between gap-4">
+          <CardTitle className="text-lg font-medium">Page Analytics</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search URLs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-64 pl-9"
+                data-testid="input-page-search"
+              />
+            </div>
+            <ExportButton
+              data={filteredData}
+              columns={pageExportColumns}
+              filename="pages"
+              sheetName="Pages"
             />
           </div>
-          <ExportButton
-            data={filteredData}
-            columns={pageExportColumns}
-            filename="pages"
-            sheetName="Pages"
-          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Tech Risk:</span>
+            <Select value={techRiskFilter} onValueChange={setTechRiskFilter}>
+              <SelectTrigger className="w-32" data-testid="select-tech-risk-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="low">Low (&lt;30)</SelectItem>
+                <SelectItem value="medium">Medium (30-60)</SelectItem>
+                <SelectItem value="high">High (60+)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Health:</span>
+            <Select value={healthFilter} onValueChange={setHealthFilter}>
+              <SelectTrigger className="w-36" data-testid="select-health-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="indexable">Indexable</SelectItem>
+                <SelectItem value="not_indexable">Not Indexable</SelectItem>
+                <SelectItem value="has_schema">Has Schema</SelectItem>
+                <SelectItem value="no_schema">No Schema</SelectItem>
+                <SelectItem value="cwv_ok">CWV OK</SelectItem>
+                <SelectItem value="cwv_issues">CWV Issues</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Badge variant="outline" className="ml-auto">
+            {filteredData.length} of {data.length} pages
+          </Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -155,14 +290,62 @@ export function PagesTable({ data, isLoading, projectId }: PagesTableProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[350px]">URL</TableHead>
-                <TableHead className="text-center">Avg Position</TableHead>
-                <TableHead className="text-center">Top 10</TableHead>
-                <TableHead className="text-center">Backlinks</TableHead>
+                <TableHead 
+                  className="w-[350px] cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort("url")}
+                >
+                  <div className="flex items-center">
+                    URL
+                    <SortIcon field="url" />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="text-center cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort("avgPosition")}
+                >
+                  <div className="flex items-center justify-center">
+                    Avg Position
+                    <SortIcon field="avgPosition" />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="text-center cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort("keywordsInTop10")}
+                >
+                  <div className="flex items-center justify-center">
+                    Top 10
+                    <SortIcon field="keywordsInTop10" />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="text-center cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort("backlinksCount")}
+                >
+                  <div className="flex items-center justify-center">
+                    Backlinks
+                    <SortIcon field="backlinksCount" />
+                  </div>
+                </TableHead>
                 <TableHead className="text-center">Link Velocity</TableHead>
                 <TableHead className="text-center">Health</TableHead>
-                <TableHead className="w-[150px]">Tech Risk</TableHead>
-                <TableHead className="w-[150px]">Content Gap</TableHead>
+                <TableHead 
+                  className="w-[150px] cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort("techRiskScore")}
+                >
+                  <div className="flex items-center">
+                    Tech Risk
+                    <SortIcon field="techRiskScore" />
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="w-[150px] cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort("contentGapScore")}
+                >
+                  <div className="flex items-center">
+                    Content Gap
+                    <SortIcon field="contentGapScore" />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
