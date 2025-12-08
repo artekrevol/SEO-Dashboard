@@ -222,7 +222,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
 
       <Card data-testid="competitors-table">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 pb-4">
-          <CardTitle className="text-lg font-medium">Organic Search Competitors</CardTitle>
+          <CardTitle className="text-lg font-medium">Organic Search Competitors <span className="text-xs text-muted-foreground ml-2">v2.1</span></CardTitle>
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
