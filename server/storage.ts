@@ -2555,70 +2555,56 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>> {
-    // Get the latest completed tech crawl, or fall back to latest crawl with audits
-    let latestCrawl = await this.getLatestTechCrawl(projectId);
+    // Strategy: Find the latest tech crawl that has audits, prioritizing completed ones
+    // First try to get latest completed crawl
+    const completedCrawls = await db.select()
+      .from(techCrawls)
+      .where(and(
+        eq(techCrawls.projectId, projectId),
+        eq(techCrawls.status, "completed")
+      ))
+      .orderBy(desc(techCrawls.createdAt))
+      .limit(1);
+
+    let targetCrawlId: number | null = null;
     
-    // If latest crawl is not completed, try to find the latest completed one
-    if (!latestCrawl || latestCrawl.status !== "completed") {
-      const completedCrawls = await db.select()
-        .from(techCrawls)
+    if (completedCrawls.length > 0) {
+      // Check if this completed crawl has audits
+      const hasAudits = await db.select({ id: pageAudits.id })
+        .from(pageAudits)
         .where(and(
-          eq(techCrawls.projectId, projectId),
-          eq(techCrawls.status, "completed")
+          eq(pageAudits.projectId, projectId),
+          eq(pageAudits.techCrawlId, completedCrawls[0].id)
         ))
-        .orderBy(desc(techCrawls.createdAt))
         .limit(1);
       
-      if (completedCrawls.length > 0) {
-        latestCrawl = completedCrawls[0];
-      } else {
-        // If no completed crawl, check if there are any audits at all (might be from a crawl in progress)
-        const anyAudits = await db.select({ techCrawlId: pageAudits.techCrawlId })
-          .from(pageAudits)
-          .where(eq(pageAudits.projectId, projectId))
-          .limit(1);
-        
-        if (anyAudits.length > 0 && latestCrawl) {
-          // Use latest crawl even if not completed, if it has audits
-          const auditsForCrawl = await db.select({ id: pageAudits.id })
-            .from(pageAudits)
-            .where(and(
-              eq(pageAudits.projectId, projectId),
-              eq(pageAudits.techCrawlId, latestCrawl.id)
-            ))
-            .limit(1);
-          
-          if (auditsForCrawl.length === 0) {
-            // Latest crawl has no audits, try to find a crawl that does
-            const crawlsWithAudits = await db.select({
-              techCrawlId: pageAudits.techCrawlId,
-            })
-              .from(pageAudits)
-              .where(eq(pageAudits.projectId, projectId))
-              .groupBy(pageAudits.techCrawlId)
-              .orderBy(desc(sql`max(${pageAudits.createdAt})`))
-              .limit(1);
-            
-            if (crawlsWithAudits.length > 0) {
-              const crawlWithAudits = await db.select()
-                .from(techCrawls)
-                .where(eq(techCrawls.id, crawlsWithAudits[0].techCrawlId))
-                .limit(1);
-              
-              if (crawlWithAudits.length > 0) {
-                latestCrawl = crawlWithAudits[0];
-              }
-            }
-          }
-        }
+      if (hasAudits.length > 0) {
+        targetCrawlId = completedCrawls[0].id;
       }
     }
 
-    if (!latestCrawl) {
+    // If no completed crawl with audits, find the latest crawl (any status) that has audits
+    if (!targetCrawlId) {
+      const crawlsWithAudits = await db.select({
+        techCrawlId: pageAudits.techCrawlId,
+        maxCreatedAt: sql<Date>`max(${pageAudits.createdAt})`.as("max_created_at"),
+      })
+        .from(pageAudits)
+        .where(eq(pageAudits.projectId, projectId))
+        .groupBy(pageAudits.techCrawlId)
+        .orderBy(desc(sql`max(${pageAudits.createdAt})`))
+        .limit(1);
+
+      if (crawlsWithAudits.length > 0) {
+        targetCrawlId = crawlsWithAudits[0].techCrawlId;
+      }
+    }
+
+    if (!targetCrawlId) {
       return new Map();
     }
 
-    // Get all audits for this crawl
+    // Get all audits for the target crawl
     const audits = await db.select({
       id: pageAudits.id,
       url: pageAudits.url,
@@ -2627,7 +2613,7 @@ export class DatabaseStorage implements IStorage {
       .from(pageAudits)
       .where(and(
         eq(pageAudits.projectId, projectId),
-        eq(pageAudits.techCrawlId, latestCrawl.id)
+        eq(pageAudits.techCrawlId, targetCrawlId)
       ));
 
     if (audits.length === 0) {
@@ -2635,30 +2621,24 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Get issue counts for these audits
-    const auditIds = audits.map(a => a.id);
-    let issues: Array<{ pageAuditId: number; count: number }> = [];
-    if (auditIds.length > 0) {
-      // Use a subquery or join to get issue counts
-      const issuesResult = await db.select({
-        pageAuditId: pageIssues.pageAuditId,
-        count: sql<number>`count(*)`.as("count"),
-      })
-        .from(pageIssues)
-        .innerJoin(pageAudits, eq(pageIssues.pageAuditId, pageAudits.id))
-        .where(and(
-          eq(pageAudits.projectId, projectId),
-          eq(pageAudits.techCrawlId, latestCrawl.id)
-        ))
-        .groupBy(pageIssues.pageAuditId);
-      issues = issuesResult;
-    }
+    const issues = await db.select({
+      pageAuditId: pageIssues.pageAuditId,
+      count: sql<number>`count(*)`.as("count"),
+    })
+      .from(pageIssues)
+      .innerJoin(pageAudits, eq(pageIssues.pageAuditId, pageAudits.id))
+      .where(and(
+        eq(pageAudits.projectId, projectId),
+        eq(pageAudits.techCrawlId, targetCrawlId)
+      ))
+      .groupBy(pageIssues.pageAuditId);
 
     const issueCountByAuditId = new Map<number, number>();
     for (const i of issues) {
       issueCountByAuditId.set(i.pageAuditId, Number(i.count));
     }
 
-    // Build result map with normalized URLs
+    // Build result map with normalized URLs (matching the normalization in routes.ts)
     const result = new Map<string, { onpageScore: number | null; issueCount: number }>();
     for (const audit of audits) {
       const normalizedUrl = audit.url.toLowerCase().replace(/\/+$/, "");
