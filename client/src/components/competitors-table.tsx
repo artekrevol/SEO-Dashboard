@@ -409,10 +409,8 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
             </Badge>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="relative w-full">
-            <div className="overflow-x-auto scrollbar-thin scrollbar-track-muted scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50 w-full">
-              <Table className="min-w-[1100px] w-full">
+        <CardContent className="p-0">
+            <Table className="min-w-[1100px]">
               <TableHeader>
                 <TableRow>
                   <TableHead 
@@ -605,8 +603,6 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                 )}
               </TableBody>
             </Table>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
