@@ -260,7 +260,14 @@ export class RankingsSyncService {
         });
       }
 
-      console.log(`[RankingsSync] Starting bulk sync for ${totalKeywords} keywords (${this.bulkBatchSize} per batch)`);
+      // Determine crawl method: Live for selected keywords, Standard for bulk
+      const useSelectedKeywordsMode = keywordIds && keywordIds.length > 0;
+      
+      if (useSelectedKeywordsMode) {
+        console.log(`[RankingsSync] Using LIVE method for ${totalKeywords} selected keywords (sequential crawl)`);
+      } else {
+        console.log(`[RankingsSync] Using STANDARD method for ${totalKeywords} keywords (batch processing)`);
+      }
 
       let lastProgressLog = 0;
       let lastProgressUpdate = 0;
@@ -276,15 +283,33 @@ export class RankingsSyncService {
         }
         
         try {
-          console.log(`[RankingsSync] Fetching SERP data for batch ${Math.floor(i / this.bulkBatchSize) + 1} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
-          // Use Standard method (task_post + task_get) for bulk operations
-          // This is 3.3x cheaper and more reliable than Live method
-          const serpData = await Promise.race([
-            this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain),
-            new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
-            )
-          ]);
+          const batchNum = Math.floor(i / this.bulkBatchSize) + 1;
+          console.log(`[RankingsSync] Fetching SERP data for batch ${batchNum} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
+          
+          let serpData: {
+            rankings: Map<string, { keyword: string; rank_group: number; rank_absolute: number; domain: string; url: string; title: string; description: string; breadcrumb: string; is_featured_snippet: boolean; is_image: boolean; is_video: boolean; } | null>;
+            competitors: Map<string, Array<{ domain: string; position: number; url: string; title: string; }>>;
+            serpFeatures: Map<string, string[]>;
+          };
+          
+          if (useSelectedKeywordsMode) {
+            // Use Live method for selected keywords - more reliable, real-time results
+            serpData = await Promise.race([
+              this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain),
+              new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error("SERP API request timed out after 5 minutes")), 300000)
+              )
+            ]);
+          } else {
+            // Use Standard method (task_post + task_get) for bulk operations
+            // This is 3.3x cheaper than Live method
+            serpData = await Promise.race([
+              this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain),
+              new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
+              )
+            ]);
+          }
           
           const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = serpData;
           console.log(`[RankingsSync] Received SERP data: ${bulkRankings.size} rankings, ${bulkCompetitors.size} competitor sets`);
@@ -406,6 +431,9 @@ export class RankingsSyncService {
               competitorsFound,
             });
           }
+          
+          // Batch 1 verification complete (2025-12-08). Standard Method confirmed working.
+          // Full crawls now process all batches.
         } catch (err) {
           const errMsg = `Failed to process batch of ${batch.length} keywords: ${err}`;
           errors.push(errMsg);
