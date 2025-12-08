@@ -640,6 +640,288 @@ export class DataForSEOService {
     return { rankings, competitors, serpFeatures };
   }
 
+  /**
+   * OPTIMIZED: Standard Method for SERP Rankings
+   * Uses task_post + task_get for bulk keyword processing
+   * - 3.3x cheaper than Live method ($0.0006 vs $0.002 per task)
+   * - Supports true batching (100 tasks per POST request)
+   * - More reliable for bulk operations
+   */
+  async getSerpRankingsStandardMethod(keywords: string[], domain: string, locationCode: number = 2840, onProgress?: (processed: number, total: number) => void): Promise<{
+    rankings: Map<string, SerpResultItem | null>;
+    competitors: Map<string, Array<{
+      domain: string;
+      position: number;
+      url: string;
+      title: string;
+    }>>;
+    serpFeatures: Map<string, string[]>;
+  }> {
+    const rankings = new Map<string, SerpResultItem | null>();
+    const competitors = new Map<string, Array<{
+      domain: string;
+      position: number;
+      url: string;
+      title: string;
+    }>>();
+    const serpFeatures = new Map<string, string[]>();
+
+    const featureMapping: Record<string, string> = {
+      featured_snippet: "featured_snippet",
+      people_also_ask: "people_also_ask",
+      local_pack: "local_pack",
+      knowledge_panel: "knowledge_panel",
+      video: "video",
+      images: "image_pack",
+      shopping: "shopping",
+      news: "news",
+      related_searches: "related_searches",
+    };
+
+    const domainLower = domain.toLowerCase();
+    const BATCH_SIZE = 100; // Max 100 tasks per POST request
+
+    console.log(`[DataForSEO] Standard Method: Processing ${keywords.length} keywords in batches of ${BATCH_SIZE}`);
+
+    // Step 1: Submit all tasks using task_post (batched)
+    const allTaskIds: { taskId: string; keyword: string }[] = [];
+    
+    for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+      const batch = keywords.slice(i, Math.min(i + BATCH_SIZE, keywords.length));
+      
+      try {
+        const tasks = batch.map(keyword => ({
+          keyword,
+          location_code: locationCode,
+          language_code: "en",
+          device: "desktop",
+          os: "windows",
+          depth: 100,
+          tag: keyword, // Use tag to identify keyword in results
+        }));
+
+        console.log(`[DataForSEO] Submitting batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} keywords`);
+        
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            id: string;
+            status_code: number;
+            status_message: string;
+            data?: { keyword: string; tag: string };
+          }>;
+        }>("/serp/google/organic/task_post", "POST", tasks, 60000);
+
+        if (response.tasks) {
+          for (const task of response.tasks) {
+            if (task.status_code === 20100 && task.id) {
+              // Task successfully submitted
+              const keyword = task.data?.tag || task.data?.keyword || '';
+              allTaskIds.push({ taskId: task.id, keyword });
+            } else {
+              console.warn(`[DataForSEO] Task submission failed: ${task.status_message}`);
+              // Initialize as null for failed submissions
+              const keyword = task.data?.tag || task.data?.keyword || '';
+              if (keyword) {
+                rankings.set(keyword, null);
+                competitors.set(keyword, []);
+                serpFeatures.set(keyword, []);
+              }
+            }
+          }
+        }
+
+        // Small delay between batches
+        if (i + BATCH_SIZE < keywords.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      } catch (error) {
+        console.error(`[DataForSEO] Error submitting batch:`, error);
+        // Mark all keywords in this batch as failed
+        for (const keyword of batch) {
+          rankings.set(keyword, null);
+          competitors.set(keyword, []);
+          serpFeatures.set(keyword, []);
+        }
+      }
+    }
+
+    console.log(`[DataForSEO] Submitted ${allTaskIds.length} tasks. Waiting for completion...`);
+
+    // Step 2: Poll for task completion and retrieve results
+    const pendingTaskIds = new Set(allTaskIds.map(t => t.taskId));
+    const taskKeywordMap = new Map(allTaskIds.map(t => [t.taskId, t.keyword]));
+    
+    const MAX_POLL_TIME = 10 * 60 * 1000; // 10 minutes max
+    const POLL_INTERVAL = 5000; // Check every 5 seconds
+    const startTime = Date.now();
+    let processedCount = 0;
+
+    while (pendingTaskIds.size > 0 && (Date.now() - startTime) < MAX_POLL_TIME) {
+      try {
+        // Check which tasks are ready
+        const readyResponse = await this.makeRequest<{
+          tasks: Array<{
+            result: Array<{
+              id: string;
+              se: string;
+              se_type: string;
+            }>;
+          }>;
+        }>("/serp/google/organic/tasks_ready", "GET", undefined, 30000);
+
+        const readyTaskIds: string[] = [];
+        if (readyResponse.tasks?.[0]?.result) {
+          for (const item of readyResponse.tasks[0].result) {
+            if (pendingTaskIds.has(item.id)) {
+              readyTaskIds.push(item.id);
+            }
+          }
+        }
+
+        // Fetch results for ready tasks
+        for (const taskId of readyTaskIds) {
+          try {
+            const resultResponse = await this.makeRequest<{
+              tasks: Array<{
+                status_code: number;
+                status_message: string;
+                data?: { keyword: string; tag: string };
+                result: Array<{
+                  keyword: string;
+                  item_types?: string[];
+                  items: Array<{
+                    type: string;
+                    rank_group: number;
+                    rank_absolute: number;
+                    domain?: string;
+                    url?: string;
+                    title?: string;
+                    description?: string;
+                    breadcrumb?: string;
+                  }>;
+                }>;
+              }>;
+            }>(`/serp/google/organic/task_get/advanced/${taskId}`, "GET", undefined, 30000);
+
+            const task = resultResponse.tasks?.[0];
+            const keyword = task?.data?.tag || task?.data?.keyword || taskKeywordMap.get(taskId) || '';
+
+            if (task && task.status_code === 20000 && task.result?.[0]) {
+              const result = task.result[0];
+              const organicItems = (result.items || []).filter(item => item.type === 'organic');
+
+              // Find our domain's ranking
+              const domainResult = organicItems.find(item => {
+                const itemDomain = item.domain?.toLowerCase() || '';
+                const itemUrl = item.url?.toLowerCase() || '';
+                return itemDomain === domainLower || 
+                  itemDomain.includes(domainLower) ||
+                  itemUrl.includes(domainLower);
+              });
+
+              if (domainResult) {
+                const rankAbsolute = domainResult.rank_absolute;
+                const fallbackPosition = domainResult.rank_group > 0 ? domainResult.rank_group : null;
+                rankings.set(keyword, {
+                  keyword,
+                  rank_group: domainResult.rank_group,
+                  rank_absolute: rankAbsolute > 0 ? rankAbsolute : (fallbackPosition || 0),
+                  domain: domainResult.domain || '',
+                  url: domainResult.url || '',
+                  title: domainResult.title || '',
+                  description: domainResult.description || '',
+                  breadcrumb: domainResult.breadcrumb || '',
+                  is_featured_snippet: false,
+                  is_image: false,
+                  is_video: false,
+                });
+              } else {
+                rankings.set(keyword, null);
+              }
+
+              // Get competitors
+              const top10Competitors = organicItems
+                .filter(item => {
+                  const itemDomain = item.domain?.toLowerCase() || '';
+                  const itemUrl = item.url?.toLowerCase() || '';
+                  return itemDomain !== domainLower && 
+                    !itemDomain.includes(domainLower) &&
+                    !itemUrl.includes(domainLower);
+                })
+                .slice(0, 10)
+                .map(item => ({
+                  domain: item.domain || '',
+                  position: item.rank_group > 0 ? item.rank_group : (item.rank_absolute > 0 ? item.rank_absolute : 100),
+                  url: item.url || '',
+                  title: item.title || '',
+                }));
+              competitors.set(keyword, top10Competitors);
+
+              // Extract SERP features
+              const itemTypes = result.item_types || [];
+              const features = itemTypes.map(type => featureMapping[type]).filter(Boolean);
+              serpFeatures.set(keyword, features);
+            } else {
+              rankings.set(keyword, null);
+              competitors.set(keyword, []);
+              serpFeatures.set(keyword, []);
+            }
+
+            pendingTaskIds.delete(taskId);
+            processedCount++;
+
+            if (onProgress) {
+              onProgress(processedCount, allTaskIds.length);
+            }
+
+            // Small delay between result fetches
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (error) {
+            console.error(`[DataForSEO] Error fetching task ${taskId}:`, error);
+            pendingTaskIds.delete(taskId);
+            const keyword = taskKeywordMap.get(taskId) || '';
+            rankings.set(keyword, null);
+            competitors.set(keyword, []);
+            serpFeatures.set(keyword, []);
+            processedCount++;
+            if (onProgress) {
+              onProgress(processedCount, allTaskIds.length);
+            }
+          }
+        }
+
+        // If we processed some tasks, log progress
+        if (readyTaskIds.length > 0) {
+          console.log(`[DataForSEO] Processed ${processedCount}/${allTaskIds.length} tasks. ${pendingTaskIds.size} remaining.`);
+        }
+
+        // Wait before next poll if tasks still pending
+        if (pendingTaskIds.size > 0) {
+          await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        }
+      } catch (error) {
+        console.error(`[DataForSEO] Error checking tasks_ready:`, error);
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+      }
+    }
+
+    // Mark any remaining pending tasks as failed
+    if (pendingTaskIds.size > 0) {
+      console.warn(`[DataForSEO] ${pendingTaskIds.size} tasks did not complete within time limit`);
+      Array.from(pendingTaskIds).forEach(taskId => {
+        const keyword = taskKeywordMap.get(taskId) || '';
+        if (keyword && !rankings.has(keyword)) {
+          rankings.set(keyword, null);
+          competitors.set(keyword, []);
+          serpFeatures.set(keyword, []);
+        }
+      });
+    }
+
+    console.log(`[DataForSEO] Standard Method complete. Processed ${rankings.size} keywords.`);
+    return { rankings, competitors, serpFeatures };
+  }
+
   async getKeywordData(keywords: string[], locationCode: number = 2840): Promise<Map<string, KeywordData>> {
     const response = await this.makeRequest<{
       tasks: Array<{

@@ -277,11 +277,12 @@ export class RankingsSyncService {
         
         try {
           console.log(`[RankingsSync] Fetching SERP data for batch ${Math.floor(i / this.bulkBatchSize) + 1} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
-          // Use bulk API to fetch all keywords in batch at once
+          // Use Standard method (task_post + task_get) for bulk operations
+          // This is 3.3x cheaper and more reliable than Live method
           const serpData = await Promise.race([
-            this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain),
+            this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain),
             new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error("SERP API request timed out after 3 minutes")), 180000)
+              setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
             )
           ]);
           
