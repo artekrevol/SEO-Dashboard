@@ -2368,7 +2368,7 @@ export async function registerRoutes(
   // Start a new tech audit crawl
   app.post("/api/tech-crawls", async (req, res) => {
     try {
-      const { projectId, maxPages, enableJavascript } = req.body;
+      const { projectId, maxPages, enableJavascript, crawlScope } = req.body;
       if (!projectId) {
         return res.status(400).json({ error: "projectId is required" });
       }
@@ -2392,9 +2392,29 @@ export async function registerRoutes(
         return res.status(503).json({ error: "DataForSEO API not configured" });
       }
 
+      // Determine crawl settings based on scope
+      const scope = crawlScope || "full_site";
+      let pagesToCrawl = maxPages || 500;
+      let trackedUrls: string[] = [];
+      
+      if (scope === "tracked_pages") {
+        // Get unique URLs from keywords for this project
+        const keywords = await storage.getKeywords(projectId);
+        const urlSet = new Set<string>();
+        for (const kw of keywords) {
+          if (kw.targetUrl) {
+            urlSet.add(kw.targetUrl.toLowerCase().replace(/\/$/, ''));
+          }
+        }
+        trackedUrls = Array.from(urlSet);
+        // Limit crawl to number of tracked pages + buffer for discovery
+        pagesToCrawl = Math.min(Math.max(trackedUrls.length * 2, 50), 200);
+        console.log(`[Tech Audit] Tracked pages mode: ${trackedUrls.length} unique URLs, crawling up to ${pagesToCrawl} pages`);
+      }
+
       // Start the crawl via DataForSEO
       const { taskId, error: apiError } = await dataForSeoService.startTechAuditCrawl(project.domain, {
-        maxPages: maxPages || 500,
+        maxPages: pagesToCrawl,
         enableJavascript: enableJavascript || false,
       });
 
@@ -2402,19 +2422,19 @@ export async function registerRoutes(
         return res.status(500).json({ error: apiError || "Failed to start tech audit crawl" });
       }
 
-      // Create crawl record
+      // Create crawl record with scope info
       const crawl = await storage.createTechCrawl({
         projectId,
         onpageTaskId: taskId,
         targetDomain: project.domain,
         status: "queued",
         startedAt: new Date(),
-        maxPages: maxPages || 500,
+        maxPages: pagesToCrawl,
       });
 
-      console.log(`[Tech Audit] Started crawl for ${project.domain}, task ID: ${taskId}, crawl ID: ${crawl.id}`);
+      console.log(`[Tech Audit] Started ${scope} crawl for ${project.domain}, task ID: ${taskId}, crawl ID: ${crawl.id}`);
 
-      res.status(201).json(crawl);
+      res.status(201).json({ ...crawl, crawlScope: scope, trackedUrlCount: trackedUrls.length });
     } catch (error) {
       console.error("Error starting tech crawl:", error);
       res.status(500).json({ error: "Failed to start tech crawl" });

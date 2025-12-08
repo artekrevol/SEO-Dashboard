@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -60,10 +63,14 @@ interface IssuesSummary {
   count: number;
 }
 
+type CrawlScope = "full_site" | "tracked_pages";
+
 export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
   const { toast } = useToast();
   const [selectedAuditUrl, setSelectedAuditUrl] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [crawlScope, setCrawlScope] = useState<CrawlScope>("tracked_pages");
+  const [showStartDialog, setShowStartDialog] = useState(false);
 
   const { data: latestCrawl, isLoading: crawlLoading } = useQuery<TechCrawlResponse | null>({
     queryKey: ["/api/tech-crawls/latest", { projectId }],
@@ -104,18 +111,22 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
   });
 
   const startCrawlMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (scope: CrawlScope) => {
       const response = await apiRequest("POST", "/api/tech-crawls", {
         projectId,
-        maxPages: 500,
+        maxPages: scope === "full_site" ? 500 : undefined,
         enableJavascript: false,
+        crawlScope: scope,
       });
       return response.json();
     },
     onSuccess: () => {
+      setShowStartDialog(false);
       toast({
         title: "Tech Audit Started",
-        description: "The site audit is now running. This may take a few minutes.",
+        description: crawlScope === "tracked_pages" 
+          ? "Auditing your tracked pages. This may take a few minutes."
+          : "Crawling your full site. This may take several minutes.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/tech-crawls/latest"] });
     },
@@ -314,7 +325,7 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
             </Button>
           )}
           <Button
-            onClick={() => startCrawlMutation.mutate()}
+            onClick={() => setShowStartDialog(true)}
             disabled={startCrawlMutation.isPending || isRunning}
             data-testid="button-start-audit"
           >
@@ -578,7 +589,7 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
               performance problems, and indexability concerns.
             </p>
             <Button
-              onClick={() => startCrawlMutation.mutate()}
+              onClick={() => setShowStartDialog(true)}
               disabled={startCrawlMutation.isPending}
               className="mt-6"
               data-testid="button-start-first-audit"
@@ -597,6 +608,69 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
       />
+
+      <Dialog open={showStartDialog} onOpenChange={setShowStartDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Start Site Audit</DialogTitle>
+            <DialogDescription>
+              Choose which pages to audit for technical SEO issues.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <RadioGroup
+              value={crawlScope}
+              onValueChange={(value) => setCrawlScope(value as CrawlScope)}
+              className="space-y-3"
+            >
+              <div className="flex items-start space-x-3 p-3 rounded-lg border hover-elevate cursor-pointer" onClick={() => setCrawlScope("tracked_pages")}>
+                <RadioGroupItem value="tracked_pages" id="tracked_pages" className="mt-1" />
+                <div className="flex-1">
+                  <Label htmlFor="tracked_pages" className="font-medium cursor-pointer">
+                    Tracked Pages Only
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Audit only the pages that have keywords tracked in the Pages section. Faster and more focused.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3 p-3 rounded-lg border hover-elevate cursor-pointer" onClick={() => setCrawlScope("full_site")}>
+                <RadioGroupItem value="full_site" id="full_site" className="mt-1" />
+                <div className="flex-1">
+                  <Label htmlFor="full_site" className="font-medium cursor-pointer">
+                    Full Site Crawl
+                  </Label>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Crawl up to 500 pages starting from the homepage. Discovers all technical issues site-wide.
+                  </p>
+                </div>
+              </div>
+            </RadioGroup>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStartDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => startCrawlMutation.mutate(crawlScope)}
+              disabled={startCrawlMutation.isPending}
+              data-testid="button-confirm-start-audit"
+            >
+              {startCrawlMutation.isPending ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Search className="mr-2 h-4 w-4" />
+                  Start Audit
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
