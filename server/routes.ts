@@ -627,6 +627,7 @@ export async function registerRoutes(
       
       if (keywordIds.length > 0) {
         // Use a subquery to get the latest ranking per keyword
+        // Only consider rankings with valid positions (not null and > 0)
         latestRankings = await db
           .select({
             keywordId: rankingsHistory.keywordId,
@@ -637,7 +638,8 @@ export async function registerRoutes(
           .where(
             and(
               eq(rankingsHistory.projectId, projectId),
-              inArray(rankingsHistory.keywordId, keywordIds)
+              inArray(rankingsHistory.keywordId, keywordIds),
+              sql`${rankingsHistory.position} IS NOT NULL AND ${rankingsHistory.position} > 0`
             )
           )
           .orderBy(desc(rankingsHistory.date), desc(rankingsHistory.keywordId));
