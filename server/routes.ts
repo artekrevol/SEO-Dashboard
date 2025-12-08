@@ -2430,6 +2430,7 @@ export async function registerRoutes(
         status: "queued",
         startedAt: new Date(),
         maxPages: pagesToCrawl,
+        crawlScope: scope,
       });
 
       console.log(`[Tech Audit] Started ${scope} crawl for ${project.domain}, task ID: ${taskId}, crawl ID: ${crawl.id}`);

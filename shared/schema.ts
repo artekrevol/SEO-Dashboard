@@ -708,6 +708,7 @@ export const techCrawls = pgTable("tech_crawls", {
   onpageTaskId: text("onpage_task_id"),
   targetDomain: text("target_domain").notNull(),
   maxPages: integer("max_pages").default(500),
+  crawlScope: text("crawl_scope").default("full_site"),
   status: text("status").default("queued").notNull(),
   pagesCrawled: integer("pages_crawled").default(0),
   pagesWithIssues: integer("pages_with_issues").default(0),
