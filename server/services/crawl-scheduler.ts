@@ -316,40 +316,59 @@ export class CrawlSchedulerService {
       weekday: 'short',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false 
+      hour12: false,
+      hourCycle: 'h23' // Use h23 to get 00-23 format instead of 24 at midnight
     };
     const tzFormatter = new Intl.DateTimeFormat('en-US', tzOptions);
     const parts = tzFormatter.formatToParts(now);
     
     const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
     const weekdayPart = parts.find(p => p.type === 'weekday')?.value || 'Sun';
-    const hourPart = parts.find(p => p.type === 'hour')?.value || '00';
+    let hourPart = parts.find(p => p.type === 'hour')?.value || '00';
     const minutePart = parts.find(p => p.type === 'minute')?.value || '00';
+    
+    // Safety: Convert "24" to "00" if it occurs (some locales still produce 24)
+    if (hourPart === '24') {
+      hourPart = '00';
+    }
     
     const currentDay = dayMap[weekdayPart] ?? 0;
     const currentTime = `${hourPart}:${minutePart}`;
 
+    // Get today's date in the configured timezone for comparison
+    const todayInTzFormatter = new Intl.DateTimeFormat('en-CA', { 
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const todayInTz = todayInTzFormatter.format(now); // Format: YYYY-MM-DD
+
     for (const schedule of activeSchedules) {
       const daysOfWeek = schedule.daysOfWeek as number[];
       
+      // Check if today is in the schedule's days of week
       if (!daysOfWeek.includes(currentDay)) {
         continue;
       }
 
+      // Check if current time matches scheduled time
       if (schedule.scheduledTime !== currentTime) {
         continue;
       }
 
+      // Check if already ran today (using timezone-aware date comparison)
       if (schedule.lastRunAt) {
         const lastRun = new Date(schedule.lastRunAt);
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const lastRunDate = new Date(lastRun.getFullYear(), lastRun.getMonth(), lastRun.getDate());
+        const lastRunDateInTz = todayInTzFormatter.format(lastRun); // Format: YYYY-MM-DD in timezone
         
-        if (lastRunDate >= today) {
+        if (lastRunDateInTz >= todayInTz) {
+          console.log(`[CrawlScheduler] Schedule ${schedule.id} (${schedule.type}) already ran today (${lastRunDateInTz}), skipping`);
           continue;
         }
       }
 
+      console.log(`[CrawlScheduler] Triggering scheduled crawl: ${schedule.type} at ${currentTime} (timezone: ${timezone})`);
       const result = await this.executeSchedule(schedule);
       results.push(result);
     }
@@ -375,9 +394,29 @@ export class CrawlSchedulerService {
     // Initialize timezone from database
     await this.refreshTimezone();
     
-    // Set up a job to refresh timezone every 5 minutes
+    // Helper to get time string in configured timezone
+    const getTimeString = (date: Date, tz: string): string => {
+      const tzFormatter = new Intl.DateTimeFormat('en-US', { 
+        timeZone: tz,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        hourCycle: 'h23'
+      });
+      let result = tzFormatter.format(date);
+      // Safety: Replace "24:" with "00:" if it occurs
+      result = result.replace(/24:/, '00:');
+      return result;
+    };
+    
+    // Set up a job to refresh timezone every 5 minutes and log current time
     const timezoneRefresh = cron.schedule("*/5 * * * *", async () => {
       await this.refreshTimezone();
+      
+      // Log current time for debugging scheduled crawls
+      const now = new Date();
+      console.log(`[CrawlScheduler] Heartbeat - Current time in ${this.currentTimezone}: ${getTimeString(now, this.currentTimezone)}`);
     });
     cronJobs.set("timezone-refresh", timezoneRefresh);
     
@@ -394,7 +433,10 @@ export class CrawlSchedulerService {
     );
 
     cronJobs.set("crawl-scheduler-check", minuteCheck);
-    console.log(`[CrawlScheduler] Started crawl scheduler (timezone: ${this.currentTimezone})`);
+    
+    // Log initial time for debugging
+    const now = new Date();
+    console.log(`[CrawlScheduler] Started crawl scheduler - Current time in ${this.currentTimezone}: ${getTimeString(now, this.currentTimezone)}`);
   }
 
   stopScheduler(): void {

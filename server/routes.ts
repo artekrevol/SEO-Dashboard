@@ -1244,6 +1244,72 @@ export async function registerRoutes(
     }
   });
 
+  // Scheduler diagnostic endpoint - shows current time and schedule matching status
+  app.get("/api/scheduler/status", async (req, res) => {
+    try {
+      const timezone = crawlSchedulerService.currentTimezone;
+      const now = new Date();
+      
+      // Get time in configured timezone
+      const tzFormatter = new Intl.DateTimeFormat('en-US', { 
+        timeZone: timezone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        hourCycle: 'h23' // Use h23 to get 00-23 format instead of 24 at midnight
+      });
+      const parts = tzFormatter.formatToParts(now);
+      
+      const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+      const weekdayPart = parts.find(p => p.type === 'weekday')?.value || 'Sun';
+      let hourPart = parts.find(p => p.type === 'hour')?.value || '00';
+      const minutePart = parts.find(p => p.type === 'minute')?.value || '00';
+      
+      // Safety: Convert "24" to "00" if it occurs
+      if (hourPart === '24') {
+        hourPart = '00';
+      }
+      
+      const currentDay = dayMap[weekdayPart] ?? 0;
+      const currentTime = `${hourPart}:${minutePart}`;
+      
+      // Get all active schedules
+      const activeSchedules = await storage.getActiveCrawlSchedules();
+      const scheduleStatus = activeSchedules.map(schedule => {
+        const daysOfWeek = schedule.daysOfWeek as number[];
+        const dayMatches = daysOfWeek.includes(currentDay);
+        const timeMatches = schedule.scheduledTime === currentTime;
+        
+        return {
+          id: schedule.id,
+          type: schedule.type,
+          scheduledTime: schedule.scheduledTime,
+          daysOfWeek: daysOfWeek,
+          lastRunAt: schedule.lastRunAt,
+          lastRunStatus: schedule.lastRunStatus,
+          dayMatches,
+          timeMatches,
+          wouldRunNow: dayMatches && timeMatches,
+        };
+      });
+
+      res.json({
+        configuredTimezone: timezone,
+        serverUtcTime: now.toISOString(),
+        currentTimeInTimezone: currentTime,
+        currentDayInTimezone: weekdayPart,
+        currentDayNumber: currentDay,
+        fullFormattedTime: tzFormatter.format(now),
+        activeSchedulesCount: activeSchedules.length,
+        schedules: scheduleStatus,
+      });
+    } catch (error) {
+      console.error("Error getting scheduler status:", error);
+      res.status(500).json({ error: "Failed to get scheduler status" });
+    }
+  });
+
   app.post("/api/crawl-schedules", async (req, res) => {
     try {
       const { projectId, url, scheduledTime, daysOfWeek, isActive, type, frequency, config } = req.body;
@@ -1306,8 +1372,8 @@ export async function registerRoutes(
     }
   });
 
-  // Run a specific crawl schedule immediately
-  // Requires projectId in query params to verify ownership
+  // Run a specific crawl schedule immediately (play button)
+  // Uses the crawl scheduler's executeSchedule to properly log to crawl history
   app.post("/api/crawl-schedules/:id/run", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -1335,34 +1401,20 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Invalid crawl type: ${schedule.type}. Valid types: ${validTypes.join(", ")}` });
       }
 
-      // Execute the crawl based on normalized type
-      let result: any = { success: true, message: "Crawl queued" };
-      
-      switch (normalizedType) {
-        case "keyword_ranks":
-        case "deep_discovery":
-          result = await runRankingsSync(projectId);
-          break;
-        case "pages_health":
-          result = await runKeywordMetricsUpdate(projectId);
-          break;
-        case "competitors":
-        case "competitor_backlinks":
-          result = await runCompetitorAnalysis(projectId);
-          break;
-        case "backlinks":
-          result = await runKeywordMetricsUpdate(projectId);
-          break;
-        default:
-          result = await runKeywordMetricsUpdate(projectId);
-      }
+      // Use the crawl scheduler's executeSchedule method to properly:
+      // 1. Create a crawl result entry in history
+      // 2. Track progress
+      // 3. Log execution via TaskLogger
+      // 4. Update the schedule's lastRunAt
+      const result = await crawlSchedulerService.executeSchedule(schedule);
 
-      // Update last run timestamp using raw SQL since lastRunAt is not in InsertCrawlSchedule
-      await db.update(crawlSchedules)
-        .set({ lastRunAt: new Date(), lastRunStatus: "success" })
-        .where(eq(crawlSchedules.id, id));
-
-      res.json({ success: true, result });
+      res.json({ 
+        success: result.success, 
+        message: result.message,
+        scheduleId: result.scheduleId,
+        type: result.type,
+        duration: result.duration
+      });
     } catch (error) {
       console.error("Error running crawl schedule:", error);
       res.status(500).json({ error: "Failed to run crawl schedule" });
