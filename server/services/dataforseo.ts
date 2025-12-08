@@ -50,7 +50,7 @@ export class DataForSEOService {
     this.authHeader = "Basic " + Buffer.from(`${config.login}:${config.password}`).toString("base64");
   }
 
-  private async makeRequest<T>(endpoint: string, method: string = "GET", body?: unknown): Promise<T> {
+  private async makeRequest<T>(endpoint: string, method: string = "GET", body?: unknown, timeout: number = 60000): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
     
     const options: RequestInit = {
@@ -65,20 +65,34 @@ export class DataForSEOService {
       options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, options);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`DataForSEO API error: ${response.status} - ${errorText}`);
-    }
+    // Add timeout using AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    options.signal = controller.signal;
 
-    const data = await response.json();
-    
-    if (data.status_code !== 20000) {
-      throw new Error(`DataForSEO API error: ${data.status_message}`);
-    }
+    try {
+      const response = await fetch(url, options);
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`DataForSEO API error: ${response.status} - ${errorText}`);
+      }
 
-    return data;
+      const data = await response.json();
+      
+      if (data.status_code !== 20000) {
+        throw new Error(`DataForSEO API error: ${data.status_message}`);
+      }
+
+      return data;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`DataForSEO API request timed out after ${timeout}ms`);
+      }
+      throw error;
+    }
   }
 
   async getSerpRankings(keywords: string[], domain: string, locationCode: number = 2840, onProgress?: (processed: number, total: number) => void): Promise<Map<string, SerpResultItem | null>> {
@@ -224,6 +238,7 @@ export class DataForSEOService {
           depth: 100,
         }));
 
+        console.log(`[DataForSEO] Sending bulk request for ${batch.length} keywords: ${batch.slice(0, 3).join(", ")}${batch.length > 3 ? "..." : ""}`);
         const response = await this.makeRequest<{
           tasks: Array<{
             status_code: number;
@@ -244,13 +259,34 @@ export class DataForSEOService {
               }>;
             }>;
           }>;
-        }>("/serp/google/organic/live/advanced", "POST", tasks);
+        }>("/serp/google/organic/live/advanced", "POST", tasks, 120000); // 2 minute timeout for bulk requests
+        console.log(`[DataForSEO] Received response for ${batch.length} keywords with ${response.tasks?.length || 0} tasks`);
 
         // Process all results from the bulk request
+        if (!response.tasks || response.tasks.length === 0) {
+          console.warn(`[DataForSEO] No tasks in response for batch of ${batch.length} keywords`);
+          // Set null results for all keywords in batch
+          for (const keyword of batch) {
+            rankings.set(keyword, null);
+            competitors.set(keyword, []);
+            serpFeatures.set(keyword, []);
+          }
+          continue;
+        }
+
+        if (response.tasks.length !== batch.length) {
+          console.warn(`[DataForSEO] Mismatch: sent ${batch.length} keywords but received ${response.tasks.length} tasks`);
+        }
+
         for (let taskIndex = 0; taskIndex < response.tasks.length; taskIndex++) {
           const taskResult = response.tasks[taskIndex];
-          const keyword = batch[taskIndex];
+          const keyword = batch[taskIndex] || batch[taskIndex % batch.length]; // Fallback if index mismatch
           
+          if (!keyword) {
+            console.warn(`[DataForSEO] No keyword found for task index ${taskIndex}`);
+            continue;
+          }
+
           if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
             const result = taskResult.result[0];
             const organicItems = (result.items || []).filter(item => item.type === 'organic');
@@ -265,19 +301,44 @@ export class DataForSEOService {
             });
 
             if (domainResult) {
-              rankings.set(keyword, {
-                keyword,
-                rank_group: domainResult.rank_group,
-                rank_absolute: domainResult.rank_absolute,
-                domain: domainResult.domain || '',
-                url: domainResult.url || '',
-                title: domainResult.title || '',
-                description: domainResult.description || '',
-                breadcrumb: domainResult.breadcrumb || '',
-                is_featured_snippet: false,
-                is_image: false,
-                is_video: false,
-              });
+              // Validate rank_absolute - it should be a positive number
+              const rankAbsolute = domainResult.rank_absolute;
+              if (!rankAbsolute || rankAbsolute <= 0) {
+                console.warn(`[DataForSEO] Invalid rank_absolute (${rankAbsolute}) for keyword "${keyword}" with domain match. Using rank_group (${domainResult.rank_group}) instead.`);
+                // Fallback to rank_group if rank_absolute is invalid
+                const fallbackPosition = domainResult.rank_group > 0 ? domainResult.rank_group : null;
+                if (fallbackPosition) {
+                  rankings.set(keyword, {
+                    keyword,
+                    rank_group: domainResult.rank_group,
+                    rank_absolute: fallbackPosition,
+                    domain: domainResult.domain || '',
+                    url: domainResult.url || '',
+                    title: domainResult.title || '',
+                    description: domainResult.description || '',
+                    breadcrumb: domainResult.breadcrumb || '',
+                    is_featured_snippet: false,
+                    is_image: false,
+                    is_video: false,
+                  });
+                } else {
+                  rankings.set(keyword, null);
+                }
+              } else {
+                rankings.set(keyword, {
+                  keyword,
+                  rank_group: domainResult.rank_group,
+                  rank_absolute: rankAbsolute,
+                  domain: domainResult.domain || '',
+                  url: domainResult.url || '',
+                  title: domainResult.title || '',
+                  description: domainResult.description || '',
+                  breadcrumb: domainResult.breadcrumb || '',
+                  is_featured_snippet: false,
+                  is_image: false,
+                  is_video: false,
+                });
+              }
             } else {
               rankings.set(keyword, null);
             }

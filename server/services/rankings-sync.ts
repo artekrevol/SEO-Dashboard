@@ -269,10 +269,23 @@ export class RankingsSyncService {
         const batch = activeKeywords.slice(i, Math.min(i + this.bulkBatchSize, activeKeywords.length));
         const keywordTexts = batch.map(kw => kw.keyword);
         
+        if (batch.length === 0) {
+          console.warn(`[RankingsSync] Empty batch at index ${i}, skipping`);
+          continue;
+        }
+        
         try {
+          console.log(`[RankingsSync] Fetching SERP data for batch ${Math.floor(i / this.bulkBatchSize) + 1} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
           // Use bulk API to fetch all keywords in batch at once
-          const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = 
-            await this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain);
+          const serpData = await Promise.race([
+            this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error("SERP API request timed out after 3 minutes")), 180000)
+            )
+          ]);
+          
+          const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = serpData;
+          console.log(`[RankingsSync] Received SERP data: ${bulkRankings.size} rankings, ${bulkCompetitors.size} competitor sets`);
 
           // Batch database operations for better performance
           const dbOperations: Promise<void>[] = [];
@@ -283,46 +296,69 @@ export class RankingsSyncService {
             const features = bulkFeatures.get(kw.keyword) || [];
 
             if (result) {
-              const historyData: Omit<InsertRankingsHistory, "keywordId" | "date"> = {
-                projectId,
-                position: result.rank_absolute,
-                url: result.url,
-                device: "desktop",
-                locationId: kw.locationId,
-                serpFeatures: features,
-              };
+              // Validate that we have a valid position (rank_absolute should be > 0)
+              const position = result.rank_absolute;
+              if (position && position > 0) {
+                const historyData: Omit<InsertRankingsHistory, "keywordId" | "date"> = {
+                  projectId,
+                  position: position,
+                  url: result.url,
+                  device: "desktop",
+                  locationId: kw.locationId,
+                  serpFeatures: features,
+                };
 
-              // Batch database writes
-              dbOperations.push(
-                storage.upsertRankingsHistory(kw.id, today, historyData).then(() => {
-                  keywordsUpdated++;
-                })
-              );
-
-              // Process competitors for this keyword
-              for (const competitor of kwCompetitors) {
+                // Batch database writes
                 dbOperations.push(
-                  storage.upsertKeywordCompetitorMetrics({
-                    projectId,
-                    keywordId: kw.id,
-                    competitorDomain: competitor.domain,
-                    competitorUrl: competitor.url,
-                    latestPosition: competitor.position,
-                    ourPosition: result.rank_absolute || null,
-                    avgPosition: competitor.position.toFixed(2),
-                    visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
-                    serpFeatures: features,
-                    isDirectCompetitor: competitor.position <= 10,
-                    clickShareEstimate: this.estimateClickShare(competitor.position).toFixed(4),
-                    lastSeenAt: new Date(),
-                  }).then(() => {
-                    competitorsFound++;
+                  storage.upsertRankingsHistory(kw.id, today, historyData).then(() => {
+                    keywordsUpdated++;
+                    console.log(`[RankingsSync] Saved ranking for "${kw.keyword}": position ${position}`);
                   }).catch((err) => {
-                    const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
-                    errors.push(errMsg);
+                    console.error(`[RankingsSync] Failed to save ranking for keyword "${kw.keyword}":`, err);
+                    errors.push(`Failed to save ranking for keyword ${kw.keyword}: ${err}`);
                   })
                 );
+              } else {
+                console.warn(`[RankingsSync] Invalid position (${position}) for keyword "${kw.keyword}". Domain found but position invalid. Result:`, {
+                  rank_absolute: result.rank_absolute,
+                  rank_group: result.rank_group,
+                  url: result.url,
+                  domain: result.domain
+                });
+                // Still count as processed even if we don't save
+                keywordsUpdated++;
               }
+
+              // Process competitors for this keyword (only if we have a valid result)
+              if (position && position > 0) {
+                for (const competitor of kwCompetitors) {
+                  dbOperations.push(
+                    storage.upsertKeywordCompetitorMetrics({
+                      projectId,
+                      keywordId: kw.id,
+                      competitorDomain: competitor.domain,
+                      competitorUrl: competitor.url,
+                      latestPosition: competitor.position,
+                      ourPosition: result.rank_absolute || null,
+                      avgPosition: competitor.position.toFixed(2),
+                      visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
+                      serpFeatures: features,
+                      isDirectCompetitor: competitor.position <= 10,
+                      clickShareEstimate: this.estimateClickShare(competitor.position).toFixed(4),
+                      lastSeenAt: new Date(),
+                    }).then(() => {
+                      competitorsFound++;
+                    }).catch((err) => {
+                      const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
+                      errors.push(errMsg);
+                    })
+                  );
+                }
+              }
+            } else {
+              // Keyword not found in SERP - still count as processed
+              console.log(`[RankingsSync] Keyword "${kw.keyword}" not found in SERP results (domain not ranking)`);
+              keywordsUpdated++; // Count as processed even if not ranking
             }
           }
 

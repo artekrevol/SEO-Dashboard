@@ -142,6 +142,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [manualCrawlType, setManualCrawlType] = useState<ManualCrawlType>("all_keywords");
   const [selectedKeywords, setSelectedKeywords] = useState<number[]>([]);
+  const [keywordSearch, setKeywordSearch] = useState("");
   const [runningCrawl, setRunningCrawl] = useState<number | null>(null);
   
   const [formData, setFormData] = useState({
@@ -172,6 +173,14 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       return data.keywords || [];
     },
   });
+
+  // Filter keywords based on search term
+  const filteredKeywords = keywordSearch.trim()
+    ? keywords.filter(kw => 
+        kw.keyword.toLowerCase().includes(keywordSearch.toLowerCase()) ||
+        (kw.cluster && kw.cluster.toLowerCase().includes(keywordSearch.toLowerCase()))
+      )
+    : keywords;
 
   const { data: crawlHistory, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery<{
     results: CrawlResultWithCST[];
@@ -253,6 +262,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       });
       setShowManualCrawlDialog(false);
       setSelectedKeywords([]);
+      setKeywordSearch("");
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-results", projectId] });
       queryClient.invalidateQueries({ queryKey: ["/api/crawl-results/running", projectId] });
     },
@@ -749,11 +759,25 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
             {manualCrawlType === "selected_keywords" && (
               <div className="space-y-2">
                 <Label>Select Keywords ({selectedKeywords.length} selected)</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search keywords or clusters..."
+                    value={keywordSearch}
+                    onChange={(e) => setKeywordSearch(e.target.value)}
+                    className="pl-9"
+                    data-testid="input-keyword-search"
+                  />
+                </div>
                 <div className="border rounded-md max-h-48 overflow-y-auto p-2 space-y-1">
                   {keywords.length === 0 ? (
                     <p className="text-sm text-muted-foreground p-2">No keywords found</p>
+                  ) : filteredKeywords.length === 0 ? (
+                    <p className="text-sm text-muted-foreground p-2">
+                      No keywords match "{keywordSearch}"
+                    </p>
                   ) : (
-                    keywords.map((kw) => (
+                    filteredKeywords.map((kw) => (
                       <label 
                         key={kw.id} 
                         className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer"
@@ -778,6 +802,11 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                     ))
                   )}
                 </div>
+                {keywordSearch.trim() && (
+                  <p className="text-xs text-muted-foreground">
+                    Showing {filteredKeywords.length} of {keywords.length} keywords
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -788,6 +817,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
               onClick={() => {
                 setShowManualCrawlDialog(false);
                 setSelectedKeywords([]);
+                setKeywordSearch("");
               }}
             >
               Cancel
