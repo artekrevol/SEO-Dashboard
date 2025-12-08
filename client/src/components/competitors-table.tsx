@@ -243,8 +243,9 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table className="min-w-[1200px]">
+          <div className="relative">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-track-muted scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50">
+              <Table className="min-w-[1100px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[220px]">Competitor</TableHead>
@@ -397,6 +398,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                 )}
               </TableBody>
             </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
