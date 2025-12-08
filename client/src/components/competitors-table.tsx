@@ -243,19 +243,18 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
           </div>
         </CardHeader>
         <CardContent>
-          <div className="relative">
-            <div className="overflow-x-auto scrollbar-thin scrollbar-track-muted scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50">
-              <Table className="min-w-[1100px]">
+          <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[220px]">Competitor</TableHead>
-                  <TableHead className="text-center">Shared KWs</TableHead>
-                  <TableHead className="text-center">Above Us</TableHead>
-                  <TableHead className="text-center">Avg Pos (Us vs Them)</TableHead>
-                  <TableHead className="text-center">Backlinks</TableHead>
-                  <TableHead className="text-center">Traffic Threat</TableHead>
-                  <TableHead className="w-[180px]">Pressure</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
+                  <TableHead className="w-[180px]">Competitor</TableHead>
+                  <TableHead className="text-center w-[70px]">Shared</TableHead>
+                  <TableHead className="text-center w-[60px]">Above</TableHead>
+                  <TableHead className="text-center w-[90px]">Pos (Us/Them)</TableHead>
+                  <TableHead className="text-center w-[80px]">Links</TableHead>
+                  <TableHead className="text-center w-[70px]">Threat</TableHead>
+                  <TableHead className="w-[140px]">Pressure</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -277,29 +276,27 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                       data-testid={`row-competitor-${index}`}
                       onClick={() => setSelectedCompetitor(item.competitorDomain)}
                     >
-                      <TableCell>
+                      <TableCell className="py-2">
                         <a
                           href={`https://${item.competitorDomain}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
+                          className="flex items-center gap-1 font-medium text-foreground hover:text-primary text-sm truncate max-w-[160px]"
                           onClick={(e) => e.stopPropagation()}
+                          title={item.competitorDomain}
                         >
-                          <span>{item.competitorDomain}</span>
-                          <ExternalLink className="h-3 w-3" />
+                          <span className="truncate">{item.competitorDomain}</span>
+                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
                         </a>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Target className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono">{item.sharedKeywords}</span>
-                        </div>
+                      <TableCell className="text-center py-2">
+                        <span className="font-mono text-sm">{item.sharedKeywords}</span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-2">
                         <Badge
                           variant="secondary"
                           className={cn(
-                            "font-mono border-0",
+                            "font-mono border-0 text-xs px-1.5",
                             item.aboveUsKeywords > 0
                               ? "bg-red-500/10 text-red-600 dark:text-red-400"
                               : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
@@ -308,21 +305,19 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                           {item.aboveUsKeywords}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1 font-mono">
-                          <span className="text-muted-foreground">{item.avgOurPosition?.toFixed(1) || '-'}</span>
-                          <span className="text-muted-foreground">vs</span>
-                          <span className="font-semibold">{item.avgTheirPosition?.toFixed(1) || '-'}</span>
-                        </div>
+                      <TableCell className="text-center py-2">
+                        <span className="font-mono text-xs">
+                          {item.avgOurPosition?.toFixed(0) || '-'}/{item.avgTheirPosition?.toFixed(0) || '-'}
+                        </span>
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-2">
                         {(() => {
                           const counts = backlinkCounts[item.competitorDomain];
                           return (
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 gap-1 font-mono"
+                              className="h-6 px-2 gap-1 font-mono text-xs"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (projectId) {
@@ -334,23 +329,15 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                             >
                               <Link2 className="h-3 w-3" />
                               {counts?.total || 0}
-                              {counts?.opportunities ? (
-                                <Badge 
-                                  variant="secondary" 
-                                  className="ml-1 bg-green-500/10 text-green-600 text-xs px-1"
-                                >
-                                  {counts.opportunities}
-                                </Badge>
-                              ) : null}
                             </Button>
                           );
                         })()}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-2">
                         <Badge
                           variant="secondary"
                           className={cn(
-                            "border-0",
+                            "border-0 text-xs px-1.5",
                             item.trafficThreat === 'high'
                               ? "bg-red-500/10 text-red-600 dark:text-red-400"
                               : item.trafficThreat === 'medium'
@@ -358,26 +345,14 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                               : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                           )}
                         >
-                          {item.trafficThreat === 'high' ? 'High' : item.trafficThreat === 'medium' ? 'Medium' : 'Low'}
+                          {item.trafficThreat === 'high' ? 'High' : item.trafficThreat === 'medium' ? 'Med' : 'Low'}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Badge
-                              variant="secondary"
-                              className={cn("border-0", getPressureBadgeClass(item.pressureIndex))}
-                            >
-                              <TrendingUp className="mr-1 h-3 w-3" />
-                              {getPressureLabel(item.pressureIndex)}
-                            </Badge>
-                            <span className="font-mono text-sm">
-                              {Number(item.pressureIndex).toFixed(0)}
-                            </span>
-                          </div>
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-2">
                           <Progress
                             value={item.pressureIndex}
-                            className="h-2"
+                            className="h-2 w-16"
                             indicatorClassName={
                               item.pressureIndex >= 60
                                 ? "bg-red-500"
@@ -386,11 +361,14 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                                 : "bg-emerald-500"
                             }
                           />
+                          <span className="font-mono text-xs w-6">
+                            {Number(item.pressureIndex).toFixed(0)}
+                          </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <ChevronRight className="h-4 w-4" />
+                      <TableCell className="py-2">
+                        <Button variant="ghost" size="icon" className="h-6 w-6">
+                          <ChevronRight className="h-3 w-3" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -398,7 +376,6 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                 )}
               </TableBody>
             </Table>
-            </div>
           </div>
         </CardContent>
       </Card>
