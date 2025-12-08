@@ -2187,6 +2187,121 @@ export async function registerRoutes(
     }
   });
 
+  // Crawl backlinks for ALL competitors in a project
+  app.post("/api/competitor-backlinks/crawl-all", async (req, res) => {
+    try {
+      const schema = z.object({
+        projectId: z.string().min(1, "projectId is required"),
+        limit: z.number().int().min(1).max(200).optional().default(50),
+      });
+      
+      const parseResult = schema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: parseResult.error.errors[0]?.message || "Invalid request" });
+      }
+      
+      const { projectId, limit } = parseResult.data;
+      
+      const dataForSeoService = DataForSEOService.fromEnv();
+      if (!dataForSeoService) {
+        return res.status(503).json({ error: "DataForSEO API not configured" });
+      }
+      
+      // Get all competitors for this project
+      const competitorMetrics = await storage.getCompetitorMetrics(projectId);
+      const competitorDomains = competitorMetrics
+        .filter(cm => cm.competitorDomain)
+        .map(cm => cm.competitorDomain);
+      
+      if (competitorDomains.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: "No competitors found to crawl",
+          competitorsProcessed: 0,
+          totalBacklinks: 0
+        });
+      }
+      
+      console.log(`[API] Starting bulk competitor backlinks crawl for ${competitorDomains.length} competitors`);
+      
+      let totalBacklinks = 0;
+      let totalOpportunities = 0;
+      const results: Array<{ competitor: string; backlinks: number; opportunities: number }> = [];
+      
+      for (const competitorDomain of competitorDomains) {
+        try {
+          console.log(`[API] Crawling backlinks for: ${competitorDomain}`);
+          const { backlinks, totalCount } = await dataForSeoService.getCompetitorBacklinks(competitorDomain, limit);
+          
+          let inserted = 0;
+          for (const backlink of backlinks) {
+            await storage.upsertCompetitorBacklink(
+              projectId,
+              competitorDomain,
+              backlink.sourceUrl,
+              backlink.targetUrl,
+              {
+                sourceDomain: backlink.sourceDomain,
+                anchorText: backlink.anchorText,
+                linkType: backlink.linkType,
+                domainAuthority: backlink.domainAuthority,
+                pageAuthority: backlink.pageAuthority,
+              }
+            );
+            inserted++;
+          }
+          
+          // Get spam scores for unique domains
+          const uniqueDomains = Array.from(new Set(backlinks.map(b => b.sourceDomain.toLowerCase())));
+          if (uniqueDomains.length > 0) {
+            const spamScoreMap = await dataForSeoService.getBulkSpamScores(uniqueDomains);
+            
+            for (const backlink of backlinks) {
+              const spamScore = spamScoreMap.get(backlink.sourceDomain.toLowerCase());
+              if (spamScore !== undefined) {
+                const existing = await storage.getCompetitorBacklinks(projectId, competitorDomain);
+                const match = existing.find(b => b.sourceUrl === backlink.sourceUrl && b.targetUrl === backlink.targetUrl);
+                if (match) {
+                  await storage.upsertCompetitorBacklink(
+                    projectId,
+                    competitorDomain,
+                    match.sourceUrl,
+                    match.targetUrl,
+                    { spamScore }
+                  );
+                }
+              }
+            }
+          }
+          
+          // Update opportunities
+          const opportunitiesUpdated = await storage.updateCompetitorBacklinkOpportunities(projectId, competitorDomain);
+          
+          totalBacklinks += inserted;
+          totalOpportunities += opportunitiesUpdated;
+          results.push({ competitor: competitorDomain, backlinks: inserted, opportunities: opportunitiesUpdated });
+          
+        } catch (error) {
+          console.error(`[API] Error crawling backlinks for ${competitorDomain}:`, error);
+          results.push({ competitor: competitorDomain, backlinks: 0, opportunities: 0 });
+        }
+      }
+      
+      console.log(`[API] Bulk crawl complete: ${totalBacklinks} backlinks from ${competitorDomains.length} competitors`);
+      
+      res.json({ 
+        success: true, 
+        competitorsProcessed: competitorDomains.length,
+        totalBacklinks,
+        totalOpportunities,
+        results
+      });
+    } catch (error) {
+      console.error("Error in bulk competitor backlinks crawl:", error);
+      res.status(500).json({ error: "Failed to crawl competitor backlinks" });
+    }
+  });
+
   // ========== Technical SEO Suite API Routes ==========
 
   // Get all tech crawls for a project

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +31,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus, Link2 } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, Minus, Link2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
@@ -82,6 +84,34 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
   const [search, setSearch] = useState("");
   const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
   const [backlinksDrawerDomain, setBacklinksDrawerDomain] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const crawlAllBacklinksMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId) {
+        throw new Error("Project ID is required");
+      }
+      const res = await apiRequest("POST", "/api/competitor-backlinks/crawl-all", {
+        projectId,
+        limit: 50,
+      });
+      return res.json();
+    },
+    onSuccess: (result) => {
+      toast({
+        title: "Backlinks Crawl Complete",
+        description: `Processed ${result.competitorsProcessed} competitors, found ${result.totalBacklinks} backlinks and ${result.totalOpportunities} opportunities.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/competitor-backlinks/counts", projectId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Crawl Failed",
+        description: error instanceof Error ? error.message : "Failed to crawl backlinks",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: backlinkCounts = {} } = useQuery<Record<string, { total: number; opportunities: number }>>({
     queryKey: ["/api/competitor-backlinks/counts", projectId],
@@ -234,6 +264,25 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                 data-testid="input-competitor-search"
               />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => crawlAllBacklinksMutation.mutate()}
+              disabled={!projectId || crawlAllBacklinksMutation.isPending || data.length === 0}
+              data-testid="button-crawl-all-backlinks"
+            >
+              {crawlAllBacklinksMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Crawling...
+                </>
+              ) : (
+                <>
+                  <Link2 className="mr-2 h-4 w-4" />
+                  Crawl All Backlinks
+                </>
+              )}
+            </Button>
             <ExportButton
               data={sortedData}
               columns={competitorExportColumns}
