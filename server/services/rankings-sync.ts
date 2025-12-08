@@ -37,6 +37,7 @@ interface SerpResultWithCompetitors {
 export class RankingsSyncService {
   private dataForSEO: DataForSEOService | null;
   private bulkBatchSize: number = 100; // Process up to 100 keywords per bulk API call
+  private requestDelay: number = 300; // Delay between single keyword requests in ms
 
   constructor() {
     this.dataForSEO = createDataForSEOService();

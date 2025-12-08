@@ -522,14 +522,117 @@ export class DataForSEOService {
         }
       } catch (error) {
         console.error(`[DataForSEO] Error fetching SERP batch (${batch.length} keywords):`, error);
-        // Set null results for all keywords in failed batch
+        
+        // Fallback to sequential processing when bulk fails completely
+        console.log(`[DataForSEO] Bulk failed - falling back to sequential processing for ${batch.length} keywords`);
+        
         for (const keyword of batch) {
-          rankings.set(keyword, null);
-          competitors.set(keyword, []);
-          serpFeatures.set(keyword, []);
-        }
-        if (onProgress) {
-          onProgress(Math.min(i + batch.length, keywords.length), keywords.length);
+          try {
+            await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting delay
+            
+            const singleResponse = await this.makeRequest<{
+              tasks: Array<{
+                status_code: number;
+                status_message: string;
+                result: Array<{
+                  keyword: string;
+                  item_types?: string[];
+                  items: Array<{
+                    type: string;
+                    rank_group: number;
+                    rank_absolute: number;
+                    domain?: string;
+                    url?: string;
+                    title?: string;
+                    description?: string;
+                    breadcrumb?: string;
+                  }>;
+                }>;
+              }>;
+            }>("/serp/google/organic/live/advanced", "POST", [{
+              keyword,
+              location_code: locationCode,
+              language_code: "en",
+              device: "desktop",
+              os: "windows",
+              depth: 100,
+            }], 60000);
+            
+            const task = singleResponse.tasks?.[0];
+            if (task && task.status_code === 20000 && task.result?.[0]) {
+              const result = task.result[0];
+              const organicItems = (result.items || []).filter(item => item.type === 'organic');
+              
+              // Find our domain's ranking
+              const domainResult = organicItems.find(item => {
+                const itemDomain = item.domain?.toLowerCase() || '';
+                const itemUrl = item.url?.toLowerCase() || '';
+                return itemDomain === domainLower || 
+                  itemDomain.includes(domainLower) ||
+                  itemUrl.includes(domainLower);
+              });
+              
+              if (domainResult) {
+                const rankAbsolute = domainResult.rank_absolute;
+                const fallbackPosition = domainResult.rank_group > 0 ? domainResult.rank_group : null;
+                rankings.set(keyword, {
+                  keyword,
+                  rank_group: domainResult.rank_group,
+                  rank_absolute: rankAbsolute > 0 ? rankAbsolute : (fallbackPosition || 0),
+                  domain: domainResult.domain || '',
+                  url: domainResult.url || '',
+                  title: domainResult.title || '',
+                  description: domainResult.description || '',
+                  breadcrumb: domainResult.breadcrumb || '',
+                  is_featured_snippet: false,
+                  is_image: false,
+                  is_video: false,
+                });
+                console.log(`[DataForSEO] Fallback sequential: "${keyword}" position ${domainResult.rank_group}`);
+              } else {
+                rankings.set(keyword, null);
+                console.log(`[DataForSEO] Fallback sequential: "${keyword}" not in top 100`);
+              }
+              
+              // Get competitors
+              const top10Competitors = organicItems
+                .filter(item => {
+                  const itemDomain = item.domain?.toLowerCase() || '';
+                  const itemUrl = item.url?.toLowerCase() || '';
+                  return itemDomain !== domainLower && 
+                    !itemDomain.includes(domainLower) &&
+                    !itemUrl.includes(domainLower);
+                })
+                .slice(0, 10)
+                .map(item => ({
+                  domain: item.domain || '',
+                  position: item.rank_group > 0 ? item.rank_group : (item.rank_absolute > 0 ? item.rank_absolute : 100),
+                  url: item.url || '',
+                  title: item.title || '',
+                }));
+              competitors.set(keyword, top10Competitors);
+              
+              // Extract SERP features
+              const itemTypes = result.item_types || [];
+              const features = itemTypes.map(type => featureMapping[type]).filter(Boolean);
+              serpFeatures.set(keyword, features);
+            } else {
+              rankings.set(keyword, null);
+              competitors.set(keyword, []);
+              serpFeatures.set(keyword, []);
+              console.log(`[DataForSEO] Fallback sequential: "${keyword}" failed - ${task?.status_message || 'unknown error'}`);
+            }
+          } catch (seqError) {
+            console.error(`[DataForSEO] Fallback sequential error for "${keyword}":`, seqError);
+            rankings.set(keyword, null);
+            competitors.set(keyword, []);
+            serpFeatures.set(keyword, []);
+          }
+          
+          if (onProgress) {
+            const processedSoFar = i + batch.indexOf(keyword) + 1;
+            onProgress(Math.min(processedSoFar, keywords.length), keywords.length);
+          }
         }
       }
     }
