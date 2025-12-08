@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules, keywords, keywordMetrics, rankingsHistory } from "@shared/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { DataForSEOService } from "./services/dataforseo";
 import { 
@@ -637,7 +637,7 @@ export async function registerRoutes(
           .where(
             and(
               eq(rankingsHistory.projectId, projectId),
-              sql`${rankingsHistory.keywordId} = ANY(${keywordIds})`
+              inArray(rankingsHistory.keywordId, keywordIds)
             )
           )
           .orderBy(desc(rankingsHistory.date), desc(rankingsHistory.keywordId));
