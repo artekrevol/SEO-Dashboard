@@ -192,7 +192,6 @@ export class DataForSEOService {
       title: string;
     }>>();
     const serpFeatures = new Map<string, string[]>();
-    const requestDelay = 500;
 
     const featureMapping: Record<string, string> = {
       featured_snippet: "featured_snippet",
@@ -205,20 +204,25 @@ export class DataForSEOService {
       news: "news",
     };
 
-    console.log(`[DataForSEO] Processing ${keywords.length} keywords sequentially for SERP with competitors`);
+    // Use bulk API requests - DataForSEO supports up to 100 keywords per request
+    const BULK_BATCH_SIZE = 100;
+    const domainLower = domain.toLowerCase();
+    
+    console.log(`[DataForSEO] Processing ${keywords.length} keywords in bulk batches (${BULK_BATCH_SIZE} per batch)`);
 
-    for (let i = 0; i < keywords.length; i++) {
-      const keyword = keywords[i];
-
+    for (let i = 0; i < keywords.length; i += BULK_BATCH_SIZE) {
+      const batch = keywords.slice(i, Math.min(i + BULK_BATCH_SIZE, keywords.length));
+      
       try {
-        const task = [{
+        // Send all keywords in this batch as a single API request
+        const tasks = batch.map(keyword => ({
           keyword,
           location_code: locationCode,
           language_code: "en",
           device: "desktop",
           os: "windows",
           depth: 100,
-        }];
+        }));
 
         const response = await this.makeRequest<{
           tasks: Array<{
@@ -240,82 +244,101 @@ export class DataForSEOService {
               }>;
             }>;
           }>;
-        }>("/serp/google/organic/live/advanced", "POST", task);
+        }>("/serp/google/organic/live/advanced", "POST", tasks);
 
-        const taskResult = response.tasks?.[0];
-        if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
-          const result = taskResult.result[0];
-          const organicItems = (result.items || []).filter(item => item.type === 'organic');
+        // Process all results from the bulk request
+        for (let taskIndex = 0; taskIndex < response.tasks.length; taskIndex++) {
+          const taskResult = response.tasks[taskIndex];
+          const keyword = batch[taskIndex];
+          
+          if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
+            const result = taskResult.result[0];
+            const organicItems = (result.items || []).filter(item => item.type === 'organic');
 
-          // Case-insensitive domain matching
-          const domainLower = domain.toLowerCase();
-          const domainResult = organicItems.find(item => {
-            const itemDomain = item.domain?.toLowerCase() || '';
-            const itemUrl = item.url?.toLowerCase() || '';
-            return itemDomain === domainLower || 
-              itemDomain.includes(domainLower) ||
-              itemUrl.includes(domainLower);
-          });
-
-          if (domainResult) {
-            rankings.set(keyword, {
-              keyword,
-              rank_group: domainResult.rank_group,
-              rank_absolute: domainResult.rank_absolute,
-              domain: domainResult.domain || '',
-              url: domainResult.url || '',
-              title: domainResult.title || '',
-              description: domainResult.description || '',
-              breadcrumb: domainResult.breadcrumb || '',
-              is_featured_snippet: false,
-              is_image: false,
-              is_video: false,
-            });
-          } else {
-            rankings.set(keyword, null);
-          }
-
-          const top10Competitors = organicItems
-            .filter(item => {
+            // Case-insensitive domain matching
+            const domainResult = organicItems.find(item => {
               const itemDomain = item.domain?.toLowerCase() || '';
               const itemUrl = item.url?.toLowerCase() || '';
-              return itemDomain !== domainLower && 
-                !itemDomain.includes(domainLower) &&
-                !itemUrl.includes(domainLower);
-            })
-            .slice(0, 10)
-            .map(item => ({
-              domain: item.domain || '',
-              position: item.rank_group,
-              url: item.url || '',
-              title: item.title || '',
-            }));
+              return itemDomain === domainLower || 
+                itemDomain.includes(domainLower) ||
+                itemUrl.includes(domainLower);
+            });
 
-          competitors.set(keyword, top10Competitors);
+            if (domainResult) {
+              rankings.set(keyword, {
+                keyword,
+                rank_group: domainResult.rank_group,
+                rank_absolute: domainResult.rank_absolute,
+                domain: domainResult.domain || '',
+                url: domainResult.url || '',
+                title: domainResult.title || '',
+                description: domainResult.description || '',
+                breadcrumb: domainResult.breadcrumb || '',
+                is_featured_snippet: false,
+                is_image: false,
+                is_video: false,
+              });
+            } else {
+              rankings.set(keyword, null);
+            }
 
-          const itemTypes = result.item_types || [];
-          const features = itemTypes
-            .map(type => featureMapping[type])
-            .filter(Boolean);
-          serpFeatures.set(keyword, features);
+            const top10Competitors = organicItems
+              .filter(item => {
+                const itemDomain = item.domain?.toLowerCase() || '';
+                const itemUrl = item.url?.toLowerCase() || '';
+                return itemDomain !== domainLower && 
+                  !itemDomain.includes(domainLower) &&
+                  !itemUrl.includes(domainLower);
+              })
+              .slice(0, 10)
+              .map(item => ({
+                domain: item.domain || '',
+                position: item.rank_group,
+                url: item.url || '',
+                title: item.title || '',
+              }));
+
+            competitors.set(keyword, top10Competitors);
+
+            const itemTypes = result.item_types || [];
+            const features = itemTypes
+              .map(type => featureMapping[type])
+              .filter(Boolean);
+            serpFeatures.set(keyword, features);
+          } else {
+            // Handle API errors for individual keywords in batch
+            rankings.set(keyword, null);
+            competitors.set(keyword, []);
+            serpFeatures.set(keyword, []);
+            if (taskResult?.status_message) {
+              console.log(`[DataForSEO] API error for "${keyword}": ${taskResult.status_message}`);
+            }
+          }
+        }
+
+        if (onProgress) {
+          onProgress(Math.min(i + batch.length, keywords.length), keywords.length);
+        }
+
+        // Small delay between bulk batches to respect rate limits (reduced from 500ms per keyword)
+        if (i + BULK_BATCH_SIZE < keywords.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        if ((i + batch.length) % 100 === 0 || i + batch.length >= keywords.length) {
+          console.log(`[DataForSEO] SERP+Competitors progress: ${Math.min(i + batch.length, keywords.length)}/${keywords.length}`);
         }
       } catch (error) {
-        console.error(`[DataForSEO] Error fetching SERP with competitors for "${keyword}":`, error);
-        rankings.set(keyword, null);
-        competitors.set(keyword, []);
-        serpFeatures.set(keyword, []);
-      }
-
-      if (onProgress) {
-        onProgress(i + 1, keywords.length);
-      }
-
-      if (i < keywords.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, requestDelay));
-      }
-
-      if ((i + 1) % 10 === 0 || i === keywords.length - 1) {
-        console.log(`[DataForSEO] SERP+Competitors progress: ${i + 1}/${keywords.length}`);
+        console.error(`[DataForSEO] Error fetching SERP batch (${batch.length} keywords):`, error);
+        // Set null results for all keywords in failed batch
+        for (const keyword of batch) {
+          rankings.set(keyword, null);
+          competitors.set(keyword, []);
+          serpFeatures.set(keyword, []);
+        }
+        if (onProgress) {
+          onProgress(Math.min(i + batch.length, keywords.length), keywords.length);
+        }
       }
     }
 

@@ -36,40 +36,10 @@ interface SerpResultWithCompetitors {
 
 export class RankingsSyncService {
   private dataForSEO: DataForSEOService | null;
-  private requestDelay: number = 200; // Reduced delay for concurrent processing
-  private concurrencyLimit: number = 5; // Process 5 keywords concurrently
+  private bulkBatchSize: number = 100; // Process up to 100 keywords per bulk API call
 
   constructor() {
     this.dataForSEO = createDataForSEOService();
-  }
-
-  // Process keywords in concurrent batches
-  private async processKeywordsBatch<T>(
-    items: T[],
-    processor: (item: T, index: number) => Promise<void>,
-    onProgress?: (processed: number) => void
-  ): Promise<void> {
-    let processed = 0;
-    
-    // Process in chunks of concurrencyLimit
-    for (let i = 0; i < items.length; i += this.concurrencyLimit) {
-      const batch = items.slice(i, Math.min(i + this.concurrencyLimit, items.length));
-      
-      // Process batch concurrently
-      await Promise.all(batch.map((item, batchIndex) => 
-        processor(item, i + batchIndex)
-      ));
-      
-      processed += batch.length;
-      if (onProgress) {
-        onProgress(processed);
-      }
-      
-      // Small delay between batches to avoid rate limiting
-      if (i + this.concurrencyLimit < items.length) {
-        await new Promise(resolve => setTimeout(resolve, this.requestDelay));
-      }
-    }
   }
 
   async getSerpResultForSingleKeyword(
@@ -289,79 +259,93 @@ export class RankingsSyncService {
         });
       }
 
-      console.log(`[RankingsSync] Starting sync for ${totalKeywords} keywords (${this.concurrencyLimit} concurrent)`);
+      console.log(`[RankingsSync] Starting bulk sync for ${totalKeywords} keywords (${this.bulkBatchSize} per batch)`);
 
       let lastProgressLog = 0;
       let lastProgressUpdate = 0;
 
-      // Process keywords concurrently in batches
-      await this.processKeywordsBatch(
-        activeKeywords,
-        async (kw, index) => {
-          try {
-            const result = await this.getSerpResultForSingleKeyword(kw.keyword, project.domain);
+      // Process keywords in bulk batches using DataForSEO bulk API
+      for (let i = 0; i < activeKeywords.length; i += this.bulkBatchSize) {
+        const batch = activeKeywords.slice(i, Math.min(i + this.bulkBatchSize, activeKeywords.length));
+        const keywordTexts = batch.map(kw => kw.keyword);
+        
+        try {
+          // Use bulk API to fetch all keywords in batch at once
+          const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = 
+            await this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain);
+
+          // Batch database operations for better performance
+          const dbOperations: Promise<void>[] = [];
+
+          for (const kw of batch) {
+            const result = bulkRankings.get(kw.keyword);
+            const kwCompetitors = bulkCompetitors.get(kw.keyword) || [];
+            const features = bulkFeatures.get(kw.keyword) || [];
 
             if (result) {
               const historyData: Omit<InsertRankingsHistory, "keywordId" | "date"> = {
                 projectId,
-                position: result.position,
+                position: result.rank_absolute,
                 url: result.url,
                 device: "desktop",
                 locationId: kw.locationId,
-                serpFeatures: result.serpFeatures,
+                serpFeatures: features,
               };
 
-              await storage.upsertRankingsHistory(kw.id, today, historyData);
-              keywordsUpdated++;
+              // Batch database writes
+              dbOperations.push(
+                storage.upsertRankingsHistory(kw.id, today, historyData).then(() => {
+                  keywordsUpdated++;
+                })
+              );
 
-              // Process competitors concurrently for each keyword
-              await Promise.all(result.competitors.map(async (competitor) => {
-                try {
-                  const competitorData: InsertKeywordCompetitorMetrics = {
+              // Process competitors for this keyword
+              for (const competitor of kwCompetitors) {
+                dbOperations.push(
+                  storage.upsertKeywordCompetitorMetrics({
                     projectId,
                     keywordId: kw.id,
                     competitorDomain: competitor.domain,
                     competitorUrl: competitor.url,
                     latestPosition: competitor.position,
-                    ourPosition: result.position || null,
+                    ourPosition: result.rank_absolute || null,
                     avgPosition: competitor.position.toFixed(2),
                     visibilityScore: this.calculateVisibilityScore(competitor.position).toFixed(2),
-                    serpFeatures: result.serpFeatures,
+                    serpFeatures: features,
                     isDirectCompetitor: competitor.position <= 10,
                     clickShareEstimate: this.estimateClickShare(competitor.position).toFixed(4),
                     lastSeenAt: new Date(),
-                  };
-
-                  await storage.upsertKeywordCompetitorMetrics(competitorData);
-                  competitorsFound++;
-                } catch (err) {
-                  const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
-                  errors.push(errMsg);
-                }
-              }));
+                  }).then(() => {
+                    competitorsFound++;
+                  }).catch((err) => {
+                    const errMsg = `Failed to save competitor ${competitor.domain} for keyword ${kw.keyword}: ${err}`;
+                    errors.push(errMsg);
+                  })
+                );
+              }
             }
-          } catch (err) {
-            const errMsg = `Failed to process keyword ${kw.keyword}: ${err}`;
-            errors.push(errMsg);
           }
-        },
-        async (processed) => {
+
+          // Execute all database operations concurrently
+          await Promise.all(dbOperations);
+
+          const processed = Math.min(i + batch.length, totalKeywords);
           const progressPercent = Math.round(processed / totalKeywords * 100);
           
-          // Log progress every 10 keywords or at milestones
-          if (processed - lastProgressLog >= 10 || processed === totalKeywords) {
+          // Log progress every 50 keywords or at milestones
+          if (processed - lastProgressLog >= 50 || processed === totalKeywords) {
             console.log(`[RankingsSync] Progress: ${processed}/${totalKeywords} (${progressPercent}%)`);
             lastProgressLog = processed;
           }
 
-          // Update crawl progress every 5 keywords
-          if (crawlResultId && (processed - lastProgressUpdate >= 5 || processed === totalKeywords)) {
+          // Update crawl progress every 25 keywords
+          if (crawlResultId && (processed - lastProgressUpdate >= 25 || processed === totalKeywords)) {
             await storage.updateCrawlProgress(crawlResultId, processed, "fetching_rankings");
             lastProgressUpdate = processed;
           }
 
           // Log progress at milestones
-          if (taskContext && (progressPercent === 25 || progressPercent === 50 || progressPercent === 75)) {
+          if (taskContext && (progressPercent === 25 || progressPercent === 50 || progressPercent === 75 || processed === totalKeywords)) {
             await TaskLogger.info(taskContext, `Keyword crawl progress: ${progressPercent}%`, {
               processed,
               total: totalKeywords,
@@ -369,8 +353,18 @@ export class RankingsSyncService {
               competitorsFound,
             });
           }
+        } catch (err) {
+          const errMsg = `Failed to process batch of ${batch.length} keywords: ${err}`;
+          errors.push(errMsg);
+          console.error(`[RankingsSync] Batch error:`, err);
+          
+          // Continue with next batch even if this one failed
+          const processed = Math.min(i + batch.length, totalKeywords);
+          if (crawlResultId) {
+            await storage.updateCrawlProgress(crawlResultId, processed, "fetching_rankings");
+          }
         }
-      );
+      }
 
       console.log(`[RankingsSync] Completed: ${keywordsUpdated}/${totalKeywords} keywords synced`);
 
