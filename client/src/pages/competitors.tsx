@@ -60,7 +60,7 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 w-full max-w-full overflow-x-hidden">
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-competitors-title">
           Competitor Analysis

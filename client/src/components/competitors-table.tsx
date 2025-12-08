@@ -289,8 +289,8 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
   }
 
   return (
-    <div className="space-y-6">
-      <Card data-testid="competitors-chart">
+    <div className="space-y-6 w-full max-w-full">
+      <Card data-testid="competitors-chart" className="w-full overflow-hidden">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg font-medium">Keyword Overlap by Competitor</CardTitle>
         </CardHeader>
@@ -333,7 +333,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
         </CardContent>
       </Card>
 
-      <Card data-testid="competitors-table">
+      <Card data-testid="competitors-table" className="w-full overflow-hidden">
         <CardHeader className="flex flex-col gap-4 pb-4">
           <div className="flex flex-row flex-wrap items-center justify-between gap-4">
             <CardTitle className="text-lg font-medium">Organic Search Competitors</CardTitle>
@@ -410,9 +410,9 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
           </div>
         </CardHeader>
         <CardContent>
-          <div className="relative">
-            <div className="overflow-x-auto scrollbar-thin scrollbar-track-muted scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50">
-              <Table className="min-w-[1100px]">
+          <div className="relative w-full">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-track-muted scrollbar-thumb-muted-foreground/30 hover:scrollbar-thumb-muted-foreground/50 w-full">
+              <Table className="min-w-[1100px] w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead 
