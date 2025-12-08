@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -179,6 +179,34 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
     setDrawerOpen(true);
   };
 
+  // Auto-sync when crawl is running to poll DataForSEO for progress
+  const lastSyncRef = useRef<number>(0);
+  const isRunningCrawl = latestCrawl && 
+    (latestCrawl.status === "queued" || latestCrawl.status === "in_progress" || latestCrawl.status === "running");
+  
+  useEffect(() => {
+    if (!isRunningCrawl || !latestCrawl?.id) return;
+    
+    // Sync immediately if we haven't synced in the last 10 seconds
+    const now = Date.now();
+    const shouldSync = now - lastSyncRef.current > 10000;
+    
+    if (shouldSync && !syncCrawlMutation.isPending) {
+      lastSyncRef.current = now;
+      syncCrawlMutation.mutate();
+    }
+    
+    // Set up interval to sync every 15 seconds while running
+    const interval = setInterval(() => {
+      if (!syncCrawlMutation.isPending) {
+        lastSyncRef.current = Date.now();
+        syncCrawlMutation.mutate();
+      }
+    }, 15000);
+    
+    return () => clearInterval(interval);
+  }, [isRunningCrawl, latestCrawl?.id, syncCrawlMutation]);
+
   if (!projectId) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -207,7 +235,7 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
     );
   }
 
-  const isRunning = latestCrawl?.status === "queued" || latestCrawl?.status === "in_progress" || latestCrawl?.status === "running";
+  const isRunning = !!isRunningCrawl;
   const isCompleted = latestCrawl?.status === "completed";
   const audits = pageAudits?.audits || [];
   const issues = issuesSummary?.issues || [];
