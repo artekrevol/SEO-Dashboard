@@ -244,7 +244,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[1200px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[220px]">Competitor</TableHead>
