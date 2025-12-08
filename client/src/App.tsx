@@ -26,6 +26,7 @@ import CannibalizationPage from "@/pages/cannibalization";
 import ReportsPage from "@/pages/reports";
 import SearchConsolePage from "@/pages/search-console";
 import SystemLogsPage from "@/pages/system-logs";
+import { VersionControlPage } from "@/pages/version-control";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -156,6 +157,9 @@ function AppContent() {
               </Route>
               <Route path="/system-logs">
                 <SystemLogsPage />
+              </Route>
+              <Route path="/version-control">
+                <VersionControlPage />
               </Route>
               <Route component={NotFound} />
             </Switch>

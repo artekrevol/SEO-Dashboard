@@ -671,6 +671,112 @@ export async function registerRoutes(
     });
   });
 
+  // ============================================
+  // APP VERSIONS / RELEASE NOTES
+  // ============================================
+
+  app.get("/api/versions", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const versions = await storage.getAppVersions(limit);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching app versions:", error);
+      res.status(500).json({ error: "Failed to fetch app versions" });
+    }
+  });
+
+  app.get("/api/versions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid version ID" });
+      }
+      const version = await storage.getAppVersion(id);
+      if (!version) {
+        return res.status(404).json({ error: "Version not found" });
+      }
+      res.json(version);
+    } catch (error) {
+      console.error("Error fetching app version:", error);
+      res.status(500).json({ error: "Failed to fetch app version" });
+    }
+  });
+
+  app.post("/api/versions", async (req, res) => {
+    try {
+      const versionSchema = z.object({
+        version: z.string().min(1, "Version is required"),
+        title: z.string().min(1, "Title is required"),
+        releaseNotes: z.string().min(1, "Release notes are required"),
+        changeType: z.enum(["feature", "bugfix", "improvement", "breaking", "security"]).default("feature"),
+        isPublished: z.boolean().optional().default(true),
+        releasedAt: z.string().datetime().optional(),
+      });
+
+      const parsed = versionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid version data", details: parsed.error.errors });
+      }
+
+      const versionData = {
+        ...parsed.data,
+        releasedAt: parsed.data.releasedAt ? new Date(parsed.data.releasedAt) : new Date(),
+      };
+
+      const version = await storage.createAppVersion(versionData);
+      res.status(201).json(version);
+    } catch (error) {
+      console.error("Error creating app version:", error);
+      res.status(500).json({ error: "Failed to create app version" });
+    }
+  });
+
+  app.patch("/api/versions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid version ID" });
+      }
+
+      const updateSchema = z.object({
+        version: z.string().min(1).optional(),
+        title: z.string().min(1).optional(),
+        releaseNotes: z.string().min(1).optional(),
+        changeType: z.enum(["feature", "bugfix", "improvement", "breaking", "security"]).optional(),
+        isPublished: z.boolean().optional(),
+      });
+
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid update data", details: parsed.error.errors });
+      }
+
+      const updated = await storage.updateAppVersion(id, parsed.data);
+      if (!updated) {
+        return res.status(404).json({ error: "Version not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating app version:", error);
+      res.status(500).json({ error: "Failed to update app version" });
+    }
+  });
+
+  app.delete("/api/versions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid version ID" });
+      }
+      await storage.deleteAppVersion(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting app version:", error);
+      res.status(500).json({ error: "Failed to delete app version" });
+    }
+  });
+
   app.post("/api/jobs/snapshot", async (req, res) => {
     try {
       const projectId = req.query.projectId as string | undefined;

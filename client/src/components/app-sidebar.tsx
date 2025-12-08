@@ -15,6 +15,7 @@ import {
   Globe,
   FileWarning,
   ScrollText,
+  Tag,
 } from "lucide-react";
 import {
   Sidebar,
@@ -113,6 +114,11 @@ const systemItems = [
     title: "System Logs",
     url: "/system-logs",
     icon: ScrollText,
+  },
+  {
+    title: "Version Control",
+    url: "/version-control",
+    icon: Tag,
   },
 ];
 

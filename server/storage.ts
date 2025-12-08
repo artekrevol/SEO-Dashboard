@@ -88,6 +88,9 @@ import {
   keywordPageConflicts,
   crawlTypeDurations,
   taskExecutionLogs,
+  appVersions,
+  InsertAppVersion,
+  AppVersion,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
@@ -336,6 +339,13 @@ export interface IStorage {
     byCategory: Record<string, number>;
     recentErrors: TaskExecutionLog[];
   }>;
+  
+  // App Versions / Release Notes
+  getAppVersions(limit?: number): Promise<AppVersion[]>;
+  getAppVersion(id: number): Promise<AppVersion | undefined>;
+  createAppVersion(version: InsertAppVersion): Promise<AppVersion>;
+  updateAppVersion(id: number, updates: Partial<InsertAppVersion>): Promise<AppVersion | undefined>;
+  deleteAppVersion(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3148,6 +3158,33 @@ export class DatabaseStorage implements IStorage {
     );
 
     return summary;
+  }
+
+  // App Versions / Release Notes
+  async getAppVersions(limit: number = 50): Promise<AppVersion[]> {
+    return await db.select()
+      .from(appVersions)
+      .orderBy(desc(appVersions.releasedAt))
+      .limit(limit);
+  }
+
+  async getAppVersion(id: number): Promise<AppVersion | undefined> {
+    const [version] = await db.select().from(appVersions).where(eq(appVersions.id, id));
+    return version || undefined;
+  }
+
+  async createAppVersion(insertVersion: InsertAppVersion): Promise<AppVersion> {
+    const [version] = await db.insert(appVersions).values(insertVersion).returning();
+    return version;
+  }
+
+  async updateAppVersion(id: number, updates: Partial<InsertAppVersion>): Promise<AppVersion | undefined> {
+    const [version] = await db.update(appVersions).set(updates).where(eq(appVersions.id, id)).returning();
+    return version || undefined;
+  }
+
+  async deleteAppVersion(id: number): Promise<void> {
+    await db.delete(appVersions).where(eq(appVersions.id, id));
   }
 }
 

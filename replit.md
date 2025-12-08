@@ -44,9 +44,11 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Site Audit**: Technical SEO crawling and issue identification with crawl scope options (Tracked Pages Only vs Full Site Crawl), automatic progress polling, and auto-generation of recommendations from critical issues.
 - **Link Building Tracker**: Manages backlinks, detects spam scores, identifies lost links, and performs competitor backlink gap analysis with opportunity scoring and promotion to recommendations.
 - **Task Execution Logs**: System-wide logging for background tasks (crawls, syncs, reports) with filtering by category, level, and search. Provides diagnostic visibility into system operations with error tracking, execution summaries, and auto-refresh. Accessible via System > System Logs in sidebar.
+- **Target URL Editing**: Ability to manually set or edit target URLs for keywords directly from the Keywords table or Data Management page. Pencil icon buttons open an edit dialog for updating keyword target URLs.
+- **Version Control / Release Notes**: System for tracking app releases and publishing changelog entries. Supports version numbers, release types (feature, bugfix, improvement, breaking, security), and detailed release notes. Accessible via System > Version Control in sidebar.
 
 ### System Design Choices
-- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, and `task_execution_logs`.
+- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, and `app_versions`.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
 
 ## External Dependencies

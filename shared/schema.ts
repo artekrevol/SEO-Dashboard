@@ -1234,3 +1234,29 @@ export const insertTaskExecutionLogSchema = createInsertSchema(taskExecutionLogs
 
 export type InsertTaskExecutionLog = z.infer<typeof insertTaskExecutionLogSchema>;
 export type TaskExecutionLog = typeof taskExecutionLogs.$inferSelect;
+
+// ============================================
+// APP VERSIONS / RELEASE NOTES
+// ============================================
+
+export const appVersions = pgTable("app_versions", {
+  id: serial("id").primaryKey(),
+  version: varchar("version", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  releaseNotes: text("release_notes").notNull(),
+  changeType: varchar("change_type", { length: 50 }).notNull().default("feature"),
+  isPublished: boolean("is_published").default(true),
+  releasedAt: timestamp("released_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  versionIdx: index("app_versions_version_idx").on(table.version),
+  releasedAtIdx: index("app_versions_released_at_idx").on(table.releasedAt),
+}));
+
+export const insertAppVersionSchema = createInsertSchema(appVersions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAppVersion = z.infer<typeof insertAppVersionSchema>;
+export type AppVersion = typeof appVersions.$inferSelect;
