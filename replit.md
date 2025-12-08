@@ -41,7 +41,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Cannibalization Detection**: Identifies and manages keyword cannibalization conflicts.
 - **Scheduled Reports**: Automated email delivery of SEO performance reports.
 - **Google Search Console Data**: Displays performance overview and URL inspection results.
-- **Site Audit**: Technical SEO crawling and issue identification, automatically generating recommendations from critical issues.
+- **Site Audit**: Technical SEO crawling and issue identification with crawl scope options (Tracked Pages Only vs Full Site Crawl), automatic progress polling, and auto-generation of recommendations from critical issues.
 - **Link Building Tracker**: Manages backlinks, detects spam scores, identifies lost links, and performs competitor backlink gap analysis with opportunity scoring and promotion to recommendations.
 - **Task Execution Logs**: System-wide logging for background tasks (crawls, syncs, reports) with filtering by category, level, and search. Provides diagnostic visibility into system operations with error tracking, execution summaries, and auto-refresh. Accessible via System > System Logs in sidebar.
 
