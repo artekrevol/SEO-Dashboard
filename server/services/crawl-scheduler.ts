@@ -78,7 +78,7 @@ export class CrawlSchedulerService {
     const taskContext = TaskLogger.createContext(
       `crawl_${scheduleType}`,
       "crawl" as TaskLogCategory,
-      { projectId: schedule.projectId, keywordIds: keywordIds?.length }
+      { projectId: schedule.projectId }
     );
 
     // Check if this schedule is already running (prevents duplicate runs)
