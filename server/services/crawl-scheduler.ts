@@ -49,7 +49,12 @@ const cronJobs: Map<string, cron.ScheduledTask> = new Map();
 
 export class CrawlSchedulerService {
   private runningSchedules: Set<number> = new Set();
-  private currentTimezone: string = DEFAULT_TIMEZONE;
+  private _currentTimezone: string = DEFAULT_TIMEZONE;
+  private startupTime: Date = new Date();
+
+  get currentTimezone(): string {
+    return this._currentTimezone;
+  }
 
   async getTimezone(): Promise<string> {
     try {
@@ -62,8 +67,33 @@ export class CrawlSchedulerService {
   }
 
   async refreshTimezone(): Promise<void> {
-    this.currentTimezone = await this.getTimezone();
-    console.log(`[CrawlScheduler] Timezone set to: ${this.currentTimezone}`);
+    this._currentTimezone = await this.getTimezone();
+    console.log(`[CrawlScheduler] Timezone set to: ${this._currentTimezone}`);
+  }
+
+  async recoverStaleCrawls(): Promise<number> {
+    try {
+      console.log(`[CrawlScheduler] Checking for stale running crawls from before server startup...`);
+      
+      const staleCrawls = await storage.cancelStaleCrawls(this.startupTime);
+      
+      if (staleCrawls > 0) {
+        console.log(`[CrawlScheduler] Cancelled ${staleCrawls} stale crawl(s) from previous server session`);
+        
+        await TaskLogger.warn(
+          TaskLogger.createContext("startup_recovery", "system", {}),
+          `Cancelled ${staleCrawls} stale crawl(s) that were running before server restart`,
+          { staleCrawls, startupTime: this.startupTime.toISOString() }
+        );
+      } else {
+        console.log(`[CrawlScheduler] No stale crawls found`);
+      }
+      
+      return staleCrawls;
+    } catch (error) {
+      console.error("[CrawlScheduler] Error recovering stale crawls:", error);
+      return 0;
+    }
   }
 
   getEstimatedDuration(crawlType: CrawlType): number {

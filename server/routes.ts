@@ -3970,6 +3970,11 @@ export async function registerRoutes(
 
   startScheduledJobs();
 
+  // Recover any stale crawls that were running before server restart
+  crawlSchedulerService.recoverStaleCrawls().catch(err => {
+    console.error("[Startup] Error recovering stale crawls:", err);
+  });
+
   return httpServer;
 }
 

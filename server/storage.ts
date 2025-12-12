@@ -93,7 +93,7 @@ import {
   AppVersion,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, sql, isNull, or } from "drizzle-orm";
+import { eq, desc, and, gte, lte, lt, sql, isNull, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -291,6 +291,7 @@ export interface IStorage {
   getRunningCrawlsByType(projectId: string, type: string): Promise<CrawlResult[]>;
   getAllRunningCrawls(): Promise<CrawlResult[]>;
   updateCrawlProgress(id: number, itemsProcessed: number, stage?: string, itemsTotal?: number): Promise<CrawlResult | undefined>;
+  cancelStaleCrawls(serverStartTime: Date): Promise<number>;
   
   // Scheduled Reports
   getScheduledReports(projectId: string): Promise<ScheduledReport[]>;
@@ -2730,13 +2731,32 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
+  async cancelStaleCrawls(serverStartTime: Date): Promise<number> {
+    const result = await db
+      .update(crawlResults)
+      .set({
+        status: "cancelled",
+        completedAt: new Date(),
+        message: "Cancelled: Server restart detected - crawl was orphaned",
+      })
+      .where(
+        and(
+          eq(crawlResults.status, "running"),
+          lt(crawlResults.startedAt, serverStartTime)
+        )
+      )
+      .returning({ id: crawlResults.id });
+    
+    return result.length;
+  }
+
   async stopCrawl(id: number): Promise<CrawlResult | undefined> {
     const [updated] = await db
       .update(crawlResults)
       .set({
         status: "cancelled",
         completedAt: new Date(),
-        errorMessage: "Crawl was manually stopped by user",
+        message: "Crawl was manually stopped by user",
       })
       .where(eq(crawlResults.id, id))
       .returning();
