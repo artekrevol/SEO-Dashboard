@@ -280,7 +280,7 @@ export async function runKeywordMetricsUpdate(projectId: string): Promise<JobRes
   }
 }
 
-export async function runCompetitorAnalysis(projectId: string): Promise<JobResult> {
+export async function runCompetitorAnalysis(projectId: string, options?: { includeBacklinks?: boolean }): Promise<JobResult> {
   const dataForSEO = createDataForSEOService();
   
   if (!dataForSEO) {
@@ -296,19 +296,24 @@ export async function runCompetitorAnalysis(projectId: string): Promise<JobResul
       return { success: false, message: `Project ${projectId} not found` };
     }
 
-    const competitors = await dataForSEO.getCompetitors(project.domain);
-    const ourBacklinks = await dataForSEO.getBacklinkData(project.domain);
+    console.log(`[Job] Starting comprehensive competitor analysis for ${project.domain}`);
+
+    const [competitors, ourBacklinks] = await Promise.all([
+      dataForSEO.getCompetitors(project.domain),
+      dataForSEO.getBacklinkData(project.domain),
+    ]);
+
+    const competitorDomains = competitors.map(c => c.domain);
+    console.log(`[Job] Found ${competitorDomains.length} competitors, fetching backlink data in parallel`);
+
+    const competitorBacklinksMap = await dataForSEO.getBulkDomainBacklinks(competitorDomains);
 
     const today = new Date().toISOString().split("T")[0];
     const metricsToSave: InsertCompetitorMetrics[] = [];
 
     for (const competitor of competitors) {
-      let competitorBacklinks = { totalBacklinks: 0, referringDomains: 0, domainAuthority: 50 };
-      try {
-        competitorBacklinks = await dataForSEO.getBacklinkData(competitor.domain);
-      } catch {
-        console.warn(`[Job] Failed to fetch backlinks for ${competitor.domain}`);
-      }
+      const competitorBacklinks = competitorBacklinksMap.get(competitor.domain) || 
+        { totalBacklinks: 0, referringDomains: 0, domainAuthority: 50 };
 
       const safeAvgPosition = Math.min(999, Math.max(0, competitor.avgPosition || 0));
       const safeAuthorityScore = Math.min(999, Math.max(0, competitorBacklinks.domainAuthority || 0));
@@ -334,14 +339,96 @@ export async function runCompetitorAnalysis(projectId: string): Promise<JobResul
       });
     }
 
-    for (const metric of metricsToSave) {
-      await storage.createCompetitorMetrics(metric);
+    await Promise.all(metricsToSave.map(metric => storage.createCompetitorMetrics(metric)));
+
+    let totalBacklinksIngested = 0;
+    let totalOpportunities = 0;
+    const includeBacklinks = options?.includeBacklinks !== false;
+
+    if (includeBacklinks && competitors.length > 0) {
+      console.log(`[Job] Fetching detailed backlinks for top 5 competitors`);
+      const topCompetitors = competitors.slice(0, 5);
+      
+      const backlinksResults = await Promise.all(
+        topCompetitors.map(async (competitor) => {
+          try {
+            const { backlinks } = await dataForSEO.getCompetitorBacklinks(competitor.domain, 100);
+            return { domain: competitor.domain, backlinks, error: null };
+          } catch (error) {
+            console.warn(`[Job] Failed to fetch backlinks for ${competitor.domain}:`, error);
+            return { domain: competitor.domain, backlinks: [], error };
+          }
+        })
+      );
+
+      for (const { domain, backlinks } of backlinksResults) {
+        for (const backlink of backlinks) {
+          await storage.upsertCompetitorBacklink(
+            projectId,
+            domain,
+            backlink.sourceUrl,
+            backlink.targetUrl,
+            {
+              sourceDomain: backlink.sourceDomain,
+              anchorText: backlink.anchorText,
+              linkType: backlink.linkType,
+              domainAuthority: backlink.domainAuthority,
+              pageAuthority: backlink.pageAuthority,
+            }
+          );
+          totalBacklinksIngested++;
+        }
+      }
+
+      const allSourceDomains = new Set<string>();
+      for (const { backlinks } of backlinksResults) {
+        for (const b of backlinks) {
+          allSourceDomains.add(b.sourceDomain.toLowerCase());
+        }
+      }
+
+      if (allSourceDomains.size > 0) {
+        console.log(`[Job] Fetching spam scores for ${allSourceDomains.size} unique source domains`);
+        const spamScoreMap = await dataForSEO.getBulkSpamScores(Array.from(allSourceDomains));
+        
+        for (const { domain } of backlinksResults) {
+          const existingBacklinks = await storage.getCompetitorBacklinks(projectId, domain);
+          for (const existing of existingBacklinks) {
+            const spamScore = spamScoreMap.get(existing.sourceDomain.toLowerCase());
+            if (spamScore !== undefined) {
+              await storage.upsertCompetitorBacklink(
+                projectId,
+                domain,
+                existing.sourceUrl,
+                existing.targetUrl,
+                { spamScore }
+              );
+            }
+          }
+        }
+      }
+
+      for (const { domain } of backlinksResults) {
+        const oppsUpdated = await storage.updateCompetitorBacklinkOpportunities(projectId, domain);
+        totalOpportunities += oppsUpdated;
+      }
     }
+
+    const resultMessage = includeBacklinks
+      ? `Analyzed ${metricsToSave.length} competitors (parallel). Backlinks: ${totalBacklinksIngested}, Opportunities: ${totalOpportunities}`
+      : `Analyzed ${metricsToSave.length} competitors (parallel)`;
+
+    console.log(`[Job] ${resultMessage}`);
 
     return {
       success: true,
-      message: `Analyzed ${metricsToSave.length} competitors`,
-      data: metricsToSave,
+      message: resultMessage,
+      data: {
+        competitorsAnalyzed: metricsToSave.length,
+        backlinksIngested: totalBacklinksIngested,
+        opportunitiesFound: totalOpportunities,
+        metrics: metricsToSave,
+      },
     };
   } catch (error) {
     return {
