@@ -224,7 +224,12 @@ export class CrawlSchedulerService {
 
         case "competitors":
           await storage.updateCrawlProgress(crawlResult.id, 0, "analyzing_competitors");
-          result = await runCompetitorAnalysis(schedule.projectId);
+          const competitorResult = await runCompetitorAnalysis(schedule.projectId, { includeBacklinks: true });
+          result = {
+            success: competitorResult.success,
+            message: competitorResult.message,
+            itemsProcessed: (competitorResult.data as any)?.competitorsAnalyzed || 0,
+          };
           break;
 
         case "pages_health":
@@ -249,8 +254,13 @@ export class CrawlSchedulerService {
           break;
 
         case "competitor_backlinks":
-          await storage.updateCrawlProgress(crawlResult.id, 0, "crawling_competitor_backlinks");
-          result = await this.runCompetitorBacklinksCrawl(schedule.projectId, crawlResult.id);
+          await storage.updateCrawlProgress(crawlResult.id, 0, "analyzing_competitors_with_backlinks");
+          const unifiedResult = await runCompetitorAnalysis(schedule.projectId, { includeBacklinks: true });
+          result = {
+            success: unifiedResult.success,
+            message: unifiedResult.message,
+            itemsProcessed: (unifiedResult.data as any)?.backlinksIngested || 0,
+          };
           break;
 
         default:
@@ -761,11 +771,11 @@ export class CrawlSchedulerService {
         projectId,
         type: "competitors",
         url: `https://${domain}/competitors/analysis`,
-        frequency: "weekly",
+        frequency: "twice_weekly",
         scheduledTime: "14:00",
         daysOfWeek: [3, 5],
         isActive: true,
-        config: { topN: 10 },
+        config: { topN: 10, includeBacklinks: true, includeSpamScores: true, includeOpportunities: true },
       },
       {
         projectId,
@@ -776,16 +786,6 @@ export class CrawlSchedulerService {
         daysOfWeek: [0],
         isActive: true,
         config: { checkLiveStatus: true },
-      },
-      {
-        projectId,
-        type: "competitor_backlinks",
-        url: `https://${domain}/competitor-backlinks/crawl`,
-        frequency: "biweekly",
-        scheduledTime: "12:00",
-        daysOfWeek: [1, 4],
-        isActive: true,
-        config: { limit: 100 },
       },
     ];
 
