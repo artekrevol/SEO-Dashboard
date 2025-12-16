@@ -134,6 +134,7 @@ export interface IStorage {
 
   getCompetitorMetrics(projectId: string): Promise<CompetitorMetrics[]>;
   createCompetitorMetrics(metrics: InsertCompetitorMetrics): Promise<CompetitorMetrics>;
+  updateCompetitorMetrics(projectId: string, competitorDomain: string, updates: Partial<InsertCompetitorMetrics>): Promise<CompetitorMetrics | undefined>;
 
   getLocations(): Promise<Location[]>;
   getPriorityRules(): Promise<SettingsPriorityRules[]>;
@@ -809,6 +810,20 @@ export class DatabaseStorage implements IStorage {
   async createCompetitorMetrics(insertMetrics: InsertCompetitorMetrics): Promise<CompetitorMetrics> {
     const [metrics] = await db.insert(competitorMetrics).values(insertMetrics).returning();
     return metrics;
+  }
+
+  async updateCompetitorMetrics(projectId: string, competitorDomain: string, updates: Partial<InsertCompetitorMetrics>): Promise<CompetitorMetrics | undefined> {
+    const [metric] = await db
+      .update(competitorMetrics)
+      .set({ ...updates })
+      .where(
+        and(
+          eq(competitorMetrics.projectId, projectId),
+          eq(competitorMetrics.competitorDomain, competitorDomain)
+        )
+      )
+      .returning();
+    return metric || undefined;
   }
 
   async getLocations(): Promise<Location[]> {

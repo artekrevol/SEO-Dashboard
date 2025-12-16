@@ -1017,7 +1017,7 @@ export class DataForSEOService {
     return results;
   }
 
-  async getCompetitors(domain: string, locationCode: number = 2840): Promise<Array<{
+  async getCompetitors(domain: string, locationCode: number = 2840, limit: number = 100): Promise<Array<{
     domain: string;
     avgPosition: number;
     visibility: number;
@@ -1038,7 +1038,7 @@ export class DataForSEOService {
       target: domain,
       location_code: locationCode,
       language_code: "en",
-      limit: 10,
+      limit: Math.min(limit, 1000),
     }]);
 
     const competitors: Array<{
