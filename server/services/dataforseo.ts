@@ -1087,6 +1087,70 @@ export class DataForSEOService {
     };
   }
 
+  async getBulkDomainBacklinks(domains: string[]): Promise<Map<string, BacklinkData>> {
+    const results = new Map<string, BacklinkData>();
+    
+    if (domains.length === 0) {
+      return results;
+    }
+
+    console.log(`[DataForSEO] Fetching bulk backlink data for ${domains.length} domains in parallel`);
+
+    const CONCURRENT_LIMIT = 5;
+    
+    for (let i = 0; i < domains.length; i += CONCURRENT_LIMIT) {
+      const batch = domains.slice(i, Math.min(i + CONCURRENT_LIMIT, domains.length));
+      
+      const promises = batch.map(async (domain) => {
+        try {
+          const response = await this.makeRequest<{
+            tasks: Array<{
+              status_code: number;
+              data?: { target: string };
+              result: Array<{
+                total_count: number;
+                referring_domains: number;
+                rank: number;
+              }>;
+            }>;
+          }>("/backlinks/summary/live", "POST", [{
+            target: domain,
+            internal_list_limit: 0,
+          }]);
+
+          const task = response.tasks?.[0];
+          if (task?.status_code === 20000 && task.result?.[0]) {
+            const result = task.result[0];
+            return {
+              domain,
+              data: {
+                totalBacklinks: result.total_count || 0,
+                referringDomains: result.referring_domains || 0,
+                domainAuthority: result.rank || 0,
+              }
+            };
+          }
+          return { domain, data: { totalBacklinks: 0, referringDomains: 0, domainAuthority: 0 } };
+        } catch (error) {
+          console.warn(`[DataForSEO] Failed to fetch backlinks for ${domain}:`, error);
+          return { domain, data: { totalBacklinks: 0, referringDomains: 0, domainAuthority: 0 } };
+        }
+      });
+
+      const batchResults = await Promise.all(promises);
+      for (const { domain, data } of batchResults) {
+        results.set(domain, data);
+      }
+
+      if (i + CONCURRENT_LIMIT < domains.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+    }
+
+    console.log(`[DataForSEO] Retrieved backlink data for ${results.size}/${domains.length} domains`);
+    return results;
+  }
+
   async getBulkPagesBacklinks(urls: string[]): Promise<Map<string, {
     backlinksCount: number;
     referringDomains: number;
