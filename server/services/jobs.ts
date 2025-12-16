@@ -415,57 +415,45 @@ export async function runCompetitorAnalysis(projectId: string, options?: { inclu
       }
     }
 
-    // Keyword similarity analysis - update shared keywords data
+    // Keyword similarity analysis - update shared keywords data using actual competitor ranking data
     console.log(`[Job] Running keyword similarity analysis for ${competitorDomains.length} competitors`);
     let keywordsAnalyzed = 0;
     let sharedKeywordsFound = 0;
     
     try {
-      const projectKeywords = await storage.getKeywords(projectId);
-      if (projectKeywords.length > 0) {
-        console.log(`[Job] Analyzing ${projectKeywords.length} project keywords against competitors`);
+      // Get all competitor keyword metrics from the database - this contains actual competitor ranking data
+      const competitorKeywordData = await storage.getKeywordCompetitorMetricsForProject(projectId);
+      
+      if (competitorKeywordData.length > 0) {
+        console.log(`[Job] Found ${competitorKeywordData.length} competitor keyword entries to analyze`);
         
-        // Get all keyword IDs for the project
-        const keywordIds = projectKeywords.map(k => k.id);
+        // Group keyword metrics by competitor domain to get accurate shared keyword counts
+        const competitorSharedKeywords = new Map<string, Set<number>>();
         
-        // Fetch latest rankings data for all keywords
-        const keywordRankingsMap = new Map<number, { position: number; url: string }[]>();
-        for (const keywordId of keywordIds) {
-          const rankings = await storage.getRankingsHistory(keywordId, 1);
-          if (rankings.length > 0) {
-            const position = rankings[0].position ?? 0;
-            keywordRankingsMap.set(keywordId, [{ position, url: rankings[0].url || '' }]);
+        for (const entry of competitorKeywordData) {
+          const domain = entry.competitorDomain.toLowerCase();
+          if (!competitorSharedKeywords.has(domain)) {
+            competitorSharedKeywords.set(domain, new Set());
+          }
+          // Only count if competitor has a valid ranking position (1-100)
+          if (entry.latestPosition && entry.latestPosition > 0 && entry.latestPosition <= 100) {
+            competitorSharedKeywords.get(domain)!.add(entry.keywordId);
           }
         }
         
-        // For each competitor, check which keywords they might rank for
-        // by looking at keywords where our position is worse (higher number = worse)
-        // and the competitor has overlapping visibility
+        // Update competitor metrics with accurate shared keyword counts from actual data
         for (const competitor of competitors) {
           const competitorDomain = competitor.domain.toLowerCase();
-          let sharedCount = 0;
+          const sharedKeywordSet = competitorSharedKeywords.get(competitorDomain);
+          const actualSharedCount = sharedKeywordSet ? sharedKeywordSet.size : 0;
           
-          // Count keywords where competitor might be competing
-          // A keyword is "shared" if our ranking is not #1 and competitor has keyword overlap
-          for (const keyword of projectKeywords) {
-            const rankings = keywordRankingsMap.get(keyword.id);
-            if (rankings && rankings.length > 0) {
-              const ourPosition = rankings[0].position;
-              // If we're not ranking well (position > 3) or not ranking at all (0),
-              // this is a potential competitive keyword
-              if (ourPosition === 0 || ourPosition > 3) {
-                sharedCount++;
-              }
-            }
-          }
-          
-          // Update the competitor metrics with more accurate shared keyword count
-          // The DataForSEO API provides a general count, but we refine it with local keyword data
-          const existingMetric = metricsToSave.find(m => m.competitorDomain === competitor.domain);
-          if (existingMetric && sharedCount > 0) {
-            // Use the larger of the two values - API data or our analysis
-            const refinedSharedKeywords = Math.max(existingMetric.sharedKeywords || 0, sharedCount);
-            if (refinedSharedKeywords !== existingMetric.sharedKeywords) {
+          const existingMetric = metricsToSave.find(m => m.competitorDomain.toLowerCase() === competitorDomain);
+          if (existingMetric) {
+            // Use the larger of: API-reported count, actual tracked count from our data
+            const refinedSharedKeywords = Math.max(existingMetric.sharedKeywords || 0, actualSharedCount);
+            
+            // Only update if we have better data
+            if (actualSharedCount > 0 && refinedSharedKeywords !== existingMetric.sharedKeywords) {
               await storage.updateCompetitorMetrics(projectId, competitor.domain, {
                 sharedKeywords: refinedSharedKeywords,
               });
@@ -477,6 +465,8 @@ export async function runCompetitorAnalysis(projectId: string, options?: { inclu
         }
         
         console.log(`[Job] Keyword similarity analysis complete: ${keywordsAnalyzed} competitors analyzed, ${sharedKeywordsFound} shared keyword entries updated`);
+      } else {
+        console.log(`[Job] No competitor keyword data found in database, skipping similarity analysis`);
       }
     } catch (kwError) {
       console.warn(`[Job] Keyword similarity analysis failed (non-fatal):`, kwError);

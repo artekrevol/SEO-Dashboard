@@ -813,15 +813,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCompetitorMetrics(projectId: string, competitorDomain: string, updates: Partial<InsertCompetitorMetrics>): Promise<CompetitorMetrics | undefined> {
-    const [metric] = await db
-      .update(competitorMetrics)
-      .set({ ...updates })
+    // First find the latest entry for this competitor to avoid clobbering historical data
+    const [latestEntry] = await db
+      .select()
+      .from(competitorMetrics)
       .where(
         and(
           eq(competitorMetrics.projectId, projectId),
           eq(competitorMetrics.competitorDomain, competitorDomain)
         )
       )
+      .orderBy(desc(competitorMetrics.date))
+      .limit(1);
+    
+    if (!latestEntry) {
+      return undefined;
+    }
+    
+    // Update only the latest entry
+    const [metric] = await db
+      .update(competitorMetrics)
+      .set({ ...updates })
+      .where(eq(competitorMetrics.id, latestEntry.id))
       .returning();
     return metric || undefined;
   }
