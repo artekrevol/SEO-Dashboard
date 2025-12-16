@@ -457,8 +457,13 @@ export class RankingsSyncService {
         });
       }
 
+      // Consider successful if we synced keywords, even with some minor errors
+      // Only fail if no keywords were updated or errors exceed 10% of total
+      const errorThreshold = Math.max(1, Math.ceil(totalKeywords * 0.1));
+      const isSuccess = keywordsUpdated > 0 && errors.length < errorThreshold;
+      
       return {
-        success: errors.length === 0,
+        success: isSuccess,
         message: `Synced ${keywordsUpdated} keywords with ${competitorsFound} competitor entries`,
         keywordsUpdated,
         competitorsFound,
@@ -732,8 +737,13 @@ export class RankingsSyncService {
 
       console.log(`[PageMetrics] Updated ${pagesUpdated}/${urls.length} pages`);
 
+      // Consider successful if we synced pages, even with some minor errors
+      // Only fail if no pages were updated or errors exceed 10% of total
+      const errorThreshold = Math.max(1, Math.ceil(urls.length * 0.1));
+      const isSuccess = pagesUpdated > 0 && errors.length < errorThreshold;
+
       return {
-        success: errors.length === 0,
+        success: isSuccess,
         message: `Synced ${pagesUpdated} pages with backlink data`,
         pagesUpdated,
         errors,
