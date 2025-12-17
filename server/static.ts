@@ -5,9 +5,17 @@ import path from "path";
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
   if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+    console.error(
+      `WARNING: Could not find the build directory: ${distPath}, make sure to build the client first`,
     );
+    // In production, serve a basic message instead of crashing
+    app.use("*", (_req, res) => {
+      res.status(500).json({ 
+        error: "Application not built properly",
+        message: "Static files not found. Please ensure the build process completed successfully."
+      });
+    });
+    return;
   }
 
   app.use(express.static(distPath));

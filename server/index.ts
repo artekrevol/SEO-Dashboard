@@ -60,41 +60,59 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check endpoint - must be registered early
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 (async () => {
-  await seedProductionDatabase();
-  await registerRoutes(httpServer, app);
+  try {
+    await seedProductionDatabase();
+    await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
-  });
+      // Log the error but don't throw - throwing after sending response can crash the server
+      console.error("Express error:", err);
+      res.status(status).json({ message });
+    });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
+    // importantly only setup vite in development and after
+    // setting up all the other routes so the catch-all route
+    // doesn't interfere with the other routes
+    if (process.env.NODE_ENV === "production") {
+      serveStatic(app);
+    } else {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+    }
+
+    // ALWAYS serve the app on the port specified in the environment variable PORT
+    // Railway automatically sets PORT - use that value
+    // Default to 5000 if not specified (for local development)
+    const port = parseInt(process.env.PORT || "5000", 10);
+    
+    httpServer.listen(
+      {
+        port,
+        host: "0.0.0.0",
+        reusePort: true,
+      },
+      () => {
+        log(`serving on port ${port}`);
+        log(`Health check available at http://0.0.0.0:${port}/health`);
+      },
+    ).on("error", (err: NodeJS.ErrnoException) => {
+      console.error("Failed to start server:", err);
+      if (err.code === "EADDRINUSE") {
+        console.error(`Port ${port} is already in use`);
+      }
+      process.exit(1);
+    });
+  } catch (error) {
+    console.error("Failed to initialize server:", error);
+    process.exit(1);
   }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
 })();
