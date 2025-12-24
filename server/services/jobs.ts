@@ -684,6 +684,36 @@ export async function runOnPageSync(projectId: string, taskId: string): Promise<
   }
 }
 
+export async function runDataCleanup(retentionDays: number = 90): Promise<JobResult> {
+  try {
+    console.log(`[DataCleanup] Starting cleanup for data older than ${retentionDays} days`);
+    
+    const result = await storage.cleanupOldData(retentionDays);
+    
+    return {
+      success: true,
+      message: `Data cleanup completed. Removed records older than ${retentionDays} days.`,
+      data: result,
+    };
+  } catch (error) {
+    console.error("[DataCleanup] Failed:", error);
+    return { success: false, message: `Data cleanup failed: ${error}` };
+  }
+}
+
+export async function getDataRetentionStats(): Promise<JobResult> {
+  try {
+    const stats = await storage.getDataRetentionStats();
+    return {
+      success: true,
+      message: "Data retention stats retrieved",
+      data: stats,
+    };
+  } catch (error) {
+    return { success: false, message: `Failed to get retention stats: ${error}` };
+  }
+}
+
 export async function runFullProjectSync(projectId: string, options?: {
   keywordLimit?: number;
   pageLimit?: number;
@@ -934,6 +964,25 @@ export function startScheduledJobs(): void {
   );
   cronJobs.set("daily-impact-tracking", impactTrackingJob);
   console.log("[Jobs] Scheduled daily-impact-tracking to run at 6 PM CST");
+
+  // Weekly data cleanup job - runs every Sunday at 2 AM CST
+  const dataCleanupJob = cron.schedule(
+    "0 2 * * 0",
+    async () => {
+      console.log("[Job] Running weekly-data-cleanup (Sunday 2 AM CST)...");
+      try {
+        const result = await runDataCleanup(90); // Keep 90 days (3 months) of data
+        console.log("[Job] weekly-data-cleanup completed:", result.message);
+      } catch (error) {
+        console.error("[Job] weekly-data-cleanup failed:", error);
+      }
+    },
+    {
+      timezone: "America/Chicago",
+    }
+  );
+  cronJobs.set("weekly-data-cleanup", dataCleanupJob);
+  console.log("[Jobs] Scheduled weekly-data-cleanup to run Sunday at 2 AM CST");
 
   console.log("[Jobs] Scheduled jobs started");
 }

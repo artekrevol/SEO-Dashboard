@@ -357,9 +357,9 @@ export class RankingsSyncService {
                       
                       // Calculate opportunity score
                       const searchVolume = kw.searchVolume || 0;
-                      const difficulty = kw.difficulty || 50;
+                      const difficulty = typeof kw.difficulty === 'string' ? parseInt(kw.difficulty, 10) : (kw.difficulty || 50);
                       const intent = kw.intentHint || "informational";
-                      const opportunityScore = this.dataForSEO.calculateOpportunityScore(position, searchVolume, difficulty, intent);
+                      const opportunityScore = this.dataForSEO?.calculateOpportunityScore(position, searchVolume, difficulty, intent) || 0;
                       
                       await storage.upsertKeywordMetrics(kw.id, today, {
                         position,

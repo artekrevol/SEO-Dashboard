@@ -51,7 +51,9 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Version Control / Release Notes**: System for tracking app releases and publishing changelog entries. Supports version numbers, release types (feature, bugfix, improvement, breaking, security), and detailed release notes. Accessible via System > Version Control in sidebar.
 
 ### System Design Choices
-- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, and `app_versions`.
+- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, and `app_versions`.
+- **Historical Data Tracking**: All crawl data uses date-based rows for trend analysis. Tables with historical tracking: `rankings_history` (keyword positions), `keywordMetrics` (opportunity scores), `competitor_metrics` (competitor pressure), `backlinks_history` (DA/PA/spam score changes), `tech_crawls` (site audit snapshots).
+- **Data Retention Policy**: Automated weekly cleanup (Sundays 2 AM CST) removes records older than 90 days from historical tables to manage database size while preserving 3 months of trend data.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
 
 ## External Dependencies

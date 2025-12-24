@@ -429,6 +429,42 @@ export const insertBacklinkSchema = createInsertSchema(backlinks).omit({
 export type InsertBacklink = z.infer<typeof insertBacklinkSchema>;
 export type Backlink = typeof backlinks.$inferSelect;
 
+// Backlinks History - Daily snapshots of backlink metrics for trend tracking
+export const backlinksHistory = pgTable("backlinks_history", {
+  id: serial("id").primaryKey(),
+  backlinkId: integer("backlink_id").notNull().references(() => backlinks.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  isLive: boolean("is_live").default(true).notNull(),
+  domainAuthority: integer("domain_authority"),
+  pageAuthority: integer("page_authority"),
+  spamScore: integer("spam_score"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  backlinkIdIdx: index("backlinks_history_backlink_id_idx").on(table.backlinkId),
+  projectIdIdx: index("backlinks_history_project_id_idx").on(table.projectId),
+  dateIdx: index("backlinks_history_date_idx").on(table.date),
+}));
+
+export const backlinksHistoryRelations = relations(backlinksHistory, ({ one }) => ({
+  backlink: one(backlinks, {
+    fields: [backlinksHistory.backlinkId],
+    references: [backlinks.id],
+  }),
+  project: one(projects, {
+    fields: [backlinksHistory.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertBacklinksHistorySchema = createInsertSchema(backlinksHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBacklinksHistory = z.infer<typeof insertBacklinksHistorySchema>;
+export type BacklinksHistory = typeof backlinksHistory.$inferSelect;
+
 export const competitorBacklinks = pgTable("competitor_backlinks", {
   id: serial("id").primaryKey(),
   projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),

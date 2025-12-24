@@ -33,6 +33,8 @@ import {
   type InsertImportLog,
   type Backlink,
   type InsertBacklink,
+  type BacklinksHistory,
+  type InsertBacklinksHistory,
   type CompetitorBacklink,
   type InsertCompetitorBacklink,
   type TechCrawl,
@@ -75,6 +77,7 @@ import {
   settingsFallingStars,
   importLogs,
   backlinks,
+  backlinksHistory,
   competitorBacklinks,
   techCrawls,
   pageAudits,
@@ -1820,6 +1823,82 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Backlinks History Methods
+  async upsertBacklinksHistory(backlinkId: number, projectId: string, data: {
+    isLive: boolean;
+    domainAuthority: number | null;
+    pageAuthority: number | null;
+    spamScore: number | null;
+  }): Promise<void> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const existing = await db
+      .select()
+      .from(backlinksHistory)
+      .where(
+        and(
+          eq(backlinksHistory.backlinkId, backlinkId),
+          eq(backlinksHistory.date, today)
+        )
+      );
+    
+    if (existing.length > 0) {
+      await db
+        .update(backlinksHistory)
+        .set({
+          isLive: data.isLive,
+          domainAuthority: data.domainAuthority,
+          pageAuthority: data.pageAuthority,
+          spamScore: data.spamScore,
+        })
+        .where(eq(backlinksHistory.id, existing[0].id));
+    } else {
+      await db.insert(backlinksHistory).values({
+        backlinkId,
+        projectId,
+        date: today,
+        isLive: data.isLive,
+        domainAuthority: data.domainAuthority,
+        pageAuthority: data.pageAuthority,
+        spamScore: data.spamScore,
+      });
+    }
+  }
+
+  async getBacklinksHistory(backlinkId: number, days: number = 90): Promise<BacklinksHistory[]> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    
+    return await db
+      .select()
+      .from(backlinksHistory)
+      .where(
+        and(
+          eq(backlinksHistory.backlinkId, backlinkId),
+          gte(backlinksHistory.date, cutoffStr)
+        )
+      )
+      .orderBy(backlinksHistory.date);
+  }
+
+  async getProjectBacklinksHistory(projectId: string, days: number = 90): Promise<BacklinksHistory[]> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    
+    return await db
+      .select()
+      .from(backlinksHistory)
+      .where(
+        and(
+          eq(backlinksHistory.projectId, projectId),
+          gte(backlinksHistory.date, cutoffStr)
+        )
+      )
+      .orderBy(backlinksHistory.date);
+  }
+
   async getCompetitorBacklinks(projectId: string, competitorDomain?: string): Promise<CompetitorBacklink[]> {
     let conditions = [eq(competitorBacklinks.projectId, projectId)];
     if (competitorDomain) {
@@ -2834,14 +2913,6 @@ export class DatabaseStorage implements IStorage {
     return updated || undefined;
   }
 
-  async getCrawlResult(id: number): Promise<CrawlResult | undefined> {
-    const [result] = await db
-      .select()
-      .from(crawlResults)
-      .where(eq(crawlResults.id, id));
-    return result || undefined;
-  }
-
   // ============================================
   // SCHEDULED REPORTS METHODS
   // ============================================
@@ -3156,6 +3227,11 @@ export class DatabaseStorage implements IStorage {
       );
   }
 
+  async deleteKeywordPageConflictsByProject(projectId: string): Promise<void> {
+    await db.delete(keywordPageConflicts)
+      .where(eq(keywordPageConflicts.projectId, projectId));
+  }
+
   async getConflictsSummary(projectId: string): Promise<{
     total: number;
     active: number;
@@ -3354,6 +3430,98 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAppVersion(id: number): Promise<void> {
     await db.delete(appVersions).where(eq(appVersions.id, id));
+  }
+
+  // Data cleanup functions - remove data older than specified retention period
+  async cleanupOldData(retentionDays: number = 90): Promise<{
+    rankingsHistoryDeleted: number;
+    keywordMetricsDeleted: number;
+    competitorMetricsDeleted: number;
+    seoHealthSnapshotsDeleted: number;
+    backlinksHistoryDeleted: number;
+    taskLogsDeleted: number;
+  }> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
+    
+    console.log(`[Storage] Cleaning up data older than ${retentionDays} days (before ${cutoffDateStr})`);
+    
+    // Delete old rankings history
+    await db.delete(rankingsHistory)
+      .where(lt(rankingsHistory.date, cutoffDateStr));
+    
+    // Delete old keyword metrics
+    await db.delete(keywordMetrics)
+      .where(lt(keywordMetrics.date, cutoffDateStr));
+    
+    // Delete old competitor metrics
+    await db.delete(competitorMetrics)
+      .where(lt(competitorMetrics.date, cutoffDateStr));
+    
+    // Delete old SEO health snapshots
+    await db.delete(seoHealthSnapshots)
+      .where(lt(seoHealthSnapshots.date, cutoffDateStr));
+    
+    // Delete old backlinks history
+    await db.delete(backlinksHistory)
+      .where(lt(backlinksHistory.date, cutoffDateStr));
+    
+    // Delete old task execution logs (use timestamp comparison)
+    await db.delete(taskExecutionLogs)
+      .where(lt(taskExecutionLogs.createdAt, cutoffDate));
+    
+    const summary = {
+      rankingsHistoryDeleted: 0, // Drizzle doesn't return affected row count directly
+      keywordMetricsDeleted: 0,
+      competitorMetricsDeleted: 0,
+      seoHealthSnapshotsDeleted: 0,
+      backlinksHistoryDeleted: 0,
+      taskLogsDeleted: 0,
+    };
+    
+    console.log(`[Storage] Data cleanup completed for records before ${cutoffDateStr}`);
+    return summary;
+  }
+
+  async getDataRetentionStats(): Promise<{
+    rankingsHistoryCount: number;
+    keywordMetricsCount: number;
+    competitorMetricsCount: number;
+    seoHealthSnapshotsCount: number;
+    oldestRankingDate: string | null;
+    oldestKeywordMetricDate: string | null;
+    oldestCompetitorMetricDate: string | null;
+  }> {
+    const [rankingsCount] = await db.select({ count: sql<number>`count(*)` }).from(rankingsHistory);
+    const [keywordMetricsCount] = await db.select({ count: sql<number>`count(*)` }).from(keywordMetrics);
+    const [competitorMetricsCount] = await db.select({ count: sql<number>`count(*)` }).from(competitorMetrics);
+    const [snapshotsCount] = await db.select({ count: sql<number>`count(*)` }).from(seoHealthSnapshots);
+    
+    const [oldestRanking] = await db.select({ date: rankingsHistory.date })
+      .from(rankingsHistory)
+      .orderBy(rankingsHistory.date)
+      .limit(1);
+    
+    const [oldestKeywordMetric] = await db.select({ date: keywordMetrics.date })
+      .from(keywordMetrics)
+      .orderBy(keywordMetrics.date)
+      .limit(1);
+    
+    const [oldestCompetitorMetric] = await db.select({ date: competitorMetrics.date })
+      .from(competitorMetrics)
+      .orderBy(competitorMetrics.date)
+      .limit(1);
+    
+    return {
+      rankingsHistoryCount: Number(rankingsCount?.count || 0),
+      keywordMetricsCount: Number(keywordMetricsCount?.count || 0),
+      competitorMetricsCount: Number(competitorMetricsCount?.count || 0),
+      seoHealthSnapshotsCount: Number(snapshotsCount?.count || 0),
+      oldestRankingDate: oldestRanking?.date || null,
+      oldestKeywordMetricDate: oldestKeywordMetric?.date || null,
+      oldestCompetitorMetricDate: oldestCompetitorMetric?.date || null,
+    };
   }
 }
 
