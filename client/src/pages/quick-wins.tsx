@@ -11,6 +11,7 @@ interface QuickWinKeyword {
   keyword: string;
   cluster: string | null;
   location: string;
+  locationId: string;
   currentPosition: number;
   searchVolume: number;
   difficulty: number;
@@ -96,8 +97,8 @@ export function QuickWinsPage({ projectId }: { projectId: string }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {quickWins.map((win) => (
-                    <TableRow key={win.keywordId} data-testid={`row-quick-win-${win.keywordId}`}>
+                  {quickWins.map((win, index) => (
+                    <TableRow key={`${win.keywordId}-${win.locationId || index}`} data-testid={`row-quick-win-${win.keywordId}`}>
                       <TableCell className="font-medium" data-testid={`text-keyword-${win.keywordId}`}>
                         {win.keyword}
                       </TableCell>

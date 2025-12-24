@@ -11,6 +11,7 @@ interface FallingStarKeyword {
   keyword: string;
   cluster: string | null;
   location: string;
+  locationId: string;
   currentPosition: number;
   positionDelta: number;
   searchVolume: number;
@@ -102,8 +103,8 @@ export function FallingStarsPage({ projectId }: { projectId: string }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {fallingStars.map((star) => (
-                    <TableRow key={star.keywordId} data-testid={`row-falling-star-${star.keywordId}`}>
+                  {fallingStars.map((star, index) => (
+                    <TableRow key={`${star.keywordId}-${star.locationId || index}`} data-testid={`row-falling-star-${star.keywordId}`}>
                       <TableCell className="font-medium" data-testid={`text-keyword-${star.keywordId}`}>
                         {star.keyword}
                       </TableCell>
