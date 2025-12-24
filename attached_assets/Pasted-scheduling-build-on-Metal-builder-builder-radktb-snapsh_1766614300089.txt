@@ -1,0 +1,125 @@
+scheduling build on Metal builder "builder-radktb"
+[snapshot] received sha256:d1bd737811d148e2e444fc26601bcceed943026106acb573b1baf7a87c125033 md5:206fb9213cf0e9f1f6cbe2f1621a4b76
+receiving snapshot81.6 MB3.5s
+found 'nixpacks.toml' at 'nixpacks.toml'
+found 'railway.toml' at 'railway.toml'
+analyzing snapshot81.6 MB502ms
+uploading snapshot81.6 MB2.1s
+scheduling build on Metal builder "builder-radktb"
+fetched snapshot sha256:d1bd737811d148e2e444fc26601bcceed943026106acb573b1baf7a87c125033 (86 MB bytes)
+fetching snapshot81.6 MB1.8s
+unpacking archive91.6 MB955ms
+using build driver nixpacks-v1.41.0
+ 
+╔══════════════════════════════ Nixpacks v1.41.0 ══════════════════════════════╗
+║ setup      │ nodejs_18, npm-9_x, curl                                        ║
+║──────────────────────────────────────────────────────────────────────────────║
+║ caddy      │ pkgs: caddy                                                     ║
+║            │ cmds: caddy fmt --overwrite /assets/Caddyfile                   ║
+║──────────────────────────────────────────────────────────────────────────────║
+║ install    │ npm ci                                                          ║
+║──────────────────────────────────────────────────────────────────────────────║
+║ build      │ npm run build                                                   ║
+║──────────────────────────────────────────────────────────────────────────────║
+║ start      │ exec caddy run --config /assets/Caddyfile --adapter caddyfile   ║
+║            │ 2>&1                                                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+ 
+ 
+Saved output to:
+  snapshot-target-unpack
+internal
+load build definition from Dockerfile
+0ms
+internal
+load metadata for ghcr.io/railwayapp/nixpacks:ubuntu-1745885067
+296ms
+internal
+load .dockerignore
+0ms
+SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ARG "DATAFORSEO_API_PASSWORD") (line 13)(https://docs.docker.com/go/dockerfile/rule/secrets-used-in-arg-or-env/)
+ details: Sensitive data should not be used in the ARG or ENV commands
+SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ARG "GOOGLE_CLIENT_SECRET") (line 13)(https://docs.docker.com/go/dockerfile/rule/secrets-used-in-arg-or-env/)
+ details: Sensitive data should not be used in the ARG or ENV commands
+SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ENV "DATAFORSEO_API_PASSWORD") (line 14)(https://docs.docker.com/go/dockerfile/rule/secrets-used-in-arg-or-env/)
+ details: Sensitive data should not be used in the ARG or ENV commands
+SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ENV "GOOGLE_CLIENT_SECRET") (line 14)(https://docs.docker.com/go/dockerfile/rule/secrets-used-in-arg-or-env/)
+ details: Sensitive data should not be used in the ARG or ENV commands
+UndefinedVar: Usage of undefined variable '$NIXPACKS_PATH' (line 27)(https://docs.docker.com/go/dockerfile/rule/undefined-var/)
+ details: Variables should be defined before their use
+stage-0
+FROM ghcr.io/railwayapp/nixpacks:ubuntu-1745885067@sha256:d45c89d80e13d7ad0fd555b5130f22a866d9dd10e861f589932303ef2314c7de
+15ms
+internal
+load build context
+0ms
+stage-0
+RUN nix-env -if .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix && nix-collect-garbage -d cached
+0ms
+stage-0
+COPY .nixpacks/assets /assets/ cached
+0ms
+stage-0
+RUN nix-env -if .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix && nix-collect-garbage -d cached
+0ms
+stage-0
+COPY .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix .nixpacks/nixpkgs-ba913eda2df8eb72147259189d55932012df6301.nix cached
+0ms
+stage-0
+WORKDIR /app/ cached
+0ms
+stage-0
+COPY .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix .nixpacks/nixpkgs-ffeebf0acf3ae8b29f8c7049cd911b9636efd7e7.nix cached
+0ms
+stage-0
+COPY . /app/.
+2s
+stage-0
+RUN  caddy fmt --overwrite /assets/Caddyfile
+486ms
+stage-0
+COPY . /app/.
+384ms
+stage-0
+RUN npm ci
+8s
+Run `npm audit` for details.
+stage-0
+COPY . /app/.
+588ms
+stage-0
+RUN npm run build
+12s
+⚡ Done in 290ms
+stage-0
+RUN printf '\nPATH=/app/node_modules/.bin:$PATH' >> /root/.profile
+290ms
+stage-0
+COPY . /app
+508ms
+exporting to docker image format
+7s
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6NWE4NGFkMjU0NWYwYzk3ZGU1MTExYjgxNjRkMDEyZTJkNTgwZmZlODcyZDVkMDcwZjAwNzgwOTI0YTFjZDkxMSIsInNpemUiOjM3MTAsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNS0xMi0yNFQyMjowOToxNFoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+containerimage.config.digest: sha256:807a38a010651a4c42a3331bdd6448fa95cd0ddf265b10335db681cbaaf5a2f0
+containerimage.digest: sha256:5a84ad2545f0c97de5111b8164d012e2d580ffe872d5d070f00780924a1cd911
+image push
+531.2 MB / 531.3 MB16.8s
+ 
+====================
+Starting Healthcheck
+====================
+Path: /health
+Retry window: 2m0s
+ 
+Attempt #1 failed with service unavailable. Continuing to retry for 1m59s
+Attempt #2 failed with service unavailable. Continuing to retry for 1m58s
+Attempt #3 failed with service unavailable. Continuing to retry for 1m56s
+Attempt #4 failed with service unavailable. Continuing to retry for 1m52s
+Attempt #5 failed with service unavailable. Continuing to retry for 1m44s
+Attempt #6 failed with service unavailable. Continuing to retry for 1m28s
+Attempt #7 failed with service unavailable. Continuing to retry for 58s
+Attempt #8 failed with service unavailable. Continuing to retry for 28s
+ 
+1/1 replicas never became healthy!
+
+Healthcheck failed!

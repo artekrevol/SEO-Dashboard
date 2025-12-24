@@ -1,8 +1,11 @@
-# Nixpacks configuration
-# We'll work with Caddy if it's detected, but ensure Node.js starts first
+# Nixpacks configuration for full-stack Node.js app
+# Express backend serves both API and static frontend
+
+# Force Node.js provider only - disable auto-detection of static site/Caddy
+providers = ["node"]
 
 [phases.setup]
-nixPkgs = ["nodejs_18", "npm-9_x", "curl"]
+nixPkgs = ["nodejs_18", "npm-9_x"]
 
 [phases.install]
 cmds = ["npm ci"]
@@ -10,6 +13,6 @@ cmds = ["npm ci"]
 [phases.build]
 cmds = ["npm run build"]
 
-[phases.start]
-cmd = "./start-server.sh"
+[start]
+cmd = "npm run start"
 
