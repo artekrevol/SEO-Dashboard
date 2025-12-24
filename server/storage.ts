@@ -2514,13 +2514,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPageAudit(audit: InsertPageAudit): Promise<PageAudit> {
-    const [result] = await db.insert(pageAudits).values(audit).returning();
+    const [result] = await db.insert(pageAudits).values(audit as typeof pageAudits.$inferInsert).returning();
     return result;
   }
 
   async createPageAudits(audits: InsertPageAudit[]): Promise<PageAudit[]> {
     if (audits.length === 0) return [];
-    return await db.insert(pageAudits).values(audits).returning();
+    return await db.insert(pageAudits).values(audits as (typeof pageAudits.$inferInsert)[]).returning();
   }
 
   async deletePageAuditsByTechCrawl(techCrawlId: number): Promise<void> {
@@ -2626,13 +2626,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPageIssue(issue: InsertPageIssue): Promise<PageIssue> {
-    const [result] = await db.insert(pageIssues).values(issue).returning();
+    const [result] = await db.insert(pageIssues).values(issue as typeof pageIssues.$inferInsert).returning();
     return result;
   }
 
   async createPageIssues(issues: InsertPageIssue[]): Promise<PageIssue[]> {
     if (issues.length === 0) return [];
-    return await db.insert(pageIssues).values(issues).returning();
+    return await db.insert(pageIssues).values(issues as (typeof pageIssues.$inferInsert)[]).returning();
   }
 
   async deletePageIssuesByAudit(pageAuditId: number): Promise<void> {
@@ -2953,7 +2953,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createScheduledReport(report: InsertScheduledReport): Promise<ScheduledReport> {
-    const [result] = await db.insert(scheduledReports).values(report).returning();
+    const [result] = await db.insert(scheduledReports).values(report as typeof scheduledReports.$inferInsert).returning();
     return result;
   }
 
@@ -2991,7 +2991,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createReportRun(run: InsertReportRun): Promise<ReportRun> {
-    const [result] = await db.insert(reportRuns).values(run).returning();
+    const [result] = await db.insert(reportRuns).values(run as typeof reportRuns.$inferInsert).returning();
     return result;
   }
 
@@ -3120,15 +3120,16 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     if (existing.length > 0) {
+      const updateData = { ...inspection, updatedAt: new Date() } as typeof gscUrlInspection.$inferInsert;
       const [updated] = await db
         .update(gscUrlInspection)
-        .set({ ...inspection, updatedAt: new Date() })
+        .set(updateData)
         .where(eq(gscUrlInspection.id, existing[0].id))
         .returning();
       return updated;
     }
 
-    const [result] = await db.insert(gscUrlInspection).values(inspection).returning();
+    const [result] = await db.insert(gscUrlInspection).values(inspection as typeof gscUrlInspection.$inferInsert).returning();
     return result;
   }
 

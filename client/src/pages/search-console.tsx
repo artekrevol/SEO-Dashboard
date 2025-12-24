@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -398,6 +399,37 @@ export default function SearchConsolePage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Token Expired Alert - Prominent Warning */}
+              {gscStatus.tokenExpired && (
+                <Alert variant="destructive" className="border-yellow-500/50 bg-yellow-500/10" data-testid="alert-token-expired">
+                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                  <AlertTitle className="text-yellow-700 dark:text-yellow-500">Authentication Required</AlertTitle>
+                  <AlertDescription className="text-yellow-600 dark:text-yellow-400">
+                    <p className="mb-3">
+                      Your Google Search Console access token has expired. This happens when the token hasn't been 
+                      refreshed for an extended period. To restore access, please reconnect your account.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Button 
+                        size="sm" 
+                        onClick={() => disconnectMutation.mutate()}
+                        disabled={disconnectMutation.isPending}
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                        data-testid="button-reconnect-gsc"
+                      >
+                        {disconnectMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Link2 className="w-4 h-4 mr-2" />
+                        )}
+                        Disconnect & Reconnect
+                      </Button>
+                      <span className="text-sm">Click to disconnect, then connect again with Google</span>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <p className="text-sm text-muted-foreground">
                 Last synced: {formatDate(gscStatus.lastSyncAt || null)}
               </p>
