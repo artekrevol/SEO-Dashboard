@@ -81,6 +81,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Get port early so we can start listening immediately
+// Railway sets PORT environment variable - use that directly
 const port = parseInt(process.env.PORT || "5000", 10);
 
 if (isNaN(port) || port <= 0 || port > 65535) {
