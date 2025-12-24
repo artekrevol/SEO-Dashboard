@@ -1,8 +1,8 @@
-# Nixpacks configuration to prevent Caddy auto-detection
-# and use standard Node.js startup
+# Nixpacks configuration
+# We'll work with Caddy if it's detected, but ensure Node.js starts first
 
 [phases.setup]
-nixPkgs = ["nodejs_18", "npm-9_x"]
+nixPkgs = ["nodejs_18", "npm-9_x", "curl"]
 
 [phases.install]
 cmds = ["npm ci"]
@@ -11,5 +11,5 @@ cmds = ["npm ci"]
 cmds = ["npm run build"]
 
 [phases.start]
-cmd = "npm run start"
+cmd = "./start-server.sh"
 

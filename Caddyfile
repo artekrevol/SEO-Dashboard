@@ -1,0 +1,27 @@
+# Caddyfile for Railway
+# Caddy listens on Railway's PORT and proxies to Node.js on internal port
+
+{
+	auto_https off
+}
+
+# Proxy all requests to Node.js server
+# Node.js runs on port 3000 internally, Caddy listens on Railway's PORT
+:{$PORT} {
+	reverse_proxy localhost:3000 {
+		health_uri /health
+		health_interval 5s
+		health_timeout 3s
+		health_status 200
+		
+		transport http {
+			keepalive off
+		}
+		
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+		header_up X-Forwarded-For {remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+

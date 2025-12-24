@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedProductionDatabase } from "./services/seed-production";
+import fs from "fs";
 
 const app = express();
 const httpServer = createServer(app);
@@ -81,8 +82,14 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Get port early so we can start listening immediately
-// Railway sets PORT environment variable - use that directly
-const port = parseInt(process.env.PORT || "5000", 10);
+// If Caddy is being used (Railway/nixpacks), use internal port 3000
+// Otherwise, use Railway's PORT directly
+const isCaddyMode = process.env.CADDYFILE !== undefined || 
+                     fs.existsSync("/assets/Caddyfile") ||
+                     fs.existsSync("Caddyfile");
+const port = isCaddyMode 
+  ? parseInt(process.env.INTERNAL_PORT || "3000", 10)
+  : parseInt(process.env.PORT || "5000", 10);
 
 if (isNaN(port) || port <= 0 || port > 65535) {
   console.error(`[Server] Invalid PORT value: ${process.env.PORT}. Must be a number between 1 and 65535.`);
