@@ -21,6 +21,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Automated Crawls**: Scheduled crawls for keyword rankings (3x weekly), page metrics (4x weekly), and competitor analysis (2x weekly), including weekly backlink verification.
 - **DataForSEO Dual-Method Strategy**: Uses Standard Method ($0.0006/task) for batch crawls (3.3x cost savings), Live Method ($0.002/task) for single keyword lookups.
 - **Stale Crawl Recovery**: Server startup automatically cancels orphaned crawls that were running before a restart, preventing stuck crawl states from blocking new crawls.
+- **Dual Data Sync for Rankings**: Rankings sync now updates both `rankings_history` (for position charts) AND `keywordMetrics` (for Keywords table, Quick Wins, Falling Stars). This ensures all views stay synchronized after crawls.
 - **Pages Health Scoring**: Calculates `techRiskScore`, `contentGapScore`, and `authorityGapScore` based on various SEO factors.
 - **Cannibalization Detection**: Algorithm to identify keywords ranking for multiple pages within the same project, with a resolution workflow.
 - **Email Scheduled Reports**: System for generating and emailing scheduled SEO reports with customizable content and recipients.

@@ -118,6 +118,7 @@ export interface IStorage {
   getKeywordMetrics(keywordId: number, limit?: number): Promise<KeywordMetrics[]>;
   getLatestKeywordMetrics(projectId: string): Promise<any[]>;
   createKeywordMetrics(metrics: InsertKeywordMetrics): Promise<KeywordMetrics>;
+  upsertKeywordMetrics(keywordId: number, date: string, data: Partial<InsertKeywordMetrics>): Promise<KeywordMetrics>;
 
   getPageMetrics(projectId: string, limit?: number): Promise<PageMetrics[]>;
   getLatestPageMetrics(projectId: string): Promise<PageMetrics[]>;
@@ -542,6 +543,48 @@ export class DatabaseStorage implements IStorage {
     };
     const result = await db.insert(keywordMetrics).values([dataToInsert]).returning();
     return result[0];
+  }
+
+  async upsertKeywordMetrics(keywordId: number, date: string, data: Partial<InsertKeywordMetrics>): Promise<KeywordMetrics> {
+    const [existing] = await db
+      .select()
+      .from(keywordMetrics)
+      .where(and(eq(keywordMetrics.keywordId, keywordId), eq(keywordMetrics.date, date)))
+      .limit(1);
+    
+    if (existing) {
+      const updateData: Record<string, unknown> = {};
+      if (data.position !== undefined) updateData.position = data.position;
+      if (data.previousPosition !== undefined) updateData.previousPosition = data.previousPosition;
+      if (data.positionDelta !== undefined) updateData.positionDelta = data.positionDelta;
+      if (data.searchVolume !== undefined) updateData.searchVolume = data.searchVolume;
+      if (data.difficulty !== undefined) updateData.difficulty = data.difficulty;
+      if (data.intent !== undefined) updateData.intent = data.intent;
+      if (data.serpFeatures !== undefined) updateData.serpFeatures = data.serpFeatures;
+      if (data.opportunityScore !== undefined) updateData.opportunityScore = data.opportunityScore;
+      
+      const [updated] = await db
+        .update(keywordMetrics)
+        .set(updateData)
+        .where(eq(keywordMetrics.id, existing.id))
+        .returning();
+      return updated || existing;
+    }
+    
+    const insertData: InsertKeywordMetrics = {
+      keywordId,
+      date,
+      position: data.position ?? null,
+      previousPosition: data.previousPosition ?? null,
+      positionDelta: data.positionDelta ?? null,
+      searchVolume: data.searchVolume ?? null,
+      difficulty: data.difficulty ?? null,
+      intent: data.intent ?? null,
+      serpFeatures: data.serpFeatures ?? null,
+      opportunityScore: data.opportunityScore ?? null,
+    };
+    
+    return await this.createKeywordMetrics(insertData);
   }
 
   async getPageMetrics(projectId: string, limit: number = 100): Promise<PageMetrics[]> {

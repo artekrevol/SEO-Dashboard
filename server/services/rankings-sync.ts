@@ -335,7 +335,7 @@ export class RankingsSyncService {
                   serpFeatures: features,
                 };
 
-                // Batch database writes
+                // Batch database writes - save to rankings_history
                 dbOperations.push(
                   storage.upsertRankingsHistory(kw.id, today, historyData).then(() => {
                     keywordsUpdated++;
@@ -344,6 +344,37 @@ export class RankingsSyncService {
                     console.error(`[RankingsSync] Failed to save ranking for keyword "${kw.keyword}":`, err);
                     errors.push(`Failed to save ranking for keyword ${kw.keyword}: ${err}`);
                   })
+                );
+
+                // CRITICAL FIX: Also update keywordMetrics for Keywords table, Quick Wins, Falling Stars
+                dbOperations.push(
+                  (async () => {
+                    try {
+                      // Get previous position for delta calculation
+                      const existingMetrics = await storage.getKeywordMetrics(kw.id, 1);
+                      const previousPosition = existingMetrics.length > 0 ? (existingMetrics[0].position || position) : position;
+                      const positionDelta = previousPosition - position; // Positive = improved, Negative = dropped
+                      
+                      // Calculate opportunity score
+                      const searchVolume = kw.searchVolume || 0;
+                      const difficulty = kw.difficulty || 50;
+                      const intent = kw.intentHint || "informational";
+                      const opportunityScore = this.dataForSEO.calculateOpportunityScore(position, searchVolume, difficulty, intent);
+                      
+                      await storage.upsertKeywordMetrics(kw.id, today, {
+                        position,
+                        previousPosition,
+                        positionDelta,
+                        searchVolume,
+                        difficulty: String(difficulty),
+                        intent,
+                        serpFeatures: features,
+                        opportunityScore: String(opportunityScore),
+                      });
+                    } catch (err) {
+                      console.error(`[RankingsSync] Failed to update keyword metrics for "${kw.keyword}":`, err);
+                    }
+                  })()
                 );
               } else {
                 console.warn(`[RankingsSync] Invalid position (${position}) for keyword "${kw.keyword}". Domain found but position invalid. Result:`, {
