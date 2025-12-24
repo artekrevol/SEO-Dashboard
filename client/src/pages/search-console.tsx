@@ -159,7 +159,16 @@ export default function SearchConsolePage() {
   const disconnectMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("DELETE", `/api/gsc/disconnect?projectId=${selectedProjectId}`);
-      return response.json();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Disconnect failed" }));
+        throw new Error(errorData.error || `Disconnect failed: ${response.status}`);
+      }
+      // Handle 204 No Content or empty responses
+      const contentLength = response.headers.get("content-length");
+      if (response.status === 204 || contentLength === "0" || !contentLength) {
+        return { success: true };
+      }
+      return response.json().catch(() => ({ success: true }));
     },
     onSuccess: () => {
       toast({ title: "Disconnected from Google Search Console" });
@@ -169,6 +178,20 @@ export default function SearchConsolePage() {
       toast({ title: "Failed to disconnect", description: String(error), variant: "destructive" });
     },
   });
+
+  // Reconnect handler: disconnect using mutation then open connect dialog
+  const handleReconnect = async () => {
+    // Store current site URL before disconnect clears state
+    const previousSiteUrl = gscStatus?.siteUrl || "";
+    try {
+      await disconnectMutation.mutateAsync();
+      // On success, prefill and open connect dialog
+      setSiteUrl(previousSiteUrl);
+      setIsConnectDialogOpen(true);
+    } catch {
+      // Error already handled by mutation's onError
+    }
+  };
 
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -407,25 +430,22 @@ export default function SearchConsolePage() {
                   <AlertDescription className="text-yellow-600 dark:text-yellow-400">
                     <p className="mb-3">
                       Your Google Search Console access token has expired. This happens when the token hasn't been 
-                      refreshed for an extended period. To restore access, please reconnect your account.
+                      refreshed for an extended period. Click below to reconnect your account.
                     </p>
-                    <div className="flex items-center gap-3">
-                      <Button 
-                        size="sm" 
-                        onClick={() => disconnectMutation.mutate()}
-                        disabled={disconnectMutation.isPending}
-                        className="bg-yellow-600 hover:bg-yellow-700 text-white"
-                        data-testid="button-reconnect-gsc"
-                      >
-                        {disconnectMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Link2 className="w-4 h-4 mr-2" />
-                        )}
-                        Disconnect & Reconnect
-                      </Button>
-                      <span className="text-sm">Click to disconnect, then connect again with Google</span>
-                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={handleReconnect}
+                      disabled={disconnectMutation.isPending}
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                      data-testid="button-reconnect-gsc"
+                    >
+                      {disconnectMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Link2 className="w-4 h-4 mr-2" />
+                      )}
+                      {disconnectMutation.isPending ? "Reconnecting..." : "Reconnect Now"}
+                    </Button>
                   </AlertDescription>
                 </Alert>
               )}
