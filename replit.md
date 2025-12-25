@@ -49,9 +49,16 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Task Execution Logs**: System-wide logging for background tasks (crawls, syncs, reports) with filtering by category, level, and search. Provides diagnostic visibility into system operations with error tracking, execution summaries, and auto-refresh. Accessible via System > System Logs in sidebar.
 - **Target URL Editing**: Ability to manually set or edit target URLs for keywords directly from the Keywords table or Data Management page. Pencil icon buttons open an edit dialog for updating keyword target URLs.
 - **Version Control / Release Notes**: System for tracking app releases and publishing changelog entries. Supports version numbers, release types (feature, bugfix, improvement, breaking, security), and detailed release notes. Accessible via System > Version Control in sidebar.
+- **Search Engine Intent Detector (SEID)**: Tracks SERP layout composition to identify what appears before organic results. Features include:
+    - **Layout Stack Visualization**: Ordered list of SERP blocks (AI Overview, Featured Snippets, Ads, Local Pack, PAA, etc.)
+    - **Organic Start Position**: Tracks where organic results begin on the page
+    - **Competitor Cross-Reference**: Monitors competitor visibility in AI Overview, Featured Snippets, and Local Pack
+    - **Intent Stability Score**: 0-100 score measuring SERP layout consistency over time
+    - **Intent Alerts**: Actionable alerts for intent shifts, competitor feature gains, organic position drops, and volatility spikes
+    - **Keyword History Integration**: SERP Layout tab in keyword drawer shows layout history with visual stack comparison
 
 ### System Design Choices
-- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, and `app_versions`.
+- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, `app_versions`, `serp_layout_snapshots`, `serp_layout_items`, `serp_competitor_presence`, and `intent_alerts`.
 - **Historical Data Tracking**: All crawl data uses date-based rows for trend analysis. Tables with historical tracking: `rankings_history` (keyword positions), `keywordMetrics` (opportunity scores), `competitor_metrics` (competitor pressure), `backlinks_history` (DA/PA/spam score changes), `tech_crawls` (site audit snapshots).
 - **Data Retention Policy**: Automated weekly cleanup (Sundays 2 AM CST) removes records older than 90 days from historical tables to manage database size while preserving 3 months of trend data.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
