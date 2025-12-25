@@ -59,6 +59,14 @@ import {
   type InsertKeywordPageConflict,
   type TaskExecutionLog,
   type InsertTaskExecutionLog,
+  type SerpLayoutSnapshot,
+  type InsertSerpLayoutSnapshot,
+  type SerpLayoutItem,
+  type InsertSerpLayoutItem,
+  type CompetitorSerpPresence,
+  type InsertCompetitorSerpPresence,
+  type IntentAlert,
+  type InsertIntentAlert,
   users,
   projects,
   keywords,
@@ -94,6 +102,10 @@ import {
   appVersions,
   InsertAppVersion,
   AppVersion,
+  serpLayoutSnapshots,
+  serpLayoutItems,
+  competitorSerpPresence,
+  intentAlerts,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, sql, isNull, or } from "drizzle-orm";
@@ -352,6 +364,64 @@ export interface IStorage {
   createAppVersion(version: InsertAppVersion): Promise<AppVersion>;
   updateAppVersion(id: number, updates: Partial<InsertAppVersion>): Promise<AppVersion | undefined>;
   deleteAppVersion(id: number): Promise<void>;
+  
+  // SEID - SERP Layout Snapshots
+  getSerpLayoutSnapshots(keywordId: number, limit?: number): Promise<SerpLayoutSnapshot[]>;
+  getSerpLayoutSnapshot(id: number): Promise<SerpLayoutSnapshot | undefined>;
+  getLatestSerpLayoutSnapshot(keywordId: number): Promise<SerpLayoutSnapshot | undefined>;
+  createSerpLayoutSnapshot(snapshot: InsertSerpLayoutSnapshot): Promise<SerpLayoutSnapshot>;
+  getSerpLayoutSnapshotsByProject(projectId: string, options?: {
+    limit?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<SerpLayoutSnapshot[]>;
+  
+  // SEID - SERP Layout Items
+  getSerpLayoutItems(snapshotId: number): Promise<SerpLayoutItem[]>;
+  createSerpLayoutItem(item: InsertSerpLayoutItem): Promise<SerpLayoutItem>;
+  createSerpLayoutItems(items: InsertSerpLayoutItem[]): Promise<SerpLayoutItem[]>;
+  
+  // SEID - Competitor SERP Presence
+  getCompetitorSerpPresence(snapshotId: number): Promise<CompetitorSerpPresence[]>;
+  getCompetitorSerpPresenceByProject(projectId: string, options?: {
+    competitorDomain?: string;
+    blockType?: string;
+    limit?: number;
+  }): Promise<CompetitorSerpPresence[]>;
+  createCompetitorSerpPresence(presence: InsertCompetitorSerpPresence): Promise<CompetitorSerpPresence>;
+  createCompetitorSerpPresenceBatch(presences: InsertCompetitorSerpPresence[]): Promise<CompetitorSerpPresence[]>;
+  
+  // SEID - Intent Alerts
+  getIntentAlerts(projectId: string, options?: {
+    isResolved?: boolean;
+    alertType?: string;
+    severity?: string;
+    limit?: number;
+  }): Promise<IntentAlert[]>;
+  getIntentAlert(id: number): Promise<IntentAlert | undefined>;
+  createIntentAlert(alert: InsertIntentAlert): Promise<IntentAlert>;
+  updateIntentAlert(id: number, updates: Partial<IntentAlert>): Promise<IntentAlert | undefined>;
+  resolveIntentAlert(id: number): Promise<IntentAlert | undefined>;
+  
+  // SEID - Aggregations
+  getProjectIntentDashboard(projectId: string): Promise<{
+    avgStabilityScore: number;
+    keywordsWithAiOverview: number;
+    keywordsWithFeaturedSnippet: number;
+    keywordsWithLocalPack: number;
+    avgOrganicStartPosition: number;
+    competitorVisibilityMatrix: Record<string, Record<string, number>>;
+    unresolvedAlerts: number;
+  }>;
+  getCompetitorVisibilityMatrix(projectId: string): Promise<{
+    domain: string;
+    aiOverviewCount: number;
+    featuredSnippetCount: number;
+    organicTop10Count: number;
+    localPackCount: number;
+    paaCount: number;
+    totalAppearances: number;
+  }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3525,6 +3595,326 @@ export class DatabaseStorage implements IStorage {
       oldestKeywordMetricDate: oldestKeywordMetric?.date || null,
       oldestCompetitorMetricDate: oldestCompetitorMetric?.date || null,
     };
+  }
+
+  // ============================================
+  // SEID - SERP Layout Snapshots
+  // ============================================
+  
+  async getSerpLayoutSnapshots(keywordId: number, limit: number = 10): Promise<SerpLayoutSnapshot[]> {
+    return await db.select()
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.keywordId, keywordId))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt))
+      .limit(limit);
+  }
+
+  async getSerpLayoutSnapshot(id: number): Promise<SerpLayoutSnapshot | undefined> {
+    const [snapshot] = await db.select().from(serpLayoutSnapshots).where(eq(serpLayoutSnapshots.id, id));
+    return snapshot || undefined;
+  }
+
+  async getLatestSerpLayoutSnapshot(keywordId: number): Promise<SerpLayoutSnapshot | undefined> {
+    const [snapshot] = await db.select()
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.keywordId, keywordId))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt))
+      .limit(1);
+    return snapshot || undefined;
+  }
+
+  async createSerpLayoutSnapshot(snapshot: InsertSerpLayoutSnapshot): Promise<SerpLayoutSnapshot> {
+    const [created] = await db.insert(serpLayoutSnapshots).values(snapshot as typeof serpLayoutSnapshots.$inferInsert).returning();
+    return created;
+  }
+
+  async getSerpLayoutSnapshotsByProject(projectId: string, options?: {
+    limit?: number;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<SerpLayoutSnapshot[]> {
+    const conditions = [eq(serpLayoutSnapshots.projectId, projectId)];
+    
+    if (options?.startDate) {
+      conditions.push(gte(serpLayoutSnapshots.capturedAt, options.startDate));
+    }
+    if (options?.endDate) {
+      conditions.push(lte(serpLayoutSnapshots.capturedAt, options.endDate));
+    }
+    
+    return await db.select()
+      .from(serpLayoutSnapshots)
+      .where(and(...conditions))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt))
+      .limit(options?.limit || 100);
+  }
+
+  // ============================================
+  // SEID - SERP Layout Items
+  // ============================================
+  
+  async getSerpLayoutItems(snapshotId: number): Promise<SerpLayoutItem[]> {
+    return await db.select()
+      .from(serpLayoutItems)
+      .where(eq(serpLayoutItems.snapshotId, snapshotId))
+      .orderBy(serpLayoutItems.blockIndex);
+  }
+
+  async createSerpLayoutItem(item: InsertSerpLayoutItem): Promise<SerpLayoutItem> {
+    const [created] = await db.insert(serpLayoutItems).values(item as typeof serpLayoutItems.$inferInsert).returning();
+    return created;
+  }
+
+  async createSerpLayoutItems(items: InsertSerpLayoutItem[]): Promise<SerpLayoutItem[]> {
+    if (items.length === 0) return [];
+    return await db.insert(serpLayoutItems).values(items as (typeof serpLayoutItems.$inferInsert)[]).returning();
+  }
+
+  // ============================================
+  // SEID - Competitor SERP Presence
+  // ============================================
+  
+  async getCompetitorSerpPresence(snapshotId: number): Promise<CompetitorSerpPresence[]> {
+    return await db.select()
+      .from(competitorSerpPresence)
+      .where(eq(competitorSerpPresence.snapshotId, snapshotId));
+  }
+
+  async getCompetitorSerpPresenceByProject(projectId: string, options?: {
+    competitorDomain?: string;
+    blockType?: string;
+    limit?: number;
+  }): Promise<CompetitorSerpPresence[]> {
+    const snapshotIds = await db.select({ id: serpLayoutSnapshots.id })
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.projectId, projectId));
+    
+    if (snapshotIds.length === 0) return [];
+    
+    const conditions: any[] = [
+      sql`${competitorSerpPresence.snapshotId} IN (${sql.join(snapshotIds.map(s => sql`${s.id}`), sql`, `)})`
+    ];
+    
+    if (options?.competitorDomain) {
+      conditions.push(eq(competitorSerpPresence.competitorDomain, options.competitorDomain));
+    }
+    if (options?.blockType) {
+      conditions.push(eq(competitorSerpPresence.blockType, options.blockType));
+    }
+    
+    return await db.select()
+      .from(competitorSerpPresence)
+      .where(and(...conditions))
+      .limit(options?.limit || 500);
+  }
+
+  async createCompetitorSerpPresence(presence: InsertCompetitorSerpPresence): Promise<CompetitorSerpPresence> {
+    const [created] = await db.insert(competitorSerpPresence).values(presence as typeof competitorSerpPresence.$inferInsert).returning();
+    return created;
+  }
+
+  async createCompetitorSerpPresenceBatch(presences: InsertCompetitorSerpPresence[]): Promise<CompetitorSerpPresence[]> {
+    if (presences.length === 0) return [];
+    return await db.insert(competitorSerpPresence).values(presences as (typeof competitorSerpPresence.$inferInsert)[]).returning();
+  }
+
+  // ============================================
+  // SEID - Intent Alerts
+  // ============================================
+  
+  async getIntentAlerts(projectId: string, options?: {
+    isResolved?: boolean;
+    alertType?: string;
+    severity?: string;
+    limit?: number;
+  }): Promise<IntentAlert[]> {
+    const conditions = [eq(intentAlerts.projectId, projectId)];
+    
+    if (options?.isResolved !== undefined) {
+      conditions.push(eq(intentAlerts.isResolved, options.isResolved));
+    }
+    if (options?.alertType) {
+      conditions.push(eq(intentAlerts.alertType, options.alertType));
+    }
+    if (options?.severity) {
+      conditions.push(eq(intentAlerts.severity, options.severity));
+    }
+    
+    return await db.select()
+      .from(intentAlerts)
+      .where(and(...conditions))
+      .orderBy(desc(intentAlerts.detectedAt))
+      .limit(options?.limit || 50);
+  }
+
+  async getIntentAlert(id: number): Promise<IntentAlert | undefined> {
+    const [alert] = await db.select().from(intentAlerts).where(eq(intentAlerts.id, id));
+    return alert || undefined;
+  }
+
+  async createIntentAlert(alert: InsertIntentAlert): Promise<IntentAlert> {
+    const [created] = await db.insert(intentAlerts).values(alert as typeof intentAlerts.$inferInsert).returning();
+    return created;
+  }
+
+  async updateIntentAlert(id: number, updates: Partial<IntentAlert>): Promise<IntentAlert | undefined> {
+    const [updated] = await db.update(intentAlerts).set(updates).where(eq(intentAlerts.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async resolveIntentAlert(id: number): Promise<IntentAlert | undefined> {
+    const [updated] = await db.update(intentAlerts)
+      .set({ isResolved: true, resolvedAt: new Date() })
+      .where(eq(intentAlerts.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // ============================================
+  // SEID - Aggregations
+  // ============================================
+  
+  async getProjectIntentDashboard(projectId: string): Promise<{
+    avgStabilityScore: number;
+    keywordsWithAiOverview: number;
+    keywordsWithFeaturedSnippet: number;
+    keywordsWithLocalPack: number;
+    avgOrganicStartPosition: number;
+    competitorVisibilityMatrix: Record<string, Record<string, number>>;
+    unresolvedAlerts: number;
+  }> {
+    const latestSnapshots = await db.select()
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.projectId, projectId))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt))
+      .limit(500);
+    
+    const keywordLatestMap = new Map<number, SerpLayoutSnapshot>();
+    for (const snapshot of latestSnapshots) {
+      if (!keywordLatestMap.has(snapshot.keywordId)) {
+        keywordLatestMap.set(snapshot.keywordId, snapshot);
+      }
+    }
+    
+    const latestPerKeyword = Array.from(keywordLatestMap.values());
+    
+    let totalStability = 0;
+    let aiOverviewCount = 0;
+    let featuredSnippetCount = 0;
+    let localPackCount = 0;
+    let totalOrganicStart = 0;
+    let organicStartCount = 0;
+    
+    for (const snapshot of latestPerKeyword) {
+      if (snapshot.stabilityScore) {
+        totalStability += Number(snapshot.stabilityScore);
+      }
+      if (snapshot.hasAiOverview) aiOverviewCount++;
+      if (snapshot.hasFeaturedSnippet) featuredSnippetCount++;
+      if (snapshot.hasLocalPack) localPackCount++;
+      if (snapshot.organicStartPosition) {
+        totalOrganicStart += snapshot.organicStartPosition;
+        organicStartCount++;
+      }
+    }
+    
+    const [alertCount] = await db.select({ count: sql<number>`count(*)` })
+      .from(intentAlerts)
+      .where(and(
+        eq(intentAlerts.projectId, projectId),
+        eq(intentAlerts.isResolved, false)
+      ));
+    
+    const competitorMatrix = await this.getCompetitorVisibilityMatrix(projectId);
+    const matrixObj: Record<string, Record<string, number>> = {};
+    for (const row of competitorMatrix) {
+      matrixObj[row.domain] = {
+        ai_overview: row.aiOverviewCount,
+        featured_snippet: row.featuredSnippetCount,
+        organic_top10: row.organicTop10Count,
+        local_pack: row.localPackCount,
+        paa: row.paaCount,
+      };
+    }
+    
+    return {
+      avgStabilityScore: latestPerKeyword.length > 0 ? totalStability / latestPerKeyword.length : 0,
+      keywordsWithAiOverview: aiOverviewCount,
+      keywordsWithFeaturedSnippet: featuredSnippetCount,
+      keywordsWithLocalPack: localPackCount,
+      avgOrganicStartPosition: organicStartCount > 0 ? totalOrganicStart / organicStartCount : 1,
+      competitorVisibilityMatrix: matrixObj,
+      unresolvedAlerts: Number(alertCount?.count || 0),
+    };
+  }
+
+  async getCompetitorVisibilityMatrix(projectId: string): Promise<{
+    domain: string;
+    aiOverviewCount: number;
+    featuredSnippetCount: number;
+    organicTop10Count: number;
+    localPackCount: number;
+    paaCount: number;
+    totalAppearances: number;
+  }[]> {
+    const snapshotIds = await db.select({ id: serpLayoutSnapshots.id })
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.projectId, projectId));
+    
+    if (snapshotIds.length === 0) return [];
+    
+    const presences = await db.select()
+      .from(competitorSerpPresence)
+      .where(sql`${competitorSerpPresence.snapshotId} IN (${sql.join(snapshotIds.map(s => sql`${s.id}`), sql`, `)})`);
+    
+    const domainStats: Record<string, {
+      aiOverviewCount: number;
+      featuredSnippetCount: number;
+      organicTop10Count: number;
+      localPackCount: number;
+      paaCount: number;
+      totalAppearances: number;
+    }> = {};
+    
+    for (const presence of presences) {
+      const domain = presence.competitorDomain;
+      if (!domainStats[domain]) {
+        domainStats[domain] = {
+          aiOverviewCount: 0,
+          featuredSnippetCount: 0,
+          organicTop10Count: 0,
+          localPackCount: 0,
+          paaCount: 0,
+          totalAppearances: 0,
+        };
+      }
+      
+      domainStats[domain].totalAppearances++;
+      
+      switch (presence.blockType) {
+        case 'ai_overview':
+          domainStats[domain].aiOverviewCount++;
+          break;
+        case 'featured_snippet':
+          domainStats[domain].featuredSnippetCount++;
+          break;
+        case 'organic':
+          if (presence.position && presence.position <= 10) {
+            domainStats[domain].organicTop10Count++;
+          }
+          break;
+        case 'local_pack':
+          domainStats[domain].localPackCount++;
+          break;
+        case 'people_also_ask':
+          domainStats[domain].paaCount++;
+          break;
+      }
+    }
+    
+    return Object.entries(domainStats)
+      .map(([domain, stats]) => ({ domain, ...stats }))
+      .sort((a, b) => b.totalAppearances - a.totalAppearances);
   }
 }
 

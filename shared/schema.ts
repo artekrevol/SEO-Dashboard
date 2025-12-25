@@ -1296,3 +1296,240 @@ export const insertAppVersionSchema = createInsertSchema(appVersions).omit({
 
 export type InsertAppVersion = z.infer<typeof insertAppVersionSchema>;
 export type AppVersion = typeof appVersions.$inferSelect;
+
+// ============================================
+// SEARCH ENGINE INTENT DETECTOR (SEID)
+// ============================================
+
+export const serpBlockTypeEnum = z.enum([
+  "ai_overview",
+  "featured_snippet",
+  "ads_top",
+  "ads_bottom",
+  "video_carousel",
+  "people_also_ask",
+  "discussions",
+  "local_pack",
+  "knowledge_panel",
+  "organic",
+  "image_pack",
+  "top_stories",
+  "shopping",
+  "popular_products",
+  "related_searches",
+  "twitter_carousel",
+  "jobs",
+  "recipes",
+  "events"
+]);
+export type SerpBlockType = z.infer<typeof serpBlockTypeEnum>;
+
+export const dominantIntentEnum = z.enum([
+  "informational",
+  "commercial",
+  "transactional",
+  "navigational",
+  "local",
+  "mixed"
+]);
+export type DominantIntent = z.infer<typeof dominantIntentEnum>;
+
+export const intentAlertTypeEnum = z.enum([
+  "intent_shift",
+  "competitor_gained_feature",
+  "organic_pushed_down",
+  "competitor_in_ai_overview",
+  "lost_serp_feature",
+  "volatility_spike"
+]);
+export type IntentAlertType = z.infer<typeof intentAlertTypeEnum>;
+
+export interface SerpLayoutBlock {
+  blockType: SerpBlockType;
+  position: number;
+  resultCount?: number;
+  entitiesMentioned?: string[];
+  competitorHits?: { domain: string; position?: number; url?: string }[];
+  ourBrandPresent?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CompetitorSerpHit {
+  competitorId: number;
+  domain: string;
+  blockType: SerpBlockType;
+  position?: number;
+  url?: string;
+  isPrimaryDomain: boolean;
+}
+
+export const serpLayoutSnapshots = pgTable("serp_layout_snapshots", {
+  id: serial("id").primaryKey(),
+  keywordId: integer("keyword_id").notNull().references(() => keywords.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  organicStartPosition: integer("organic_start_position"),
+  organicOffsetCount: integer("organic_offset_count"),
+  layoutStack: jsonb("layout_stack").$type<SerpLayoutBlock[]>(),
+  dominantIntent: text("dominant_intent"),
+  stabilityScore: numeric("stability_score", { precision: 5, scale: 2 }),
+  competitorMentions: jsonb("competitor_mentions").$type<CompetitorSerpHit[]>(),
+  hasAiOverview: boolean("has_ai_overview").default(false),
+  hasFeaturedSnippet: boolean("has_featured_snippet").default(false),
+  hasLocalPack: boolean("has_local_pack").default(false),
+  hasVideoCarousel: boolean("has_video_carousel").default(false),
+  hasPeopleAlsoAsk: boolean("has_people_also_ask").default(false),
+  ourBrandInAiOverview: boolean("our_brand_in_ai_overview").default(false),
+  ourBrandInFeaturedSnippet: boolean("our_brand_in_featured_snippet").default(false),
+  ourBrandInLocalPack: boolean("our_brand_in_local_pack").default(false),
+  competitorInAiOverview: boolean("competitor_in_ai_overview").default(false),
+  alertLevel: text("alert_level").default("none"),
+  rawResponse: jsonb("raw_response"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  keywordIdIdx: index("serp_layout_snapshots_keyword_id_idx").on(table.keywordId),
+  projectIdIdx: index("serp_layout_snapshots_project_id_idx").on(table.projectId),
+  capturedAtIdx: index("serp_layout_snapshots_captured_at_idx").on(table.capturedAt),
+  keywordCapturedIdx: index("serp_layout_snapshots_keyword_captured_idx").on(table.keywordId, table.capturedAt),
+}));
+
+export const serpLayoutSnapshotsRelations = relations(serpLayoutSnapshots, ({ one, many }) => ({
+  keyword: one(keywords, {
+    fields: [serpLayoutSnapshots.keywordId],
+    references: [keywords.id],
+  }),
+  project: one(projects, {
+    fields: [serpLayoutSnapshots.projectId],
+    references: [projects.id],
+  }),
+  items: many(serpLayoutItems),
+  competitorPresence: many(competitorSerpPresence),
+}));
+
+export const insertSerpLayoutSnapshotSchema = createInsertSchema(serpLayoutSnapshots).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSerpLayoutSnapshot = z.infer<typeof insertSerpLayoutSnapshotSchema>;
+export type SerpLayoutSnapshot = typeof serpLayoutSnapshots.$inferSelect;
+
+export const serpLayoutItems = pgTable("serp_layout_items", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id").notNull().references(() => serpLayoutSnapshots.id, { onDelete: "cascade" }),
+  blockIndex: integer("block_index").notNull(),
+  blockType: text("block_type").notNull(),
+  positionStart: integer("position_start"),
+  positionEnd: integer("position_end"),
+  resultCount: integer("result_count"),
+  entitiesMentioned: jsonb("entities_mentioned").$type<string[]>(),
+  competitorDomains: jsonb("competitor_domains").$type<string[]>(),
+  ourBrandPresent: boolean("our_brand_present").default(false),
+  featureMetadata: jsonb("feature_metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  snapshotIdIdx: index("serp_layout_items_snapshot_id_idx").on(table.snapshotId),
+  blockTypeIdx: index("serp_layout_items_block_type_idx").on(table.blockType),
+}));
+
+export const serpLayoutItemsRelations = relations(serpLayoutItems, ({ one }) => ({
+  snapshot: one(serpLayoutSnapshots, {
+    fields: [serpLayoutItems.snapshotId],
+    references: [serpLayoutSnapshots.id],
+  }),
+}));
+
+export const insertSerpLayoutItemSchema = createInsertSchema(serpLayoutItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSerpLayoutItem = z.infer<typeof insertSerpLayoutItemSchema>;
+export type SerpLayoutItem = typeof serpLayoutItems.$inferSelect;
+
+export const competitorSerpPresence = pgTable("competitor_serp_presence", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id").notNull().references(() => serpLayoutSnapshots.id, { onDelete: "cascade" }),
+  competitorId: integer("competitor_id").references(() => competitorMetrics.id, { onDelete: "set null" }),
+  competitorDomain: text("competitor_domain").notNull(),
+  blockType: text("block_type").notNull(),
+  position: integer("position"),
+  url: text("url"),
+  isPrimaryDomain: boolean("is_primary_domain").default(true),
+  visibilityTags: jsonb("visibility_tags").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  snapshotIdIdx: index("competitor_serp_presence_snapshot_id_idx").on(table.snapshotId),
+  competitorIdIdx: index("competitor_serp_presence_competitor_id_idx").on(table.competitorId),
+  blockTypeIdx: index("competitor_serp_presence_block_type_idx").on(table.blockType),
+  domainIdx: index("competitor_serp_presence_domain_idx").on(table.competitorDomain),
+}));
+
+export const competitorSerpPresenceRelations = relations(competitorSerpPresence, ({ one }) => ({
+  snapshot: one(serpLayoutSnapshots, {
+    fields: [competitorSerpPresence.snapshotId],
+    references: [serpLayoutSnapshots.id],
+  }),
+  competitor: one(competitorMetrics, {
+    fields: [competitorSerpPresence.competitorId],
+    references: [competitorMetrics.id],
+  }),
+}));
+
+export const insertCompetitorSerpPresenceSchema = createInsertSchema(competitorSerpPresence).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCompetitorSerpPresence = z.infer<typeof insertCompetitorSerpPresenceSchema>;
+export type CompetitorSerpPresence = typeof competitorSerpPresence.$inferSelect;
+
+export const intentAlerts = pgTable("intent_alerts", {
+  id: serial("id").primaryKey(),
+  keywordId: integer("keyword_id").notNull().references(() => keywords.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  snapshotId: integer("snapshot_id").references(() => serpLayoutSnapshots.id, { onDelete: "set null" }),
+  alertType: text("alert_type").notNull(),
+  severity: text("severity").notNull().default("medium"),
+  title: text("title").notNull(),
+  description: text("description"),
+  previousState: jsonb("previous_state"),
+  newState: jsonb("new_state"),
+  competitorDomain: text("competitor_domain"),
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  isResolved: boolean("is_resolved").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  keywordIdIdx: index("intent_alerts_keyword_id_idx").on(table.keywordId),
+  projectIdIdx: index("intent_alerts_project_id_idx").on(table.projectId),
+  alertTypeIdx: index("intent_alerts_alert_type_idx").on(table.alertType),
+  severityIdx: index("intent_alerts_severity_idx").on(table.severity),
+  isResolvedIdx: index("intent_alerts_is_resolved_idx").on(table.isResolved),
+  detectedAtIdx: index("intent_alerts_detected_at_idx").on(table.detectedAt),
+}));
+
+export const intentAlertsRelations = relations(intentAlerts, ({ one }) => ({
+  keyword: one(keywords, {
+    fields: [intentAlerts.keywordId],
+    references: [keywords.id],
+  }),
+  project: one(projects, {
+    fields: [intentAlerts.projectId],
+    references: [projects.id],
+  }),
+  snapshot: one(serpLayoutSnapshots, {
+    fields: [intentAlerts.snapshotId],
+    references: [serpLayoutSnapshots.id],
+  }),
+}));
+
+export const insertIntentAlertSchema = createInsertSchema(intentAlerts).omit({
+  id: true,
+  detectedAt: true,
+  resolvedAt: true,
+  createdAt: true,
+});
+
+export type InsertIntentAlert = z.infer<typeof insertIntentAlertSchema>;
+export type IntentAlert = typeof intentAlerts.$inferSelect;
