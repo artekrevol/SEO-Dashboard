@@ -99,11 +99,21 @@ interface SerpFeatureChange {
   type: 'gained' | 'lost';
 }
 
+interface SerpLayoutBlock {
+  blockType: string;
+  position: number;
+  resultCount?: number;
+  entitiesMentioned?: string[];
+  competitorHits?: { domain: string; position?: number; url?: string }[];
+  ourBrandPresent?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 interface SerpLayoutSnapshot {
   id: number;
   keywordId: number;
   date: string;
-  layoutStack: string[];
+  layoutStack: (string | SerpLayoutBlock)[];
   organicStartPosition: number | null;
   hasAiOverview: boolean;
   hasFeaturedSnippet: boolean;
@@ -626,12 +636,13 @@ export function KeywordHistoryModal({
                           <div className="flex flex-col gap-1" data-testid="serp-layout-stack">
                             {latestSnapshot.layoutStack && latestSnapshot.layoutStack.length > 0 ? (
                               latestSnapshot.layoutStack.map((block, index) => {
-                                const Icon = layoutBlockIcons[block] || ListChecks;
-                                const colorClass = layoutBlockColors[block] || "bg-muted text-muted-foreground border-border";
-                                const isOrganic = block === "organic";
+                                const blockType = typeof block === 'string' ? block : block.blockType;
+                                const Icon = layoutBlockIcons[blockType] || ListChecks;
+                                const colorClass = layoutBlockColors[blockType] || "bg-muted text-muted-foreground border-border";
+                                const isOrganic = blockType === "organic";
                                 return (
                                   <div 
-                                    key={`${block}-${index}`}
+                                    key={`${blockType}-${index}`}
                                     className={cn(
                                       "flex items-center gap-3 rounded-lg border px-3 py-2",
                                       colorClass,
@@ -643,7 +654,7 @@ export function KeywordHistoryModal({
                                       {index + 1}
                                     </span>
                                     <Icon className="h-4 w-4" />
-                                    <span className="font-medium">{formatBlockType(block)}</span>
+                                    <span className="font-medium">{formatBlockType(blockType)}</span>
                                     {isOrganic && (
                                       <Badge variant="secondary" className="ml-auto text-xs">
                                         Organic Results Start Here
