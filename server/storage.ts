@@ -422,6 +422,31 @@ export interface IStorage {
     paaCount: number;
     totalAppearances: number;
   }[]>;
+  
+  // SEID - Feature Opportunities (competitor present, we're not)
+  getSerpFeatureOpportunities(projectId: string): Promise<{
+    aiOverviewOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }>;
+    featuredSnippetOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }>;
+    localPackOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }>;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3915,6 +3940,204 @@ export class DatabaseStorage implements IStorage {
     return Object.entries(domainStats)
       .map(([domain, stats]) => ({ domain, ...stats }))
       .sort((a, b) => b.totalAppearances - a.totalAppearances);
+  }
+
+  async getSerpFeatureOpportunities(projectId: string): Promise<{
+    aiOverviewOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }>;
+    featuredSnippetOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }>;
+    localPackOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }>;
+  }> {
+    // Get latest snapshot per keyword with opportunity flags
+    const latestSnapshots = await db.select()
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.projectId, projectId))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt));
+    
+    // Keep only the latest snapshot per keyword
+    const keywordLatestMap = new Map<number, typeof latestSnapshots[0]>();
+    for (const snapshot of latestSnapshots) {
+      if (!keywordLatestMap.has(snapshot.keywordId)) {
+        keywordLatestMap.set(snapshot.keywordId, snapshot);
+      }
+    }
+    
+    // Get keyword details
+    const keywordIds = Array.from(keywordLatestMap.keys());
+    if (keywordIds.length === 0) {
+      return {
+        aiOverviewOpportunities: [],
+        featuredSnippetOpportunities: [],
+        localPackOpportunities: [],
+      };
+    }
+    
+    const keywordDetails = await db.select()
+      .from(keywords)
+      .where(sql`${keywords.id} IN (${sql.join(keywordIds.map(id => sql`${id}`), sql`, `)})`);
+    
+    const keywordMap = new Map(keywordDetails.map(k => [k.id, k]));
+    
+    // Get competitor presences for these snapshots
+    const snapshotIds = Array.from(keywordLatestMap.values()).map(s => s.id);
+    const presences = await db.select()
+      .from(competitorSerpPresence)
+      .where(sql`${competitorSerpPresence.snapshotId} IN (${sql.join(snapshotIds.map(id => sql`${id}`), sql`, `)})`);
+    
+    // Build snapshot to competitors map
+    const snapshotCompetitors = new Map<number, Map<string, string[]>>();
+    for (const p of presences) {
+      if (!snapshotCompetitors.has(p.snapshotId)) {
+        snapshotCompetitors.set(p.snapshotId, new Map());
+      }
+      const blockMap = snapshotCompetitors.get(p.snapshotId)!;
+      if (!blockMap.has(p.blockType)) {
+        blockMap.set(p.blockType, []);
+      }
+      if (p.competitorDomain && !blockMap.get(p.blockType)!.includes(p.competitorDomain)) {
+        blockMap.get(p.blockType)!.push(p.competitorDomain);
+      }
+    }
+    
+    const aiOverviewOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }> = [];
+    
+    const featuredSnippetOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }> = [];
+    
+    const localPackOpportunities: Array<{
+      keywordId: number;
+      keyword: string;
+      competitors: string[];
+      position: number | null;
+      lastSeen: Date;
+    }> = [];
+    
+    // Get project to determine our domain for filtering
+    const [project] = await db.select().from(projects).where(eq(projects.id, projectId));
+    const ourDomain = project?.domain?.toLowerCase().replace(/^www\./, '') || '';
+    
+    // Non-competitor domains to filter out (Google services, social platforms, etc.)
+    const nonCompetitorDomains = new Set([
+      'google.com', 'maps.google.com', 'youtube.com', 'facebook.com', 
+      'twitter.com', 'x.com', 'linkedin.com', 'instagram.com', 'pinterest.com',
+      'yelp.com', 'tripadvisor.com', 'wikipedia.org', 'amazon.com',
+      'apple.com', 'apps.apple.com', 'play.google.com'
+    ]);
+    
+    // Helper to filter and dedupe competitor domains
+    const filterCompetitors = (domains: string[]): string[] => {
+      const seen = new Set<string>();
+      return domains.filter(d => {
+        const normalized = d.toLowerCase().replace(/^www\./, '');
+        if (seen.has(normalized)) return false;
+        if (nonCompetitorDomains.has(normalized)) return false;
+        // Also filter google subdomains
+        if (normalized.endsWith('.google.com')) return false;
+        seen.add(normalized);
+        return true;
+      });
+    };
+    
+    for (const [keywordId, snapshot] of Array.from(keywordLatestMap.entries())) {
+      const kw = keywordMap.get(keywordId);
+      if (!kw) continue;
+      
+      const competitorsInSnapshot = snapshotCompetitors.get(snapshot.id) || new Map();
+      
+      // Helper to check if our brand is in a feature's competitor list
+      // Uses strict domain matching with boundary checks
+      const ourBrandInFeature = (featureCompetitors: string[]) => {
+        if (!ourDomain) return false;
+        return featureCompetitors.some(c => {
+          const normalizedComp = c.toLowerCase().replace(/^www\./, '');
+          // Exact match
+          if (normalizedComp === ourDomain) return true;
+          // Subdomain match (e.g., blog.tekrevol.com matches tekrevol.com)
+          if (normalizedComp.endsWith('.' + ourDomain)) return true;
+          return false;
+        });
+      };
+      
+      // AI Overview opportunity: has AI overview with competitors, but our brand not detected
+      if (snapshot.hasAiOverview) {
+        const rawAiCompetitors = competitorsInSnapshot.get('ai_overview') || [];
+        const aiCompetitors = filterCompetitors(rawAiCompetitors);
+        // Only show as opportunity if competitors are in it but we're not
+        if (aiCompetitors.length > 0 && !ourBrandInFeature(aiCompetitors)) {
+          aiOverviewOpportunities.push({
+            keywordId,
+            keyword: kw.keyword,
+            competitors: aiCompetitors.slice(0, 3),
+            position: snapshot.organicStartPosition,
+            lastSeen: snapshot.capturedAt,
+          });
+        }
+      }
+      
+      // Featured Snippet opportunity
+      if (snapshot.hasFeaturedSnippet) {
+        const rawFsCompetitors = competitorsInSnapshot.get('featured_snippet') || [];
+        const fsCompetitors = filterCompetitors(rawFsCompetitors);
+        if (fsCompetitors.length > 0 && !ourBrandInFeature(fsCompetitors)) {
+          featuredSnippetOpportunities.push({
+            keywordId,
+            keyword: kw.keyword,
+            competitors: fsCompetitors.slice(0, 3),
+            position: snapshot.organicStartPosition,
+            lastSeen: snapshot.capturedAt,
+          });
+        }
+      }
+      
+      // Local Pack opportunity
+      if (snapshot.hasLocalPack) {
+        const rawLpCompetitors = competitorsInSnapshot.get('local_pack') || [];
+        const lpCompetitors = filterCompetitors(rawLpCompetitors);
+        if (lpCompetitors.length > 0 && !ourBrandInFeature(lpCompetitors)) {
+          localPackOpportunities.push({
+            keywordId,
+            keyword: kw.keyword,
+            competitors: lpCompetitors.slice(0, 3),
+            position: snapshot.organicStartPosition,
+            lastSeen: snapshot.capturedAt,
+          });
+        }
+      }
+    }
+    
+    return {
+      aiOverviewOpportunities: aiOverviewOpportunities.sort((a, b) => (a.position || 99) - (b.position || 99)),
+      featuredSnippetOpportunities: featuredSnippetOpportunities.sort((a, b) => (a.position || 99) - (b.position || 99)),
+      localPackOpportunities: localPackOpportunities.sort((a, b) => (a.position || 99) - (b.position || 99)),
+    };
   }
 }
 

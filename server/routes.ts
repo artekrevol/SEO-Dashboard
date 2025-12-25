@@ -3996,6 +3996,18 @@ export async function registerRoutes(
     }
   });
 
+  // Get SERP feature opportunities (competitor present, we're not)
+  app.get("/api/projects/:projectId/serp-opportunities", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const opportunities = await storage.getSerpFeatureOpportunities(projectId);
+      res.json(opportunities);
+    } catch (error) {
+      console.error("Error fetching SERP opportunities:", error);
+      res.status(500).json({ error: "Failed to fetch SERP opportunities" });
+    }
+  });
+
   // Get SERP layout snapshots for a project
   app.get("/api/projects/:projectId/serp-snapshots", async (req, res) => {
     try {

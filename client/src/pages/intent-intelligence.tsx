@@ -90,6 +90,20 @@ interface CompetitorVisibility {
   organicMentions: number;
 }
 
+interface FeatureOpportunity {
+  keywordId: number;
+  keyword: string;
+  competitors: string[];
+  position: number | null;
+  lastSeen: string;
+}
+
+interface SerpOpportunities {
+  aiOverviewOpportunities: FeatureOpportunity[];
+  featuredSnippetOpportunities: FeatureOpportunity[];
+  localPackOpportunities: FeatureOpportunity[];
+}
+
 interface Props {
   projectId: string | null;
 }
@@ -159,6 +173,11 @@ export function IntentIntelligencePage({ projectId }: Props) {
 
   const { data: competitorData, isLoading: competitorLoading } = useQuery<{ competitors: CompetitorVisibility[] }>({
     queryKey: ["/api/projects", projectId, "competitor-visibility"],
+    enabled: !!projectId,
+  });
+
+  const { data: opportunities, isLoading: opportunitiesLoading } = useQuery<SerpOpportunities>({
+    queryKey: ["/api/projects", projectId, "serp-opportunities"],
     enabled: !!projectId,
   });
 
@@ -531,6 +550,166 @@ export function IntentIntelligencePage({ projectId }: Props) {
               </ScrollArea>
             </TabsContent>
           </Tabs>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-serp-opportunities">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Target className="h-5 w-5 text-green-500" />
+            SERP Feature Opportunities
+          </CardTitle>
+          <CardDescription>
+            Keywords where competitors appear in premium SERP features but you don't - potential outranking targets
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {opportunitiesLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : (
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="border-blue-500/30 bg-blue-500/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-blue-500" />
+                    AI Overview Opportunities
+                    <Badge variant="secondary" className="ml-auto">
+                      {opportunities?.aiOverviewOpportunities?.length || 0}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(opportunities?.aiOverviewOpportunities?.length || 0) > 0 ? (
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {opportunities?.aiOverviewOpportunities?.slice(0, 10).map((opp) => (
+                          <div
+                            key={opp.keywordId}
+                            className="rounded-md border bg-background/50 p-2"
+                            data-testid={`ai-opportunity-${opp.keywordId}`}
+                          >
+                            <div className="font-medium text-sm truncate" title={opp.keyword}>
+                              {opp.keyword}
+                            </div>
+                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                              <Users className="h-3 w-3" />
+                              <span className="truncate">
+                                {opp.competitors.slice(0, 2).map(c => c.replace(/^www\./, '')).join(", ")}
+                                {opp.competitors.length > 2 && ` +${opp.competitors.length - 2}`}
+                              </span>
+                            </div>
+                            {opp.position && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Organic starts at #{opp.position}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                      No AI Overview opportunities detected
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-amber-500/30 bg-amber-500/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-amber-500" />
+                    Featured Snippet Opportunities
+                    <Badge variant="secondary" className="ml-auto">
+                      {opportunities?.featuredSnippetOpportunities?.length || 0}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(opportunities?.featuredSnippetOpportunities?.length || 0) > 0 ? (
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {opportunities?.featuredSnippetOpportunities?.slice(0, 10).map((opp) => (
+                          <div
+                            key={opp.keywordId}
+                            className="rounded-md border bg-background/50 p-2"
+                            data-testid={`fs-opportunity-${opp.keywordId}`}
+                          >
+                            <div className="font-medium text-sm truncate" title={opp.keyword}>
+                              {opp.keyword}
+                            </div>
+                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                              <Users className="h-3 w-3" />
+                              <span className="truncate">
+                                {opp.competitors.slice(0, 2).map(c => c.replace(/^www\./, '')).join(", ")}
+                                {opp.competitors.length > 2 && ` +${opp.competitors.length - 2}`}
+                              </span>
+                            </div>
+                            {opp.position && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Organic starts at #{opp.position}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                      No Featured Snippet opportunities detected
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-green-500/30 bg-green-500/5">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-green-500" />
+                    Local Pack Opportunities
+                    <Badge variant="secondary" className="ml-auto">
+                      {opportunities?.localPackOpportunities?.length || 0}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {(opportunities?.localPackOpportunities?.length || 0) > 0 ? (
+                    <ScrollArea className="h-48">
+                      <div className="space-y-2">
+                        {opportunities?.localPackOpportunities?.slice(0, 10).map((opp) => (
+                          <div
+                            key={opp.keywordId}
+                            className="rounded-md border bg-background/50 p-2"
+                            data-testid={`lp-opportunity-${opp.keywordId}`}
+                          >
+                            <div className="font-medium text-sm truncate" title={opp.keyword}>
+                              {opp.keyword}
+                            </div>
+                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                              <Users className="h-3 w-3" />
+                              <span className="truncate">
+                                {opp.competitors.slice(0, 2).map(c => c.replace(/^www\./, '')).join(", ")}
+                                {opp.competitors.length > 2 && ` +${opp.competitors.length - 2}`}
+                              </span>
+                            </div>
+                            {opp.position && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Organic starts at #{opp.position}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+                      No Local Pack opportunities detected
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </CardContent>
       </Card>
 
