@@ -16,6 +16,7 @@ import {
   FileWarning,
   ScrollText,
   Tag,
+  Brain,
 } from "lucide-react";
 import {
   Sidebar,
@@ -86,6 +87,11 @@ const analyticsItems = [
     title: "Rankings",
     url: "/rankings",
     icon: TrendingUp,
+  },
+  {
+    title: "Intent Intelligence",
+    url: "/intent-intelligence",
+    icon: Brain,
   },
   {
     title: "Site Audit",

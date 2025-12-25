@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TrendingUp, TrendingDown, Minus, Calendar, Plus, X, Award, Sparkles } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Calendar, Plus, X, Award, Sparkles, Layers, Bot, Target, MapPin, MessageSquare, Video, Image, ShoppingCart, Newspaper, ListChecks, Shield } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -99,6 +99,67 @@ interface SerpFeatureChange {
   type: 'gained' | 'lost';
 }
 
+interface SerpLayoutSnapshot {
+  id: number;
+  keywordId: number;
+  date: string;
+  layoutStack: string[];
+  organicStartPosition: number | null;
+  hasAiOverview: boolean;
+  hasFeaturedSnippet: boolean;
+  hasLocalPack: boolean;
+  hasPeopleAlsoAsk: boolean;
+  hasAds: boolean;
+  hasVideoCarousel: boolean;
+  stabilityScore: string | null;
+  createdAt: string;
+}
+
+const layoutBlockIcons: Record<string, typeof Bot> = {
+  ai_overview: Bot,
+  featured_snippet: Sparkles,
+  ads_top: Target,
+  ads_bottom: Target,
+  local_pack: MapPin,
+  people_also_ask: MessageSquare,
+  video_carousel: Video,
+  image_pack: Image,
+  knowledge_panel: ListChecks,
+  shopping: ShoppingCart,
+  popular_products: ShoppingCart,
+  top_stories: Newspaper,
+  discussions: MessageSquare,
+  twitter_carousel: MessageSquare,
+  organic: ListChecks,
+  related_searches: Award,
+};
+
+const layoutBlockColors: Record<string, string> = {
+  ai_overview: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/30",
+  featured_snippet: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30",
+  ads_top: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+  ads_bottom: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+  local_pack: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30",
+  people_also_ask: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30",
+  video_carousel: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30",
+  image_pack: "bg-pink-500/10 text-pink-600 dark:text-pink-400 border-pink-500/30",
+  knowledge_panel: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+  shopping: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+  popular_products: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30",
+  top_stories: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30",
+  discussions: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30",
+  twitter_carousel: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30",
+  organic: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30",
+  related_searches: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30",
+};
+
+function formatBlockType(blockType: string): string {
+  return blockType
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export function KeywordHistoryModal({
   open,
   onOpenChange,
@@ -112,6 +173,11 @@ export function KeywordHistoryModal({
       if (!res.ok) throw new Error("Failed to fetch rankings history");
       return res.json();
     },
+    enabled: open && keywordId > 0,
+  });
+
+  const { data: serpLayoutData, isLoading: serpLayoutLoading } = useQuery<{ snapshots: SerpLayoutSnapshot[] }>({
+    queryKey: ["/api/keywords", keywordId, "serp-history"],
     enabled: open && keywordId > 0,
   });
 
@@ -207,17 +273,20 @@ export function KeywordHistoryModal({
           </div>
         ) : (
           <Tabs defaultValue="position" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="position" data-testid="tab-position-history">
-                Position History
+                Position
               </TabsTrigger>
               <TabsTrigger value="serp" data-testid="tab-serp-features">
-                SERP Features
+                Features
                 {serpFeatureChanges.length > 0 && (
                   <Badge variant="secondary" className="ml-2 h-5 min-w-5 px-1">
                     {serpFeatureChanges.length}
                   </Badge>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="layout" data-testid="tab-serp-layout">
+                SERP Layout
               </TabsTrigger>
             </TabsList>
 
@@ -485,6 +554,169 @@ export function KeywordHistoryModal({
                       </Badge>
                     ))}
                   </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="layout" className="space-y-4" data-testid="tab-content-serp-layout">
+              {serpLayoutLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-40 w-full" />
+                </div>
+              ) : serpLayoutData?.snapshots && serpLayoutData.snapshots.length > 0 ? (
+                <>
+                  {(() => {
+                    const latestSnapshot = serpLayoutData.snapshots[0];
+                    return (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                          <div className="rounded-lg border bg-muted/30 p-3" data-testid="stat-stability-score">
+                            <p className="text-xs text-muted-foreground">Stability Score</p>
+                            <div className="flex items-center gap-2">
+                              <Shield className="h-4 w-4 text-muted-foreground" />
+                              <p className="text-2xl font-bold">
+                                {latestSnapshot.stabilityScore ? parseFloat(latestSnapshot.stabilityScore).toFixed(0) : "—"}
+                                <span className="text-sm text-muted-foreground">/100</span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border bg-muted/30 p-3" data-testid="stat-organic-position">
+                            <p className="text-xs text-muted-foreground">Organic Start</p>
+                            <div className="flex items-center gap-2">
+                              <Layers className="h-4 w-4 text-muted-foreground" />
+                              <p className="text-2xl font-bold">
+                                #{latestSnapshot.organicStartPosition ?? "—"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border bg-muted/30 p-3" data-testid="stat-ai-overview">
+                            <p className="text-xs text-muted-foreground">AI Overview</p>
+                            <div className="flex items-center gap-2">
+                              <Bot className="h-4 w-4 text-muted-foreground" />
+                              <p className="text-lg font-semibold">
+                                {latestSnapshot.hasAiOverview ? (
+                                  <span className="text-violet-600 dark:text-violet-400">Present</span>
+                                ) : (
+                                  <span className="text-muted-foreground">None</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border bg-muted/30 p-3" data-testid="stat-featured-snippet">
+                            <p className="text-xs text-muted-foreground">Featured Snippet</p>
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="h-4 w-4 text-muted-foreground" />
+                              <p className="text-lg font-semibold">
+                                {latestSnapshot.hasFeaturedSnippet ? (
+                                  <span className="text-purple-600 dark:text-purple-400">Present</span>
+                                ) : (
+                                  <span className="text-muted-foreground">None</span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium">SERP Layout Stack</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Visual order of elements on the search results page
+                          </p>
+                          <div className="flex flex-col gap-1" data-testid="serp-layout-stack">
+                            {latestSnapshot.layoutStack && latestSnapshot.layoutStack.length > 0 ? (
+                              latestSnapshot.layoutStack.map((block, index) => {
+                                const Icon = layoutBlockIcons[block] || ListChecks;
+                                const colorClass = layoutBlockColors[block] || "bg-muted text-muted-foreground border-border";
+                                const isOrganic = block === "organic";
+                                return (
+                                  <div 
+                                    key={`${block}-${index}`}
+                                    className={cn(
+                                      "flex items-center gap-3 rounded-lg border px-3 py-2",
+                                      colorClass,
+                                      isOrganic && "ring-2 ring-green-500/50"
+                                    )}
+                                    data-testid={`layout-block-${index}`}
+                                  >
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-background/50 text-xs font-semibold">
+                                      {index + 1}
+                                    </span>
+                                    <Icon className="h-4 w-4" />
+                                    <span className="font-medium">{formatBlockType(block)}</span>
+                                    {isOrganic && (
+                                      <Badge variant="secondary" className="ml-auto text-xs">
+                                        Organic Results Start Here
+                                      </Badge>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="flex h-20 items-center justify-center rounded-lg border text-muted-foreground">
+                                No layout data available
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium">SERP Layout History</h4>
+                          <div className="max-h-48 overflow-y-auto rounded-lg border">
+                            <table className="w-full text-sm">
+                              <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+                                <tr>
+                                  <th className="p-2 text-left font-medium">Date</th>
+                                  <th className="p-2 text-center font-medium">Organic Start</th>
+                                  <th className="p-2 text-center font-medium">AI Overview</th>
+                                  <th className="p-2 text-center font-medium">Stability</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {serpLayoutData.snapshots.slice(0, 15).map((snapshot) => (
+                                  <tr key={snapshot.id} className="border-t" data-testid={`layout-history-${snapshot.id}`}>
+                                    <td className="p-2 text-muted-foreground">
+                                      {formatDateFull(snapshot.date)}
+                                    </td>
+                                    <td className="p-2 text-center font-medium">
+                                      #{snapshot.organicStartPosition ?? "—"}
+                                    </td>
+                                    <td className="p-2 text-center">
+                                      {snapshot.hasAiOverview ? (
+                                        <Bot className="mx-auto h-4 w-4 text-violet-600 dark:text-violet-400" />
+                                      ) : (
+                                        <span className="text-muted-foreground">—</span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 text-center">
+                                      {snapshot.stabilityScore ? (
+                                        <Badge variant={parseFloat(snapshot.stabilityScore) >= 70 ? "secondary" : "destructive"}>
+                                          {parseFloat(snapshot.stabilityScore).toFixed(0)}
+                                        </Badge>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              ) : (
+                <div className="flex h-64 flex-col items-center justify-center text-center" data-testid="no-layout-data">
+                  <Layers className="mb-4 h-12 w-12 text-muted-foreground" />
+                  <h3 className="font-semibold">No SERP Layout Data</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    SERP layout data will appear here after a SERP crawl is completed.
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Enable SERP layout crawling in the Scheduled Crawls section.
+                  </p>
                 </div>
               )}
             </TabsContent>
