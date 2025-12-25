@@ -197,6 +197,7 @@ export class DataForSEOService {
       title: string;
     }>>;
     serpFeatures: Map<string, string[]>;
+    rawSerpItems: Map<string, any[]>;
   }> {
     const rankings = new Map<string, SerpResultItem | null>();
     const competitors = new Map<string, Array<{
@@ -206,6 +207,7 @@ export class DataForSEOService {
       title: string;
     }>>();
     const serpFeatures = new Map<string, string[]>();
+    const rawSerpItems = new Map<string, any[]>();
 
     const featureMapping: Record<string, string> = {
       featured_snippet: "featured_snippet",
@@ -270,6 +272,7 @@ export class DataForSEOService {
             rankings.set(keyword, null);
             competitors.set(keyword, []);
             serpFeatures.set(keyword, []);
+            rawSerpItems.set(keyword, []);
           }
           continue;
         }
@@ -299,7 +302,11 @@ export class DataForSEOService {
 
           if (taskResult && taskResult.status_code === 20000 && taskResult.result?.[0]) {
             const result = taskResult.result[0];
-            const organicItems = (result.items || []).filter(item => item.type === 'organic');
+            const allItems = result.items || [];
+            const organicItems = allItems.filter(item => item.type === 'organic');
+            
+            // Store raw SERP items for SEID layout parsing
+            rawSerpItems.set(keyword, allItems);
 
             // Case-insensitive domain matching
             const domainResult = organicItems.find(item => {
@@ -392,6 +399,7 @@ export class DataForSEOService {
               rankings.set(keyword, null);
               competitors.set(keyword, []);
               serpFeatures.set(keyword, []);
+              rawSerpItems.set(keyword, []);
               if (taskResult?.status_message) {
                 console.log(`[DataForSEO] API error for "${keyword}": ${taskResult.status_message}`);
               }
@@ -438,7 +446,11 @@ export class DataForSEOService {
               const task = singleResponse.tasks?.[0];
               if (task && task.status_code === 20000 && task.result?.[0]) {
                 const result = task.result[0];
-                const organicItems = (result.items || []).filter(item => item.type === 'organic');
+                const allItems = result.items || [];
+                const organicItems = allItems.filter(item => item.type === 'organic');
+                
+                // Store raw SERP items for SEID layout parsing
+                rawSerpItems.set(keyword, allItems);
                 
                 // Find our domain's ranking
                 const domainResult = organicItems.find(item => {
@@ -497,6 +509,7 @@ export class DataForSEOService {
                 rankings.set(keyword, null);
                 competitors.set(keyword, []);
                 serpFeatures.set(keyword, []);
+                rawSerpItems.set(keyword, []);
                 console.log(`[DataForSEO] Sequential: "${keyword}" failed - ${task?.status_message || 'unknown error'}`);
               }
             } catch (error) {
@@ -504,6 +517,7 @@ export class DataForSEOService {
               rankings.set(keyword, null);
               competitors.set(keyword, []);
               serpFeatures.set(keyword, []);
+              rawSerpItems.set(keyword, []);
             }
           }
         }
@@ -561,7 +575,11 @@ export class DataForSEOService {
             const task = singleResponse.tasks?.[0];
             if (task && task.status_code === 20000 && task.result?.[0]) {
               const result = task.result[0];
-              const organicItems = (result.items || []).filter(item => item.type === 'organic');
+              const allItems = result.items || [];
+              const organicItems = allItems.filter(item => item.type === 'organic');
+              
+              // Store raw SERP items for SEID layout parsing
+              rawSerpItems.set(keyword, allItems);
               
               // Find our domain's ranking
               const domainResult = organicItems.find(item => {
@@ -620,6 +638,7 @@ export class DataForSEOService {
               rankings.set(keyword, null);
               competitors.set(keyword, []);
               serpFeatures.set(keyword, []);
+              rawSerpItems.set(keyword, []);
               console.log(`[DataForSEO] Fallback sequential: "${keyword}" failed - ${task?.status_message || 'unknown error'}`);
             }
           } catch (seqError) {
@@ -627,6 +646,7 @@ export class DataForSEOService {
             rankings.set(keyword, null);
             competitors.set(keyword, []);
             serpFeatures.set(keyword, []);
+            rawSerpItems.set(keyword, []);
           }
           
           if (onProgress) {
@@ -637,7 +657,7 @@ export class DataForSEOService {
       }
     }
 
-    return { rankings, competitors, serpFeatures };
+    return { rankings, competitors, serpFeatures, rawSerpItems };
   }
 
   /**
@@ -656,6 +676,7 @@ export class DataForSEOService {
       title: string;
     }>>;
     serpFeatures: Map<string, string[]>;
+    rawSerpItems: Map<string, any[]>;
   }> {
     const rankings = new Map<string, SerpResultItem | null>();
     const competitors = new Map<string, Array<{
@@ -665,6 +686,7 @@ export class DataForSEOService {
       title: string;
     }>>();
     const serpFeatures = new Map<string, string[]>();
+    const rawSerpItems = new Map<string, any[]>();
 
     const featureMapping: Record<string, string> = {
       featured_snippet: "featured_snippet",
@@ -725,6 +747,7 @@ export class DataForSEOService {
                 rankings.set(keyword, null);
                 competitors.set(keyword, []);
                 serpFeatures.set(keyword, []);
+                rawSerpItems.set(keyword, []);
               }
             }
           }
@@ -741,6 +764,7 @@ export class DataForSEOService {
           rankings.set(keyword, null);
           competitors.set(keyword, []);
           serpFeatures.set(keyword, []);
+          rawSerpItems.set(keyword, []);
         }
       }
     }
@@ -808,7 +832,11 @@ export class DataForSEOService {
 
             if (task && task.status_code === 20000 && task.result?.[0]) {
               const result = task.result[0];
-              const organicItems = (result.items || []).filter(item => item.type === 'organic');
+              const allItems = result.items || [];
+              const organicItems = allItems.filter(item => item.type === 'organic');
+              
+              // Store raw SERP items for SEID layout parsing
+              rawSerpItems.set(keyword, allItems);
 
               // Find our domain's ranking
               const domainResult = organicItems.find(item => {
@@ -865,6 +893,7 @@ export class DataForSEOService {
               rankings.set(keyword, null);
               competitors.set(keyword, []);
               serpFeatures.set(keyword, []);
+              rawSerpItems.set(keyword, []);
             }
 
             pendingTaskIds.delete(taskId);
@@ -883,6 +912,7 @@ export class DataForSEOService {
             rankings.set(keyword, null);
             competitors.set(keyword, []);
             serpFeatures.set(keyword, []);
+            rawSerpItems.set(keyword, []);
             processedCount++;
             if (onProgress) {
               onProgress(processedCount, allTaskIds.length);
@@ -914,12 +944,13 @@ export class DataForSEOService {
           rankings.set(keyword, null);
           competitors.set(keyword, []);
           serpFeatures.set(keyword, []);
+          rawSerpItems.set(keyword, []);
         }
       });
     }
 
     console.log(`[DataForSEO] Standard Method complete. Processed ${rankings.size} keywords.`);
-    return { rankings, competitors, serpFeatures };
+    return { rankings, competitors, serpFeatures, rawSerpItems };
   }
 
   async getKeywordData(keywords: string[], locationCode: number = 2840): Promise<Map<string, KeywordData>> {

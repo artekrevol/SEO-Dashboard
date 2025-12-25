@@ -2,6 +2,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { DataForSEOService, createDataForSEOService } from "./dataforseo";
 import { TaskLogger, TaskContext } from "./task-logger";
+import { serpParser } from "./serp-parser";
 import type { Project, Keyword, InsertRankingsHistory, InsertKeywordCompetitorMetrics } from "@shared/schema";
 import { rankingsHistory } from "@shared/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
@@ -290,6 +291,7 @@ export class RankingsSyncService {
             rankings: Map<string, { keyword: string; rank_group: number; rank_absolute: number; domain: string; url: string; title: string; description: string; breadcrumb: string; is_featured_snippet: boolean; is_image: boolean; is_video: boolean; } | null>;
             competitors: Map<string, Array<{ domain: string; position: number; url: string; title: string; }>>;
             serpFeatures: Map<string, string[]>;
+            rawSerpItems?: Map<string, any[]>;
           };
           
           if (useSelectedKeywordsMode) {
@@ -436,6 +438,31 @@ export class RankingsSyncService {
           const failed = results.filter(r => r.status === 'rejected').length;
           if (failed > 0) {
             console.warn(`[RankingsSync] ${failed} database operations failed in batch ${Math.floor(i / this.bulkBatchSize) + 1}`);
+          }
+
+          // SEID Integration: Process SERP layout data for Intent Intelligence
+          // Only process if we have raw SERP items (Standard method returns them)
+          if (serpData.rawSerpItems && serpData.rawSerpItems.size > 0) {
+            try {
+              const serpLayoutBatch: Array<{ keywordId: number; keyword: string; serpItems: any[] }> = [];
+              for (const kw of batch) {
+                const rawItems = serpData.rawSerpItems.get(kw.keyword);
+                if (rawItems && rawItems.length > 0) {
+                  serpLayoutBatch.push({
+                    keywordId: kw.id,
+                    keyword: kw.keyword,
+                    serpItems: rawItems,
+                  });
+                }
+              }
+              
+              if (serpLayoutBatch.length > 0) {
+                const layoutResult = await serpParser.processBatch(projectId, serpLayoutBatch);
+                console.log(`[RankingsSync] SEID processed ${layoutResult.processed} layouts, generated ${layoutResult.alertsGenerated} alerts`);
+              }
+            } catch (serpLayoutErr) {
+              console.error(`[RankingsSync] SEID layout processing error (non-fatal):`, serpLayoutErr);
+            }
           }
 
           const processed = Math.min(i + batch.length, totalKeywords);
