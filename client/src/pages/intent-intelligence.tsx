@@ -88,15 +88,6 @@ interface IntentAlert {
   createdAt: string;
 }
 
-interface CompetitorVisibility {
-  competitorDomain: string;
-  totalMentions: number;
-  aiOverviewMentions: number;
-  featuredSnippetMentions: number;
-  localPackMentions: number;
-  organicMentions: number;
-}
-
 interface FeatureOpportunity {
   keywordId: number;
   keyword: string;
@@ -672,11 +663,6 @@ export function IntentIntelligencePage({ projectId }: Props) {
     enabled: !!projectId,
   });
 
-  const { data: competitorData, isLoading: competitorLoading } = useQuery<{ competitors: CompetitorVisibility[] }>({
-    queryKey: ["/api/projects", projectId, "competitor-visibility"],
-    enabled: !!projectId,
-  });
-
   const { data: opportunities, isLoading: opportunitiesLoading } = useQuery<SerpOpportunities>({
     queryKey: ["/api/projects", projectId, "serp-opportunities"],
     enabled: !!projectId,
@@ -714,7 +700,6 @@ export function IntentIntelligencePage({ projectId }: Props) {
 
   const alerts = alertsData?.alerts || [];
   const unresolvedAlerts = alerts.filter((a) => !a.isResolved);
-  const competitors = competitorData?.competitors || [];
 
   const layoutChartData = dashboard?.layoutDistribution
     ? Object.entries(dashboard.layoutDistribution).map(([name, value]) => ({
@@ -723,17 +708,6 @@ export function IntentIntelligencePage({ projectId }: Props) {
         fill: BLOCK_COLORS[name] || "hsl(var(--muted-foreground))",
       }))
     : [];
-
-  const competitorChartData = competitors
-    .filter((c) => c.competitorDomain)
-    .slice(0, 5)
-    .map((c) => ({
-      domain: (c.competitorDomain || "").replace(/^www\./, "").slice(0, 15),
-      aiOverview: c.aiOverviewMentions,
-      featuredSnippet: c.featuredSnippetMentions,
-      localPack: c.localPackMentions,
-      organic: c.organicMentions,
-    }));
 
   return (
     <div className="space-y-6 p-6" data-testid="page-intent-intelligence">
@@ -883,37 +857,6 @@ export function IntentIntelligencePage({ projectId }: Props) {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-competitor-visibility">
-          <CardHeader>
-            <CardTitle className="text-lg">Competitor SERP Visibility</CardTitle>
-            <CardDescription>
-              Competitor presence across SERP features
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {competitorLoading ? (
-              <Skeleton className="h-64 w-full" />
-            ) : competitorChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={competitorChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="domain" type="category" width={100} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="aiOverview" name="AI Overview" fill="hsl(var(--chart-1))" stackId="a" />
-                  <Bar dataKey="featuredSnippet" name="Featured Snippet" fill="hsl(var(--chart-2))" stackId="a" />
-                  <Bar dataKey="localPack" name="Local Pack" fill="hsl(var(--chart-4))" stackId="a" />
-                  <Bar dataKey="organic" name="Organic" fill="hsl(120, 40%, 50%)" stackId="a" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex h-64 items-center justify-center text-muted-foreground">
-                No competitor visibility data available
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       <Card data-testid="card-intent-alerts">
@@ -1060,93 +1003,6 @@ export function IntentIntelligencePage({ projectId }: Props) {
         totalKeywords={dashboard?.totalSnapshots || 0}
       />
 
-      <Card data-testid="card-competitor-matrix">
-        <CardHeader>
-          <CardTitle className="text-lg">Competitor Visibility Matrix</CardTitle>
-          <CardDescription>
-            Detailed breakdown of competitor presence across SERP features
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {competitorLoading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : competitors.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="px-4 py-3 text-left font-medium">Competitor</th>
-                    <th className="px-4 py-3 text-center font-medium">
-                      <div className="flex items-center justify-center gap-1">
-                        <Bot className="h-3.5 w-3.5" />
-                        AI Overview
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium">
-                      <div className="flex items-center justify-center gap-1">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Featured Snippet
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium">
-                      <div className="flex items-center justify-center gap-1">
-                        <MapPin className="h-3.5 w-3.5" />
-                        Local Pack
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium">
-                      <div className="flex items-center justify-center gap-1">
-                        <ListChecks className="h-3.5 w-3.5" />
-                        Organic
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {competitors.filter((c) => c.competitorDomain).map((competitor, idx) => (
-                    <tr
-                      key={competitor.competitorDomain || idx}
-                      className={idx % 2 === 0 ? "bg-muted/30" : ""}
-                    >
-                      <td className="px-4 py-3 font-medium">
-                        {competitor.competitorDomain || "Unknown"}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant={competitor.aiOverviewMentions > 0 ? "default" : "secondary"}>
-                          {competitor.aiOverviewMentions}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant={competitor.featuredSnippetMentions > 0 ? "default" : "secondary"}>
-                          {competitor.featuredSnippetMentions}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant={competitor.localPackMentions > 0 ? "default" : "secondary"}>
-                          {competitor.localPackMentions}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge variant={competitor.organicMentions > 0 ? "default" : "secondary"}>
-                          {competitor.organicMentions}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center font-semibold">
-                        {competitor.totalMentions}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex h-64 items-center justify-center text-muted-foreground">
-              No competitor visibility data available. Run a SERP layout crawl to collect data.
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

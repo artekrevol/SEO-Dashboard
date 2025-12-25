@@ -459,24 +459,62 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const aggregatedCompetitors = await storage.getAggregatedCompetitors(projectId);
+      // Fetch both competitor rankings and SERP visibility data
+      const [aggregatedCompetitors, serpVisibility] = await Promise.all([
+        storage.getAggregatedCompetitors(projectId),
+        storage.getCompetitorVisibilityMatrix(projectId),
+      ]);
+
+      // Create a lookup map for SERP visibility by domain
+      const visibilityByDomain: Record<string, {
+        aiOverviewCount: number;
+        featuredSnippetCount: number;
+        localPackCount: number;
+        organicTop10Count: number;
+        totalAppearances: number;
+      }> = {};
+      
+      for (const v of serpVisibility) {
+        // Normalize domain for matching (remove www.)
+        const normalizedDomain = v.domain.toLowerCase().replace(/^www\./, '');
+        visibilityByDomain[normalizedDomain] = {
+          aiOverviewCount: v.aiOverviewCount,
+          featuredSnippetCount: v.featuredSnippetCount,
+          localPackCount: v.localPackCount,
+          organicTop10Count: v.organicTop10Count,
+          totalAppearances: v.totalAppearances,
+        };
+        // Also store with www. prefix for exact matches
+        visibilityByDomain[v.domain.toLowerCase()] = visibilityByDomain[normalizedDomain];
+      }
 
       const items = aggregatedCompetitors
         .filter((c) => {
           const domain = c.competitorDomain.toLowerCase().replace(/^www\./, '');
           return !domain.includes('tekrevol');
         })
-        .map((c) => ({
-          competitorDomain: c.competitorDomain,
-          sharedKeywords: c.sharedKeywords,
-          aboveUsKeywords: c.keywordsAboveUs,
-          avgTheirPosition: c.avgCompetitorPosition,
-          avgOurPosition: c.avgOurPosition,
-          avgGap: c.avgGap,
-          totalVolume: c.totalVolume,
-          pressureIndex: c.pressureIndex,
-          trafficThreat: c.pressureIndex >= 60 ? 'high' : c.pressureIndex >= 30 ? 'medium' : 'low',
-        }));
+        .map((c) => {
+          const normalizedDomain = c.competitorDomain.toLowerCase().replace(/^www\./, '');
+          const visibility = visibilityByDomain[normalizedDomain] || visibilityByDomain[c.competitorDomain.toLowerCase()];
+          
+          return {
+            competitorDomain: c.competitorDomain,
+            sharedKeywords: c.sharedKeywords,
+            aboveUsKeywords: c.keywordsAboveUs,
+            avgTheirPosition: c.avgCompetitorPosition,
+            avgOurPosition: c.avgOurPosition,
+            avgGap: c.avgGap,
+            totalVolume: c.totalVolume,
+            pressureIndex: c.pressureIndex,
+            trafficThreat: c.pressureIndex >= 60 ? 'high' : c.pressureIndex >= 30 ? 'medium' : 'low',
+            // SERP visibility data
+            aiOverviewCount: visibility?.aiOverviewCount || 0,
+            featuredSnippetCount: visibility?.featuredSnippetCount || 0,
+            localPackCount: visibility?.localPackCount || 0,
+            organicTop10Count: visibility?.organicTop10Count || 0,
+            serpVisibilityTotal: visibility?.totalAppearances || 0,
+          };
+        });
 
       res.json({ items });
     } catch (error) {

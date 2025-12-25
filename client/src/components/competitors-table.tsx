@@ -38,13 +38,13 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2 } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2, Bot, Sparkles, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
 import { CompetitorBacklinksDrawer } from "@/components/competitor-backlinks-drawer";
 
-type CompetitorSortField = "competitorDomain" | "sharedKeywords" | "aboveUsKeywords" | "pressureIndex" | "avgTheirPosition";
+type CompetitorSortField = "competitorDomain" | "sharedKeywords" | "aboveUsKeywords" | "pressureIndex" | "avgTheirPosition" | "serpVisibilityTotal";
 type SortDirection = "asc" | "desc";
 
 interface CompetitorData {
@@ -57,6 +57,12 @@ interface CompetitorData {
   totalVolume?: number;
   pressureIndex: number;
   trafficThreat?: string;
+  // SERP visibility data
+  aiOverviewCount?: number;
+  featuredSnippetCount?: number;
+  localPackCount?: number;
+  organicTop10Count?: number;
+  serpVisibilityTotal?: number;
 }
 
 interface KeywordDetail {
@@ -88,6 +94,11 @@ const competitorExportColumns: ExportColumn<CompetitorData>[] = [
   { header: "Total Volume", accessor: "totalVolume" },
   { header: "Pressure Index", accessor: "pressureIndex", format: (v) => Math.round(v) },
   { header: "Traffic Threat", accessor: "trafficThreat" },
+  { header: "AI Overview", accessor: "aiOverviewCount", format: (v) => v ?? 0 },
+  { header: "Featured Snippet", accessor: "featuredSnippetCount", format: (v) => v ?? 0 },
+  { header: "Local Pack", accessor: "localPackCount", format: (v) => v ?? 0 },
+  { header: "Organic Top 10", accessor: "organicTop10Count", format: (v) => v ?? 0 },
+  { header: "SERP Visibility", accessor: "serpVisibilityTotal", format: (v) => v ?? 0 },
 ];
 
 export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTableProps) {
@@ -212,6 +223,10 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
         case "avgTheirPosition":
           aVal = a.avgTheirPosition || 999;
           bVal = b.avgTheirPosition || 999;
+          break;
+        case "serpVisibilityTotal":
+          aVal = a.serpVisibilityTotal || 0;
+          bVal = b.serpVisibilityTotal || 0;
           break;
       }
 
@@ -460,13 +475,25 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                       <SortIcon field="pressureIndex" />
                     </div>
                   </TableHead>
+                  <TableHead 
+                    className="text-center cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort("serpVisibilityTotal")}
+                    data-testid="header-serp-visibility"
+                  >
+                    <div className="flex items-center justify-center gap-1" title="SERP Visibility (AI Overview, Featured Snippet, Local Pack)">
+                      <Bot className="h-3.5 w-3.5" />
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <MapPin className="h-3.5 w-3.5" />
+                      <SortIcon field="serpVisibilityTotal" />
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-32 text-center">
+                    <TableCell colSpan={9} className="h-32 text-center">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <Search className="h-8 w-8" />
                         <p>No competitors found</p>
@@ -591,6 +618,31 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                                 : "bg-emerald-500"
                             }
                           />
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center" data-testid={`cell-serp-visibility-${index}`}>
+                        <div className="flex items-center justify-center gap-2">
+                          {(item.aiOverviewCount ?? 0) > 0 && (
+                            <div className="flex items-center gap-0.5" title="AI Overview mentions">
+                              <Bot className="h-3.5 w-3.5 text-purple-500" />
+                              <span className="text-xs font-mono">{item.aiOverviewCount}</span>
+                            </div>
+                          )}
+                          {(item.featuredSnippetCount ?? 0) > 0 && (
+                            <div className="flex items-center gap-0.5" title="Featured Snippet mentions">
+                              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                              <span className="text-xs font-mono">{item.featuredSnippetCount}</span>
+                            </div>
+                          )}
+                          {(item.localPackCount ?? 0) > 0 && (
+                            <div className="flex items-center gap-0.5" title="Local Pack mentions">
+                              <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                              <span className="text-xs font-mono">{item.localPackCount}</span>
+                            </div>
+                          )}
+                          {(item.serpVisibilityTotal ?? 0) === 0 && (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
