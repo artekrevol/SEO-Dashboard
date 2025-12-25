@@ -204,13 +204,16 @@ export function IntentIntelligencePage({ projectId }: Props) {
       }))
     : [];
 
-  const competitorChartData = competitors.slice(0, 5).map((c) => ({
-    domain: c.competitorDomain.replace(/^www\./, "").slice(0, 15),
-    aiOverview: c.aiOverviewMentions,
-    featuredSnippet: c.featuredSnippetMentions,
-    localPack: c.localPackMentions,
-    organic: c.organicMentions,
-  }));
+  const competitorChartData = competitors
+    .filter((c) => c.competitorDomain)
+    .slice(0, 5)
+    .map((c) => ({
+      domain: (c.competitorDomain || "").replace(/^www\./, "").slice(0, 15),
+      aiOverview: c.aiOverviewMentions,
+      featuredSnippet: c.featuredSnippetMentions,
+      localPack: c.localPackMentions,
+      organic: c.organicMentions,
+    }));
 
   return (
     <div className="space-y-6 p-6" data-testid="page-intent-intelligence">
@@ -575,13 +578,13 @@ export function IntentIntelligencePage({ projectId }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {competitors.map((competitor, idx) => (
+                  {competitors.filter((c) => c.competitorDomain).map((competitor, idx) => (
                     <tr
-                      key={competitor.competitorDomain}
+                      key={competitor.competitorDomain || idx}
                       className={idx % 2 === 0 ? "bg-muted/30" : ""}
                     >
                       <td className="px-4 py-3 font-medium">
-                        {competitor.competitorDomain}
+                        {competitor.competitorDomain || "Unknown"}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant={competitor.aiOverviewMentions > 0 ? "default" : "secondary"}>

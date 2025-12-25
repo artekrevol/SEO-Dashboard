@@ -345,7 +345,8 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
   
   const projectDomain = project?.domain?.toLowerCase().replace(/^www\./, '') || '';
   const competitorItems = (competitors?.competitors || []).filter((c: any) => {
-    const competitorDomain = c.competitorDomain.toLowerCase().replace(/^www\./, '');
+    if (!c.competitorDomain) return false;
+    const competitorDomain = (c.competitorDomain || '').toLowerCase().replace(/^www\./, '');
     return competitorDomain !== projectDomain && 
            competitorDomain !== 'tekrevol.com' &&
            !competitorDomain.includes('tekrevol');
@@ -357,7 +358,7 @@ export function DataManagementPage({ projectId }: DataManagementProps) {
   });
 
   const filteredCompetitors = competitorItems.filter((c: any) =>
-    c.competitorDomain.toLowerCase().includes(competitorSearch.toLowerCase())
+    c.competitorDomain && (c.competitorDomain || '').toLowerCase().includes(competitorSearch.toLowerCase())
   );
 
   const handleSelectKeyword = (id: number) => {
