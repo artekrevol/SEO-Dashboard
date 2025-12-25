@@ -3989,7 +3989,16 @@ export async function registerRoutes(
     try {
       const { projectId } = req.params;
       const matrix = await storage.getCompetitorVisibilityMatrix(projectId);
-      res.json({ competitors: matrix });
+      // Map storage field names to frontend expected field names
+      const competitors = matrix.map(item => ({
+        competitorDomain: item.domain,
+        totalMentions: item.totalAppearances,
+        aiOverviewMentions: item.aiOverviewCount,
+        featuredSnippetMentions: item.featuredSnippetCount,
+        localPackMentions: item.localPackCount,
+        organicMentions: item.organicTop10Count,
+      }));
+      res.json({ competitors });
     } catch (error) {
       console.error("Error fetching competitor visibility matrix:", error);
       res.status(500).json({ error: "Failed to fetch competitor visibility matrix" });
