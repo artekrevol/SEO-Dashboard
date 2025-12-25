@@ -3968,6 +3968,154 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================
+  // SEID - Search Engine Intent Detection Routes
+  // ============================================
+  
+  // Get intent dashboard summary for a project
+  app.get("/api/projects/:projectId/intent-dashboard", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const dashboard = await storage.getProjectIntentDashboard(projectId);
+      res.json(dashboard);
+    } catch (error) {
+      console.error("Error fetching intent dashboard:", error);
+      res.status(500).json({ error: "Failed to fetch intent dashboard" });
+    }
+  });
+
+  // Get competitor visibility matrix
+  app.get("/api/projects/:projectId/competitor-visibility", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const matrix = await storage.getCompetitorVisibilityMatrix(projectId);
+      res.json({ competitors: matrix });
+    } catch (error) {
+      console.error("Error fetching competitor visibility matrix:", error);
+      res.status(500).json({ error: "Failed to fetch competitor visibility matrix" });
+    }
+  });
+
+  // Get SERP layout snapshots for a project
+  app.get("/api/projects/:projectId/serp-snapshots", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const { limit, startDate, endDate } = req.query;
+      
+      const options: { limit?: number; startDate?: Date; endDate?: Date } = {};
+      if (limit) options.limit = parseInt(limit as string);
+      if (startDate) options.startDate = new Date(startDate as string);
+      if (endDate) options.endDate = new Date(endDate as string);
+      
+      const snapshots = await storage.getSerpLayoutSnapshotsByProject(projectId, options);
+      res.json({ snapshots });
+    } catch (error) {
+      console.error("Error fetching SERP snapshots:", error);
+      res.status(500).json({ error: "Failed to fetch SERP snapshots" });
+    }
+  });
+
+  // Get SERP layout snapshot by ID with items
+  app.get("/api/serp-snapshots/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const snapshot = await storage.getSerpLayoutSnapshot(id);
+      if (!snapshot) {
+        return res.status(404).json({ error: "Snapshot not found" });
+      }
+      
+      const items = await storage.getSerpLayoutItems(id);
+      const competitorPresence = await storage.getCompetitorSerpPresence(id);
+      
+      res.json({ snapshot, items, competitorPresence });
+    } catch (error) {
+      console.error("Error fetching SERP snapshot:", error);
+      res.status(500).json({ error: "Failed to fetch SERP snapshot" });
+    }
+  });
+
+  // Get SERP snapshots for a specific keyword
+  app.get("/api/keywords/:keywordId/serp-history", async (req, res) => {
+    try {
+      const keywordId = parseInt(req.params.keywordId);
+      const { limit } = req.query;
+      const snapshots = await storage.getSerpLayoutSnapshots(keywordId, limit ? parseInt(limit as string) : 10);
+      res.json({ snapshots });
+    } catch (error) {
+      console.error("Error fetching keyword SERP history:", error);
+      res.status(500).json({ error: "Failed to fetch keyword SERP history" });
+    }
+  });
+
+  // Get intent alerts for a project
+  app.get("/api/projects/:projectId/intent-alerts", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const { isResolved, alertType, severity, limit } = req.query;
+      
+      const options: { isResolved?: boolean; alertType?: string; severity?: string; limit?: number } = {};
+      if (isResolved !== undefined) options.isResolved = isResolved === 'true';
+      if (alertType) options.alertType = alertType as string;
+      if (severity) options.severity = severity as string;
+      if (limit) options.limit = parseInt(limit as string);
+      
+      const alerts = await storage.getIntentAlerts(projectId, options);
+      res.json({ alerts });
+    } catch (error) {
+      console.error("Error fetching intent alerts:", error);
+      res.status(500).json({ error: "Failed to fetch intent alerts" });
+    }
+  });
+
+  // Get a specific intent alert
+  app.get("/api/intent-alerts/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const alert = await storage.getIntentAlert(id);
+      if (!alert) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      res.json(alert);
+    } catch (error) {
+      console.error("Error fetching intent alert:", error);
+      res.status(500).json({ error: "Failed to fetch intent alert" });
+    }
+  });
+
+  // Resolve an intent alert
+  app.patch("/api/intent-alerts/:id/resolve", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const resolved = await storage.resolveIntentAlert(id);
+      if (!resolved) {
+        return res.status(404).json({ error: "Alert not found" });
+      }
+      res.json(resolved);
+    } catch (error) {
+      console.error("Error resolving intent alert:", error);
+      res.status(500).json({ error: "Failed to resolve intent alert" });
+    }
+  });
+
+  // Get competitor SERP presence for a project
+  app.get("/api/projects/:projectId/competitor-serp-presence", async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const { competitorDomain, blockType, limit } = req.query;
+      
+      const options: { competitorDomain?: string; blockType?: string; limit?: number } = {};
+      if (competitorDomain) options.competitorDomain = competitorDomain as string;
+      if (blockType) options.blockType = blockType as string;
+      if (limit) options.limit = parseInt(limit as string);
+      
+      const presence = await storage.getCompetitorSerpPresenceByProject(projectId, options);
+      res.json({ presence });
+    } catch (error) {
+      console.error("Error fetching competitor SERP presence:", error);
+      res.status(500).json({ error: "Failed to fetch competitor SERP presence" });
+    }
+  });
+
   startScheduledJobs();
 
   // Recover any stale crawls that were running before server restart
