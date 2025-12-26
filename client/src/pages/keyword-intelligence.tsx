@@ -1,64 +1,42 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  LineChart,
-  Line,
   AreaChart,
   Area,
 } from "recharts";
 import {
-  Brain,
   AlertTriangle,
-  TrendingUp,
-  TrendingDown,
   Target,
   Sparkles,
   Bot,
   Video,
-  ShoppingCart,
   MessageSquare,
   MapPin,
-  Image,
-  Newspaper,
-  ListChecks,
   Search,
-  ChevronUp,
-  ChevronDown,
   ArrowUpDown,
   ExternalLink,
-  X,
-  Filter,
   Layers,
-  Eye,
   Quote,
-  Link2,
   Activity,
-  Zap,
-  Info,
-  RefreshCw,
+  Image,
+  ShoppingCart,
+  Newspaper,
+  ListChecks,
+  Brain,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
@@ -67,57 +45,40 @@ interface KeywordIntelligenceData {
   keywords: EnrichedKeyword[];
   summary: {
     totalKeywords: number;
-    withAiOverview: number;
-    withFeaturedSnippet: number;
-    withLocalPack: number;
-    avgOpportunity: number;
+    keywordsWithAiOverview: number;
+    keywordsWithFeaturedSnippet: number;
+    keywordsWithLocalPack: number;
+    keywordsWithYourCitation: number;
     avgPosition: number;
-    avgVolume: number;
-    alertsCount: number;
-    avgStability: number;
-    brandCitationRate: number;
+    avgOpportunityScore: number;
+    avgStabilityScore: number;
   };
 }
 
 interface EnrichedKeyword {
-  keyword: {
-    id: number;
-    projectId: string;
-    keyword: string;
-    targetUrl: string | null;
-    searchIntent: string | null;
-    cluster: string | null;
-    priorityTier: string | null;
-  };
-  metrics: {
-    position: number | null;
-    searchVolume: number | null;
-    opportunityScore: number | null;
-    difficulty: number | null;
-    intent: string | null;
-    trend: string | null;
-  } | null;
-  serpFeatures: {
-    hasAiOverview: boolean;
-    hasFeaturedSnippet: boolean;
-    hasLocalPack: boolean;
-    hasPeopleAlsoAsk: boolean;
-    hasVideoCarousel: boolean;
-    hasImagePack: boolean;
-    organicStartPosition: number | null;
-    stabilityScore: number | null;
-    layoutStack: string[];
-  } | null;
-  aiIntelligence: {
-    citationCount: number;
-    isBrandCited: boolean;
-    latestCapturedAt: string | null;
-  };
-  competitorPresence: {
-    inAiOverview: string[];
-    inFeaturedSnippet: string[];
-    inLocalPack: string[];
-  };
+  keywordId: number;
+  keyword: string;
+  targetUrl: string | null;
+  cluster: string | null;
+  priority: string | null;
+  intent: string | null;
+  position: number | null;
+  positionDelta: number;
+  searchVolume: number | null;
+  difficulty: number | null;
+  opportunityScore: number | null;
+  serpFeatures: string[];
+  hasAiOverview: boolean;
+  hasFeaturedSnippet: boolean;
+  hasLocalPack: boolean;
+  hasPeopleAlsoAsk: boolean;
+  aiCitationCount: number;
+  isYourBrandCited: boolean;
+  yourCitationPosition: number | null;
+  competitorsCitedCount: number;
+  organicStartPosition: number | null;
+  stabilityScore: number | null;
+  locationName: string | null;
 }
 
 interface KeywordDetailData {
@@ -243,7 +204,6 @@ function getPositionBadgeVariant(position: number | null): "default" | "secondar
 }
 
 export default function KeywordIntelligence({ projectId }: Props) {
-  const { toast } = useToast();
   const [selectedKeywordId, setSelectedKeywordId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [intentFilter, setIntentFilter] = useState<string>("all");
@@ -273,23 +233,22 @@ export default function KeywordIntelligence({ projectId }: Props) {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(k =>
-        k.keyword.keyword.toLowerCase().includes(query) ||
-        k.keyword.targetUrl?.toLowerCase().includes(query)
+        k.keyword.toLowerCase().includes(query) ||
+        k.targetUrl?.toLowerCase().includes(query)
       );
     }
 
     if (intentFilter !== "all") {
-      filtered = filtered.filter(k => k.keyword.searchIntent === intentFilter);
+      filtered = filtered.filter(k => k.intent === intentFilter);
     }
 
     if (serpFeatureFilter !== "all") {
       filtered = filtered.filter(k => {
-        if (!k.serpFeatures) return false;
         switch (serpFeatureFilter) {
-          case "ai_overview": return k.serpFeatures.hasAiOverview;
-          case "featured_snippet": return k.serpFeatures.hasFeaturedSnippet;
-          case "local_pack": return k.serpFeatures.hasLocalPack;
-          case "paa": return k.serpFeatures.hasPeopleAlsoAsk;
+          case "ai_overview": return k.hasAiOverview;
+          case "featured_snippet": return k.hasFeaturedSnippet;
+          case "local_pack": return k.hasLocalPack;
+          case "paa": return k.hasPeopleAlsoAsk;
           default: return true;
         }
       });
@@ -297,16 +256,16 @@ export default function KeywordIntelligence({ projectId }: Props) {
 
     if (aiStatusFilter !== "all") {
       filtered = filtered.filter(k => {
-        if (aiStatusFilter === "cited") return k.aiIntelligence.isBrandCited;
-        if (aiStatusFilter === "not_cited") return k.serpFeatures?.hasAiOverview && !k.aiIntelligence.isBrandCited;
-        if (aiStatusFilter === "no_ai") return !k.serpFeatures?.hasAiOverview;
+        if (aiStatusFilter === "cited") return k.isYourBrandCited;
+        if (aiStatusFilter === "not_cited") return k.hasAiOverview && !k.isYourBrandCited;
+        if (aiStatusFilter === "no_ai") return !k.hasAiOverview;
         return true;
       });
     }
 
     if (positionFilter !== "all") {
       filtered = filtered.filter(k => {
-        const pos = k.metrics?.position ?? null;
+        const pos = k.position ?? null;
         if (pos === null || pos === undefined) return positionFilter === "unranked";
         switch (positionFilter) {
           case "top3": return pos <= 3;
@@ -322,24 +281,24 @@ export default function KeywordIntelligence({ projectId }: Props) {
       let aValue: any, bValue: any;
       switch (sortConfig.key) {
         case 'keyword':
-          aValue = a.keyword.keyword;
-          bValue = b.keyword.keyword;
+          aValue = a.keyword;
+          bValue = b.keyword;
           break;
         case 'position':
-          aValue = a.metrics?.position ?? 999;
-          bValue = b.metrics?.position ?? 999;
+          aValue = a.position ?? 999;
+          bValue = b.position ?? 999;
           break;
         case 'volume':
-          aValue = a.metrics?.searchVolume ?? 0;
-          bValue = b.metrics?.searchVolume ?? 0;
+          aValue = a.searchVolume ?? 0;
+          bValue = b.searchVolume ?? 0;
           break;
         case 'opportunity':
-          aValue = a.metrics?.opportunityScore ?? 0;
-          bValue = b.metrics?.opportunityScore ?? 0;
+          aValue = a.opportunityScore ?? 0;
+          bValue = b.opportunityScore ?? 0;
           break;
         case 'stability':
-          aValue = a.serpFeatures?.stabilityScore ?? 0;
-          bValue = b.serpFeatures?.stabilityScore ?? 0;
+          aValue = a.stabilityScore ?? 0;
+          bValue = b.stabilityScore ?? 0;
           break;
         default:
           return 0;
@@ -419,13 +378,13 @@ export default function KeywordIntelligence({ projectId }: Props) {
                 <Bot className="h-5 w-5 text-violet-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{summary?.withAiOverview ?? 0}</p>
+                <p className="text-2xl font-bold">{summary?.keywordsWithAiOverview ?? 0}</p>
                 <p className="text-sm text-muted-foreground">With AI Overview</p>
               </div>
             </div>
             {summary && summary.totalKeywords > 0 && (
               <div className="mt-2">
-                <Progress value={(summary.withAiOverview / summary.totalKeywords) * 100} className="h-1.5" />
+                <Progress value={(summary.keywordsWithAiOverview / summary.totalKeywords) * 100} className="h-1.5" />
               </div>
             )}
           </CardContent>
@@ -438,7 +397,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                 <Sparkles className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{summary?.withFeaturedSnippet ?? 0}</p>
+                <p className="text-2xl font-bold">{summary?.keywordsWithFeaturedSnippet ?? 0}</p>
                 <p className="text-sm text-muted-foreground">Featured Snippets</p>
               </div>
             </div>
@@ -452,7 +411,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                 <MapPin className="h-5 w-5 text-emerald-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{summary?.withLocalPack ?? 0}</p>
+                <p className="text-2xl font-bold">{summary?.keywordsWithLocalPack ?? 0}</p>
                 <p className="text-sm text-muted-foreground">Local Pack</p>
               </div>
             </div>
@@ -466,8 +425,8 @@ export default function KeywordIntelligence({ projectId }: Props) {
                 <Quote className="h-5 w-5 text-green-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{((summary?.brandCitationRate ?? 0) * 100).toFixed(0)}%</p>
-                <p className="text-sm text-muted-foreground">Brand Citation Rate</p>
+                <p className="text-2xl font-bold">{summary?.keywordsWithYourCitation ?? 0}</p>
+                <p className="text-sm text-muted-foreground">Brand Citations</p>
               </div>
             </div>
           </CardContent>
@@ -480,7 +439,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                 <Activity className="h-5 w-5 text-blue-500" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{(summary?.avgStability ?? 0).toFixed(0)}</p>
+                <p className="text-2xl font-bold">{(summary?.avgStabilityScore ?? 0).toFixed(0)}</p>
                 <p className="text-sm text-muted-foreground">Avg Stability Score</p>
               </div>
             </div>
@@ -629,44 +588,44 @@ export default function KeywordIntelligence({ projectId }: Props) {
                   ) : (
                     filteredKeywords.slice(0, 100).map((item) => (
                       <tr
-                        key={item.keyword.id}
+                        key={item.keywordId}
                         className="border-b last:border-0 hover-elevate cursor-pointer"
-                        onClick={() => setSelectedKeywordId(item.keyword.id)}
-                        data-testid={`row-keyword-${item.keyword.id}`}
+                        onClick={() => setSelectedKeywordId(item.keywordId)}
+                        data-testid={`row-keyword-${item.keywordId}`}
                       >
                         <td className="p-3">
                           <div className="flex flex-col gap-1">
-                            <span className="font-medium">{item.keyword.keyword}</span>
-                            {item.keyword.targetUrl && (
+                            <span className="font-medium">{item.keyword}</span>
+                            {item.targetUrl && (
                               <span className="text-xs text-muted-foreground truncate max-w-xs">
-                                {item.keyword.targetUrl}
+                                {item.targetUrl}
                               </span>
                             )}
                             <div className="flex items-center gap-1">
-                              {item.keyword.searchIntent && (
+                              {item.intent && (
                                 <Badge variant="outline" className="text-xs">
-                                  {item.keyword.searchIntent}
+                                  {item.intent}
                                 </Badge>
                               )}
-                              {item.keyword.priorityTier && (
+                              {item.priority && (
                                 <Badge variant="secondary" className="text-xs">
-                                  {item.keyword.priorityTier}
+                                  {item.priority}
                                 </Badge>
                               )}
                             </div>
                           </div>
                         </td>
                         <td className="p-3 text-center">
-                          <Badge variant={getPositionBadgeVariant(item.metrics?.position ?? null)}>
-                            {item.metrics?.position ?? "—"}
+                          <Badge variant={getPositionBadgeVariant(item.position ?? null)}>
+                            {item.position ?? "—"}
                           </Badge>
                         </td>
                         <td className="p-3 text-center">
-                          {item.metrics?.searchVolume?.toLocaleString() ?? "—"}
+                          {item.searchVolume?.toLocaleString() ?? "—"}
                         </td>
                         <td className="p-3">
                           <div className="flex items-center justify-center gap-1.5">
-                            {item.serpFeatures?.hasAiOverview && (
+                            {item.hasAiOverview && (
                               <Tooltip>
                                 <TooltipTrigger>
                                   <Bot className="h-4 w-4 text-violet-500" />
@@ -674,7 +633,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                                 <TooltipContent>AI Overview</TooltipContent>
                               </Tooltip>
                             )}
-                            {item.serpFeatures?.hasFeaturedSnippet && (
+                            {item.hasFeaturedSnippet && (
                               <Tooltip>
                                 <TooltipTrigger>
                                   <Sparkles className="h-4 w-4 text-amber-500" />
@@ -682,7 +641,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                                 <TooltipContent>Featured Snippet</TooltipContent>
                               </Tooltip>
                             )}
-                            {item.serpFeatures?.hasLocalPack && (
+                            {item.hasLocalPack && (
                               <Tooltip>
                                 <TooltipTrigger>
                                   <MapPin className="h-4 w-4 text-emerald-500" />
@@ -690,7 +649,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                                 <TooltipContent>Local Pack</TooltipContent>
                               </Tooltip>
                             )}
-                            {item.serpFeatures?.hasPeopleAlsoAsk && (
+                            {item.hasPeopleAlsoAsk && (
                               <Tooltip>
                                 <TooltipTrigger>
                                   <MessageSquare className="h-4 w-4 text-blue-500" />
@@ -698,7 +657,7 @@ export default function KeywordIntelligence({ projectId }: Props) {
                                 <TooltipContent>People Also Ask</TooltipContent>
                               </Tooltip>
                             )}
-                            {item.serpFeatures?.hasVideoCarousel && (
+                            {item.serpFeatures?.includes('video_carousel') && (
                               <Tooltip>
                                 <TooltipTrigger>
                                   <Video className="h-4 w-4 text-red-500" />
@@ -706,18 +665,18 @@ export default function KeywordIntelligence({ projectId }: Props) {
                                 <TooltipContent>Video Carousel</TooltipContent>
                               </Tooltip>
                             )}
-                            {!item.serpFeatures?.hasAiOverview && 
-                             !item.serpFeatures?.hasFeaturedSnippet && 
-                             !item.serpFeatures?.hasLocalPack && 
-                             !item.serpFeatures?.hasPeopleAlsoAsk && 
-                             !item.serpFeatures?.hasVideoCarousel && (
+                            {!item.hasAiOverview && 
+                             !item.hasFeaturedSnippet && 
+                             !item.hasLocalPack && 
+                             !item.hasPeopleAlsoAsk && 
+                             !item.serpFeatures?.includes('video_carousel') && (
                               <span className="text-muted-foreground text-xs">—</span>
                             )}
                           </div>
                         </td>
                         <td className="p-3 text-center">
-                          {item.serpFeatures?.hasAiOverview ? (
-                            item.aiIntelligence.isBrandCited ? (
+                          {item.hasAiOverview ? (
+                            item.isYourBrandCited ? (
                               <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
                                 Cited
                               </Badge>
@@ -731,16 +690,16 @@ export default function KeywordIntelligence({ projectId }: Props) {
                           )}
                         </td>
                         <td className="p-3 text-center">
-                          <span className={`font-medium ${getOpportunityColor(item.metrics?.opportunityScore ?? null)}`}>
-                            {item.metrics?.opportunityScore ?? "—"}
+                          <span className={`font-medium ${getOpportunityColor(item.opportunityScore ?? null)}`}>
+                            {item.opportunityScore ?? "—"}
                           </span>
                         </td>
                         <td className="p-3 text-center">
                           <div className="flex items-center justify-center gap-2">
-                            <span>{item.serpFeatures?.stabilityScore ?? "—"}</span>
-                            {item.serpFeatures?.stabilityScore !== null && (
+                            <span>{item.stabilityScore ?? "—"}</span>
+                            {item.stabilityScore !== null && (
                               <Progress 
-                                value={item.serpFeatures?.stabilityScore ?? 0} 
+                                value={item.stabilityScore ?? 0} 
                                 className="w-12 h-1.5" 
                               />
                             )}

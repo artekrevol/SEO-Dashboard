@@ -56,9 +56,16 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - **Intent Stability Score**: 0-100 score measuring SERP layout consistency over time
     - **Intent Alerts**: Actionable alerts for intent shifts, competitor feature gains, organic position drops, and volatility spikes
     - **Keyword History Integration**: SERP Layout tab in keyword drawer shows layout history with visual stack comparison
+- **Keyword Intelligence Hub**: Comprehensive keyword analysis workspace consolidating SERP features, AI mentions, and competitive insights. Features include:
+    - **KPI Dashboard**: Summary cards showing total keywords, AI Overview coverage, Featured Snippets, Local Pack presence, brand citation count, and average stability scores
+    - **Keyword Explorer Table**: Filterable table displaying keywords with position, volume, SERP feature icons, AI citation status, opportunity scores, and stability metrics
+    - **Advanced Filtering**: Filter by search intent (informational/commercial/transactional/navigational), SERP feature presence, AI citation status, and position ranges
+    - **Keyword Detail Drawer**: Tabbed deep-dive view with Overview (metrics), AI Intelligence (citations), SERP Layout (block visualization), Competitors (feature presence), and History (position trends)
+    - **AI Citation Tracking**: Shows sources citing your brand in AI Overviews with text excerpts, reference positions, and content types
+    - **Competitor SERP Presence**: Tracks competitors appearing in AI Overview, Featured Snippets, and Local Pack for each keyword
 
 ### System Design Choices
-- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, `app_versions`, `serp_layout_snapshots`, `serp_layout_items`, `serp_competitor_presence`, and `intent_alerts`.
+- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, `app_versions`, `serp_layout_snapshots`, `serp_layout_items`, `serp_competitor_presence`, `intent_alerts`, and `ai_overview_citations`.
 - **Historical Data Tracking**: All crawl data uses date-based rows for trend analysis. Tables with historical tracking: `rankings_history` (keyword positions), `keywordMetrics` (opportunity scores), `competitor_metrics` (competitor pressure), `backlinks_history` (DA/PA/spam score changes), `tech_crawls` (site audit snapshots).
 - **Data Retention Policy**: Automated weekly cleanup (Sundays 2 AM CST) removes records older than 90 days from historical tables to manage database size while preserving 3 months of trend data.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
