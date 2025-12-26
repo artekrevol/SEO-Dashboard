@@ -196,7 +196,7 @@ export interface IStorage {
     targetUrl: string;
     cluster: string;
   }[]>;
-  getCompetitorSerpKeywords(projectId: string, competitorDomain: string, blockTypes: string[]): Promise<{
+  getCompetitorSerpKeywords(projectId: string, competitorDomain: string, blockTypes: string[], maxPosition?: number): Promise<{
     keywordId: number;
     keyword: string;
     searchVolume: number;
@@ -1476,7 +1476,7 @@ export class DatabaseStorage implements IStorage {
     return result.length;
   }
 
-  async getCompetitorSerpKeywords(projectId: string, competitorDomain: string, blockTypes: string[]): Promise<{
+  async getCompetitorSerpKeywords(projectId: string, competitorDomain: string, blockTypes: string[], maxPosition?: number): Promise<{
     keywordId: number;
     keyword: string;
     searchVolume: number;
@@ -1485,6 +1485,18 @@ export class DatabaseStorage implements IStorage {
     blockType: string;
     capturedAt: string;
   }[]> {
+    // Build where conditions
+    const conditions = [
+      eq(serpLayoutSnapshots.projectId, projectId),
+      eq(competitorSerpPresence.competitorDomain, competitorDomain),
+      inArray(competitorSerpPresence.blockType, blockTypes)
+    ];
+    
+    // Add position filter if maxPosition is specified
+    if (maxPosition !== undefined) {
+      conditions.push(lte(competitorSerpPresence.position, maxPosition));
+    }
+    
     const results = await db
       .select({
         keywordId: serpLayoutSnapshots.keywordId,
@@ -1498,13 +1510,7 @@ export class DatabaseStorage implements IStorage {
       .from(competitorSerpPresence)
       .innerJoin(serpLayoutSnapshots, eq(serpLayoutSnapshots.id, competitorSerpPresence.snapshotId))
       .innerJoin(keywords, eq(keywords.id, serpLayoutSnapshots.keywordId))
-      .where(
-        and(
-          eq(serpLayoutSnapshots.projectId, projectId),
-          eq(competitorSerpPresence.competitorDomain, competitorDomain),
-          inArray(competitorSerpPresence.blockType, blockTypes)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(desc(keywords.searchVolume));
 
     const uniqueKeywords = new Map();

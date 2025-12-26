@@ -611,7 +611,9 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid featureType" });
       }
 
-      const keywords = await storage.getCompetitorSerpKeywords(projectId, domain, blockTypes);
+      // For organicTop10, we need to filter by position <= 10
+      const maxPosition = featureType === "organicTop10" ? 10 : undefined;
+      const keywords = await storage.getCompetitorSerpKeywords(projectId, domain, blockTypes, maxPosition);
       res.json(keywords);
     } catch (error) {
       console.error("Error fetching competitor SERP keywords:", error);
@@ -4064,9 +4066,10 @@ export async function registerRoutes(
       const { projectId } = req.params;
       const matrix = await storage.getCompetitorVisibilityMatrix(projectId);
       // Map storage field names to frontend expected field names
+      // Total should be sum of displayed columns only (not all organic positions)
       const competitors = matrix.map(item => ({
         competitorDomain: item.domain,
-        totalMentions: item.totalAppearances,
+        totalMentions: item.aiOverviewCount + item.featuredSnippetCount + item.localPackCount + item.organicTop10Count,
         aiOverviewMentions: item.aiOverviewCount,
         featuredSnippetMentions: item.featuredSnippetCount,
         localPackMentions: item.localPackCount,
