@@ -92,6 +92,9 @@ interface CompetitorsTableProps {
   data: CompetitorData[];
   isLoading?: boolean;
   projectId?: string | null;
+  sortField?: string;
+  sortDirection?: "asc" | "desc";
+  onSortChange?: (field: string, direction: "asc" | "desc") => void;
 }
 
 const competitorExportColumns: ExportColumn<CompetitorData>[] = [
@@ -111,16 +114,36 @@ const competitorExportColumns: ExportColumn<CompetitorData>[] = [
   { header: "SERP Visibility", accessor: "serpVisibilityTotal", format: (v) => v ?? 0 },
 ];
 
-export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTableProps) {
+export function CompetitorsTable({ 
+  data, 
+  isLoading, 
+  projectId,
+  sortField: externalSortField,
+  sortDirection: externalSortDirection,
+  onSortChange,
+}: CompetitorsTableProps) {
   const [search, setSearch] = useState("");
   const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
   const [backlinksDrawerDomain, setBacklinksDrawerDomain] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<CompetitorSortField>("sharedKeywords");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [localSortField, setLocalSortField] = useState<CompetitorSortField>("sharedKeywords");
+  const [localSortDirection, setLocalSortDirection] = useState<SortDirection>("desc");
   const [pressureFilter, setPressureFilter] = useState<string>("all");
   const [threatFilter, setThreatFilter] = useState<string>("all");
   const [competitorToDelete, setCompetitorToDelete] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const sortField = (externalSortField as CompetitorSortField) || localSortField;
+  const sortDirection = externalSortDirection || localSortDirection;
+
+  const handleSort = (field: CompetitorSortField) => {
+    const newDirection = sortField === field && sortDirection === "desc" ? "asc" : "desc";
+    if (onSortChange) {
+      onSortChange(field, newDirection);
+    } else {
+      setLocalSortField(field);
+      setLocalSortDirection(newDirection);
+    }
+  };
 
   const deleteCompetitorMutation = useMutation({
     mutationFn: async (domain: string) => {
@@ -147,15 +170,6 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
       });
     },
   });
-
-  const handleSort = (field: CompetitorSortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDirection("desc");
-    }
-  };
 
   const SortIcon = ({ field }: { field: CompetitorSortField }) => {
     if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;

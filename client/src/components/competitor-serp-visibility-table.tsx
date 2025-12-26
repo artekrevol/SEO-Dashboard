@@ -1,7 +1,10 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -10,7 +13,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, Bot, Sparkles, MapPin, ListChecks } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Search, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, Bot, Sparkles, MapPin, ListChecks, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
@@ -31,6 +40,27 @@ interface CompetitorData {
 interface CompetitorSerpVisibilityTableProps {
   data: CompetitorData[];
   isLoading?: boolean;
+  projectId?: string | null;
+  sortField?: string;
+  sortDirection?: SortDirection;
+  onSortChange?: (field: string, direction: SortDirection) => void;
+}
+
+interface SerpKeywordDetail {
+  keywordId: number;
+  keyword: string;
+  searchVolume: number;
+  position: number;
+  url: string;
+  blockType: string;
+  capturedAt: string;
+}
+
+interface DrawerState {
+  isOpen: boolean;
+  competitorDomain: string | null;
+  featureType: string | null;
+  featureLabel: string;
 }
 
 const exportColumns: ExportColumn<CompetitorData>[] = [
@@ -43,17 +73,41 @@ const exportColumns: ExportColumn<CompetitorData>[] = [
   { header: "Total SERP Visibility", accessor: "serpVisibilityTotal", format: (v) => v ?? 0 },
 ];
 
-export function CompetitorSerpVisibilityTable({ data, isLoading }: CompetitorSerpVisibilityTableProps) {
+const featureConfig: Record<string, { icon: typeof Bot; color: string; label: string; blockTypes: string[] }> = {
+  aiOverview: { icon: Bot, color: "purple", label: "AI Overview", blockTypes: ["ai_overview"] },
+  featuredSnippet: { icon: Sparkles, color: "amber", label: "Featured Snippet", blockTypes: ["featured_snippet"] },
+  localPack: { icon: MapPin, color: "blue", label: "Local Pack", blockTypes: ["local_pack"] },
+  organicTop10: { icon: ListChecks, color: "emerald", label: "Organic Top 10", blockTypes: ["organic"] },
+};
+
+export function CompetitorSerpVisibilityTable({ 
+  data, 
+  isLoading,
+  projectId,
+  sortField: externalSortField,
+  sortDirection: externalSortDirection,
+  onSortChange,
+}: CompetitorSerpVisibilityTableProps) {
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<SortField>("serpVisibilityTotal");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [localSortField, setLocalSortField] = useState<SortField>("serpVisibilityTotal");
+  const [localSortDirection, setLocalSortDirection] = useState<SortDirection>("desc");
+  const [drawer, setDrawer] = useState<DrawerState>({
+    isOpen: false,
+    competitorDomain: null,
+    featureType: null,
+    featureLabel: "",
+  });
+
+  const sortField = (externalSortField as SortField) || localSortField;
+  const sortDirection = externalSortDirection || localSortDirection;
 
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    const newDirection = sortField === field && sortDirection === "desc" ? "asc" : "desc";
+    if (onSortChange) {
+      onSortChange(field, newDirection);
     } else {
-      setSortField(field);
-      setSortDirection("desc");
+      setLocalSortField(field);
+      setLocalSortDirection(newDirection);
     }
   };
 
@@ -63,6 +117,29 @@ export function CompetitorSerpVisibilityTable({ data, isLoading }: CompetitorSer
       ? <ArrowUp className="h-3 w-3 ml-1" /> 
       : <ArrowDown className="h-3 w-3 ml-1" />;
   };
+
+  const openKeywordDrawer = (domain: string, featureType: string, featureLabel: string, count: number) => {
+    if (count === 0) return;
+    setDrawer({
+      isOpen: true,
+      competitorDomain: domain,
+      featureType,
+      featureLabel,
+    });
+  };
+
+  const { data: keywordDetails, isLoading: keywordsLoading } = useQuery<SerpKeywordDetail[]>({
+    queryKey: ["/api/competitors/serp-keywords", drawer.competitorDomain, drawer.featureType, projectId],
+    queryFn: async () => {
+      if (!drawer.competitorDomain || !drawer.featureType || !projectId) return [];
+      const res = await fetch(
+        `/api/competitors/${encodeURIComponent(drawer.competitorDomain)}/serp-keywords?projectId=${projectId}&featureType=${drawer.featureType}`
+      );
+      if (!res.ok) throw new Error("Failed to fetch keyword details");
+      return res.json();
+    },
+    enabled: drawer.isOpen && !!drawer.competitorDomain && !!drawer.featureType && !!projectId,
+  });
 
   const filteredAndSortedData = useMemo(() => {
     let filtered = data.filter(item => 
@@ -139,6 +216,34 @@ export function CompetitorSerpVisibilityTable({ data, isLoading }: CompetitorSer
       </Card>
     );
   }
+
+  const ClickableBadge = ({ 
+    count, 
+    colorClass, 
+    domain,
+    featureType,
+    featureLabel,
+  }: { 
+    count: number; 
+    colorClass: string;
+    domain: string;
+    featureType: string;
+    featureLabel: string;
+  }) => (
+    <Badge
+      variant="secondary"
+      className={cn(
+        "font-mono transition-all",
+        count > 0
+          ? `${colorClass} cursor-pointer hover:ring-2 hover:ring-offset-2 hover:ring-offset-background`
+          : "bg-muted text-muted-foreground"
+      )}
+      onClick={() => openKeywordDrawer(domain, featureType, featureLabel, count)}
+      data-testid={`badge-${featureType}-${domain}`}
+    >
+      {count}
+    </Badge>
+  );
 
   return (
     <div className="space-y-4">
@@ -317,56 +422,40 @@ export function CompetitorSerpVisibilityTable({ data, isLoading }: CompetitorSer
                       </a>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "font-mono",
-                          (item.aiOverviewCount ?? 0) > 0
-                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-                            : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        {item.aiOverviewCount ?? 0}
-                      </Badge>
+                      <ClickableBadge
+                        count={item.aiOverviewCount ?? 0}
+                        colorClass="bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:ring-purple-500"
+                        domain={item.competitorDomain}
+                        featureType="aiOverview"
+                        featureLabel="AI Overview"
+                      />
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "font-mono",
-                          (item.featuredSnippetCount ?? 0) > 0
-                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                            : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        {item.featuredSnippetCount ?? 0}
-                      </Badge>
+                      <ClickableBadge
+                        count={item.featuredSnippetCount ?? 0}
+                        colorClass="bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:ring-amber-500"
+                        domain={item.competitorDomain}
+                        featureType="featuredSnippet"
+                        featureLabel="Featured Snippet"
+                      />
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "font-mono",
-                          (item.localPackCount ?? 0) > 0
-                            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                            : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        {item.localPackCount ?? 0}
-                      </Badge>
+                      <ClickableBadge
+                        count={item.localPackCount ?? 0}
+                        colorClass="bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:ring-blue-500"
+                        domain={item.competitorDomain}
+                        featureType="localPack"
+                        featureLabel="Local Pack"
+                      />
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "font-mono",
-                          (item.organicTop10Count ?? 0) > 0
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        {item.organicTop10Count ?? 0}
-                      </Badge>
+                      <ClickableBadge
+                        count={item.organicTop10Count ?? 0}
+                        colorClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:ring-emerald-500"
+                        domain={item.competitorDomain}
+                        featureType="organicTop10"
+                        featureLabel="Organic Top 10"
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge
@@ -388,6 +477,69 @@ export function CompetitorSerpVisibilityTable({ data, isLoading }: CompetitorSer
           </Table>
         </CardContent>
       </Card>
+
+      <Sheet open={drawer.isOpen} onOpenChange={(open) => setDrawer(prev => ({ ...prev, isOpen: open }))}>
+        <SheetContent className="w-full sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              {drawer.featureType === "aiOverview" && <Bot className="h-5 w-5 text-purple-500" />}
+              {drawer.featureType === "featuredSnippet" && <Sparkles className="h-5 w-5 text-amber-500" />}
+              {drawer.featureType === "localPack" && <MapPin className="h-5 w-5 text-blue-500" />}
+              {drawer.featureType === "organicTop10" && <ListChecks className="h-5 w-5 text-emerald-500" />}
+              {drawer.featureLabel} Keywords
+            </SheetTitle>
+            <p className="text-sm text-muted-foreground">
+              Keywords where <span className="font-medium">{drawer.competitorDomain}</span> appears in {drawer.featureLabel}
+            </p>
+          </SheetHeader>
+          
+          <div className="mt-6">
+            {keywordsLoading ? (
+              <div className="space-y-3">
+                {[...Array(5)].map((_, i) => (
+                  <Skeleton key={i} className="h-16" />
+                ))}
+              </div>
+            ) : !keywordDetails || keywordDetails.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <Search className="h-12 w-12 mb-4" />
+                <p className="font-medium">No keyword details found</p>
+                <p className="text-sm">Run a SERP layout crawl to capture this data</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {keywordDetails.map((kw) => (
+                  <Card key={`${kw.keywordId}-${kw.blockType}`} className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{kw.keyword}</p>
+                        <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                          <span>{kw.searchVolume?.toLocaleString() ?? 0} vol</span>
+                          {kw.position && <span>Position #{kw.position}</span>}
+                        </div>
+                        {kw.url && (
+                          <a
+                            href={kw.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 mt-2 text-xs text-primary hover:underline truncate"
+                          >
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{kw.url}</span>
+                          </a>
+                        )}
+                      </div>
+                      <Badge variant="secondary" className="flex-shrink-0">
+                        {kw.blockType?.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

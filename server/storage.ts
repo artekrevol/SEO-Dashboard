@@ -108,7 +108,7 @@ import {
   intentAlerts,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, lt, sql, isNull, or } from "drizzle-orm";
+import { eq, desc, and, gte, lte, lt, sql, isNull, or, inArray } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -195,6 +195,15 @@ export interface IStorage {
     competitorUrl: string;
     targetUrl: string;
     cluster: string;
+  }[]>;
+  getCompetitorSerpKeywords(projectId: string, competitorDomain: string, blockTypes: string[]): Promise<{
+    keywordId: number;
+    keyword: string;
+    searchVolume: number;
+    position: number;
+    url: string;
+    blockType: string;
+    capturedAt: string;
   }[]>;
   
   getActiveCrawlSchedules(): Promise<CrawlSchedule[]>;
@@ -1465,6 +1474,56 @@ export class DatabaseStorage implements IStorage {
       )
       .returning({ id: keywordCompetitorMetrics.id });
     return result.length;
+  }
+
+  async getCompetitorSerpKeywords(projectId: string, competitorDomain: string, blockTypes: string[]): Promise<{
+    keywordId: number;
+    keyword: string;
+    searchVolume: number;
+    position: number;
+    url: string;
+    blockType: string;
+    capturedAt: string;
+  }[]> {
+    const results = await db
+      .select({
+        keywordId: serpLayoutSnapshots.keywordId,
+        keyword: keywords.keyword,
+        searchVolume: keywords.searchVolume,
+        position: competitorSerpPresence.position,
+        url: competitorSerpPresence.url,
+        blockType: competitorSerpPresence.blockType,
+        capturedAt: serpLayoutSnapshots.capturedAt,
+      })
+      .from(competitorSerpPresence)
+      .innerJoin(serpLayoutSnapshots, eq(serpLayoutSnapshots.id, competitorSerpPresence.snapshotId))
+      .innerJoin(keywords, eq(keywords.id, serpLayoutSnapshots.keywordId))
+      .where(
+        and(
+          eq(serpLayoutSnapshots.projectId, projectId),
+          eq(competitorSerpPresence.competitorDomain, competitorDomain),
+          inArray(competitorSerpPresence.blockType, blockTypes)
+        )
+      )
+      .orderBy(desc(keywords.searchVolume));
+
+    const uniqueKeywords = new Map();
+    for (const row of results) {
+      const key = `${row.keywordId}-${row.blockType}`;
+      if (!uniqueKeywords.has(key)) {
+        uniqueKeywords.set(key, {
+          keywordId: row.keywordId,
+          keyword: row.keyword,
+          searchVolume: row.searchVolume || 0,
+          position: row.position || 0,
+          url: row.url || '',
+          blockType: row.blockType,
+          capturedAt: row.capturedAt?.toISOString() || '',
+        });
+      }
+    }
+
+    return Array.from(uniqueKeywords.values());
   }
 
   async getActiveCrawlSchedules(): Promise<CrawlSchedule[]> {

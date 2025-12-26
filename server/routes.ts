@@ -583,6 +583,42 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/competitors/:domain/serp-keywords", async (req, res) => {
+    try {
+      const { domain } = req.params;
+      const projectId = req.query.projectId as string;
+      const featureType = req.query.featureType as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+      if (!featureType) {
+        return res.status(400).json({ error: "featureType is required" });
+      }
+
+      const blockTypeMap: Record<string, string[]> = {
+        aiOverview: ["ai_overview"],
+        featuredSnippet: ["featured_snippet"],
+        localPack: ["local_pack"],
+        organicTop10: ["organic"],
+      };
+
+      const blockTypes = blockTypeMap[featureType] || [];
+      if (blockTypes.length === 0) {
+        return res.status(400).json({ error: "Invalid featureType" });
+      }
+
+      const keywords = await storage.getCompetitorSerpKeywords(projectId, domain, blockTypes);
+      res.json(keywords);
+    } catch (error) {
+      console.error("Error fetching competitor SERP keywords:", error);
+      res.status(500).json({ error: "Failed to fetch competitor SERP keywords" });
+    }
+  });
+
   app.post("/api/competitors", async (req, res) => {
     try {
       const { projectId, domain } = req.body;

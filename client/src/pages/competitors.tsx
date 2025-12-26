@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CompetitorsTable } from "@/components/competitors-table";
 import { CompetitorSerpVisibilityTable } from "@/components/competitor-serp-visibility-table";
@@ -6,11 +7,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Target, Shield, TrendingUp, Bot, Sparkles, MapPin } from "lucide-react";
 
+type SortDirection = "asc" | "desc";
+
 interface CompetitorsPageProps {
   projectId: string | null;
 }
 
 export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
+  const [sharedSortField, setSharedSortField] = useState<string>("sharedKeywords");
+  const [sharedSortDirection, setSharedSortDirection] = useState<SortDirection>("desc");
   const { data: competitors, isLoading } = useQuery({
     queryKey: ["/api/dashboard/competitors", { projectId }],
     queryFn: async () => {
@@ -111,11 +116,31 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
             />
           </div>
 
-          <CompetitorsTable data={items} isLoading={isLoading} projectId={projectId} />
+          <CompetitorsTable 
+            data={items} 
+            isLoading={isLoading} 
+            projectId={projectId}
+            sortField={sharedSortField}
+            sortDirection={sharedSortDirection}
+            onSortChange={(field, direction) => {
+              setSharedSortField(field);
+              setSharedSortDirection(direction);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="serp-visibility">
-          <CompetitorSerpVisibilityTable data={items} isLoading={isLoading} />
+          <CompetitorSerpVisibilityTable 
+            data={items} 
+            isLoading={isLoading}
+            projectId={projectId}
+            sortField={sharedSortField}
+            sortDirection={sharedSortDirection}
+            onSortChange={(field: string, direction: SortDirection) => {
+              setSharedSortField(field);
+              setSharedSortDirection(direction);
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>
