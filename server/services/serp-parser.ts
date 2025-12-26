@@ -509,6 +509,7 @@ export class SerpParserService {
         hasVideoCarousel: previousSnapshot.hasVideoCarousel || false,
         blocks: [],
         competitorPresences: [],
+        aiOverviewReferences: [],
       };
     }
     

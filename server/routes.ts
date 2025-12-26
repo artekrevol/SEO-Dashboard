@@ -679,6 +679,66 @@ export async function registerRoutes(
     }
   });
 
+  // AI Mentions analytics endpoint - Get comprehensive AI Overview citation data
+  app.get("/api/ai-mentions/analytics", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const analytics = await storage.getAiMentionsAnalytics(projectId);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching AI mentions analytics:", error);
+      res.status(500).json({ error: "Failed to fetch AI mentions analytics" });
+    }
+  });
+
+  // AI Mentions for a specific domain
+  app.get("/api/ai-mentions/domain/:domain", async (req, res) => {
+    try {
+      const { domain } = req.params;
+      const projectId = req.query.projectId as string;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+
+      const citations = await storage.getAiOverviewCitations(projectId, { domain, limit });
+      res.json(citations);
+    } catch (error) {
+      console.error("Error fetching AI mentions for domain:", error);
+      res.status(500).json({ error: "Failed to fetch AI mentions for domain" });
+    }
+  });
+
+  // AI Mentions for a specific keyword
+  app.get("/api/ai-mentions/keyword/:keywordId", async (req, res) => {
+    try {
+      const keywordId = parseInt(req.params.keywordId);
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (isNaN(keywordId)) {
+        return res.status(400).json({ error: "Valid keywordId is required" });
+      }
+
+      const citations = await storage.getAiOverviewCitations(projectId, { keywordId });
+      res.json(citations);
+    } catch (error) {
+      console.error("Error fetching AI mentions for keyword:", error);
+      res.status(500).json({ error: "Failed to fetch AI mentions for keyword" });
+    }
+  });
+
   // Get keywords list for a project (used by scheduled crawls for keyword selection)
   app.get("/api/keywords", async (req, res) => {
     try {
