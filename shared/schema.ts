@@ -1533,3 +1533,62 @@ export const insertIntentAlertSchema = createInsertSchema(intentAlerts).omit({
 
 export type InsertIntentAlert = z.infer<typeof insertIntentAlertSchema>;
 export type IntentAlert = typeof intentAlerts.$inferSelect;
+
+// AI Overview Citations - Enhanced tracking for actionable AI mentions data
+export const aiOverviewCitations = pgTable("ai_overview_citations", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id").notNull().references(() => serpLayoutSnapshots.id, { onDelete: "cascade" }),
+  keywordId: integer("keyword_id").notNull().references(() => keywords.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  
+  // Citation source details
+  domain: text("domain").notNull(),
+  url: text("url"),
+  pageTitle: text("page_title"),
+  sourceName: text("source_name"), // Display name e.g., "Forbes", "Indeed"
+  
+  // Content that was cited
+  citedText: text("cited_text"), // The specific text excerpt Google cited
+  aiGeneratedContext: text("ai_generated_context"), // Surrounding AI-generated text
+  
+  // Position and prominence
+  referencePosition: integer("reference_position"), // Order in references (1 = most prominent)
+  isElementLevel: boolean("is_element_level").default(false), // vs overview-level reference
+  
+  // Categorization
+  contentType: text("content_type"), // 'article', 'guide', 'list', 'faq', 'review', etc.
+  topicCategory: text("topic_category"), // Detected topic/theme
+  
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  snapshotIdIdx: index("ai_citations_snapshot_id_idx").on(table.snapshotId),
+  keywordIdIdx: index("ai_citations_keyword_id_idx").on(table.keywordId),
+  projectIdIdx: index("ai_citations_project_id_idx").on(table.projectId),
+  domainIdx: index("ai_citations_domain_idx").on(table.domain),
+  capturedAtIdx: index("ai_citations_captured_at_idx").on(table.capturedAt),
+}));
+
+export const aiOverviewCitationsRelations = relations(aiOverviewCitations, ({ one }) => ({
+  snapshot: one(serpLayoutSnapshots, {
+    fields: [aiOverviewCitations.snapshotId],
+    references: [serpLayoutSnapshots.id],
+  }),
+  keyword: one(keywords, {
+    fields: [aiOverviewCitations.keywordId],
+    references: [keywords.id],
+  }),
+  project: one(projects, {
+    fields: [aiOverviewCitations.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertAiOverviewCitationSchema = createInsertSchema(aiOverviewCitations).omit({
+  id: true,
+  capturedAt: true,
+  createdAt: true,
+});
+
+export type InsertAiOverviewCitation = z.infer<typeof insertAiOverviewCitationSchema>;
+export type AiOverviewCitation = typeof aiOverviewCitations.$inferSelect;

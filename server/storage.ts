@@ -67,6 +67,8 @@ import {
   type InsertCompetitorSerpPresence,
   type IntentAlert,
   type InsertIntentAlert,
+  type AiOverviewCitation,
+  type InsertAiOverviewCitation,
   users,
   projects,
   keywords,
@@ -106,6 +108,7 @@ import {
   serpLayoutItems,
   competitorSerpPresence,
   intentAlerts,
+  aiOverviewCitations,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, sql, isNull, or, inArray } from "drizzle-orm";
@@ -411,6 +414,29 @@ export interface IStorage {
   createIntentAlert(alert: InsertIntentAlert): Promise<IntentAlert>;
   updateIntentAlert(id: number, updates: Partial<IntentAlert>): Promise<IntentAlert | undefined>;
   resolveIntentAlert(id: number): Promise<IntentAlert | undefined>;
+  
+  // AI Overview Citations
+  createAiOverviewCitationsBatch(citations: InsertAiOverviewCitation[]): Promise<AiOverviewCitation[]>;
+  getAiOverviewCitations(projectId: string, options?: {
+    keywordId?: number;
+    domain?: string;
+    limit?: number;
+  }): Promise<AiOverviewCitation[]>;
+  getAiMentionsAnalytics(projectId: string): Promise<{
+    totalCitations: number;
+    uniqueDomains: number;
+    topCitedDomains: Array<{ domain: string; citationCount: number; uniqueKeywords: number }>;
+    keywordsWithAiOverview: number;
+    recentCitations: Array<{
+      keyword: string;
+      domain: string;
+      pageTitle: string | null;
+      citedText: string | null;
+      referencePosition: number | null;
+      capturedAt: Date;
+    }>;
+    contentTypeBreakdown: Array<{ contentType: string; count: number }>;
+  }>;
   
   // SEID - Aggregations
   getProjectIntentDashboard(projectId: string): Promise<{
@@ -3864,6 +3890,133 @@ export class DatabaseStorage implements IStorage {
       .where(eq(intentAlerts.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  // ============================================
+  // AI Overview Citations
+  // ============================================
+
+  async createAiOverviewCitationsBatch(citations: InsertAiOverviewCitation[]): Promise<AiOverviewCitation[]> {
+    if (citations.length === 0) return [];
+    return await db.insert(aiOverviewCitations).values(citations as (typeof aiOverviewCitations.$inferInsert)[]).returning();
+  }
+
+  async getAiOverviewCitations(projectId: string, options?: {
+    keywordId?: number;
+    domain?: string;
+    limit?: number;
+  }): Promise<AiOverviewCitation[]> {
+    const conditions = [eq(aiOverviewCitations.projectId, projectId)];
+    
+    if (options?.keywordId) {
+      conditions.push(eq(aiOverviewCitations.keywordId, options.keywordId));
+    }
+    if (options?.domain) {
+      conditions.push(eq(aiOverviewCitations.domain, options.domain));
+    }
+    
+    return await db.select()
+      .from(aiOverviewCitations)
+      .where(and(...conditions))
+      .orderBy(desc(aiOverviewCitations.capturedAt))
+      .limit(options?.limit || 100);
+  }
+
+  async getAiMentionsAnalytics(projectId: string): Promise<{
+    totalCitations: number;
+    uniqueDomains: number;
+    topCitedDomains: Array<{ domain: string; citationCount: number; uniqueKeywords: number }>;
+    keywordsWithAiOverview: number;
+    recentCitations: Array<{
+      keyword: string;
+      domain: string;
+      pageTitle: string | null;
+      citedText: string | null;
+      referencePosition: number | null;
+      capturedAt: Date;
+    }>;
+    contentTypeBreakdown: Array<{ contentType: string; count: number }>;
+  }> {
+    // Get total citation count
+    const [totalResult] = await db.select({ count: sql<number>`count(*)` })
+      .from(aiOverviewCitations)
+      .where(eq(aiOverviewCitations.projectId, projectId));
+    
+    // Get unique domains count
+    const [uniqueDomainsResult] = await db.select({ count: sql<number>`count(distinct ${aiOverviewCitations.domain})` })
+      .from(aiOverviewCitations)
+      .where(eq(aiOverviewCitations.projectId, projectId));
+    
+    // Get top cited domains with keyword counts
+    const topDomains = await db.select({
+      domain: aiOverviewCitations.domain,
+      citationCount: sql<number>`count(*)`,
+      uniqueKeywords: sql<number>`count(distinct ${aiOverviewCitations.keywordId})`,
+    })
+      .from(aiOverviewCitations)
+      .where(eq(aiOverviewCitations.projectId, projectId))
+      .groupBy(aiOverviewCitations.domain)
+      .orderBy(desc(sql`count(*)`))
+      .limit(20);
+    
+    // Get keywords with AI Overview count (from snapshots)
+    const [aiKeywordCount] = await db.select({ count: sql<number>`count(distinct ${serpLayoutSnapshots.keywordId})` })
+      .from(serpLayoutSnapshots)
+      .where(and(
+        eq(serpLayoutSnapshots.projectId, projectId),
+        eq(serpLayoutSnapshots.hasAiOverview, true)
+      ));
+    
+    // Get recent citations with keyword info
+    const recentCitationsData = await db.select({
+      keyword: keywords.keyword,
+      domain: aiOverviewCitations.domain,
+      pageTitle: aiOverviewCitations.pageTitle,
+      citedText: aiOverviewCitations.citedText,
+      referencePosition: aiOverviewCitations.referencePosition,
+      capturedAt: aiOverviewCitations.capturedAt,
+    })
+      .from(aiOverviewCitations)
+      .innerJoin(keywords, eq(keywords.id, aiOverviewCitations.keywordId))
+      .where(eq(aiOverviewCitations.projectId, projectId))
+      .orderBy(desc(aiOverviewCitations.capturedAt))
+      .limit(50);
+    
+    // Get content type breakdown
+    const contentTypes = await db.select({
+      contentType: aiOverviewCitations.contentType,
+      count: sql<number>`count(*)`,
+    })
+      .from(aiOverviewCitations)
+      .where(and(
+        eq(aiOverviewCitations.projectId, projectId),
+        sql`${aiOverviewCitations.contentType} IS NOT NULL`
+      ))
+      .groupBy(aiOverviewCitations.contentType)
+      .orderBy(desc(sql`count(*)`));
+    
+    return {
+      totalCitations: Number(totalResult?.count || 0),
+      uniqueDomains: Number(uniqueDomainsResult?.count || 0),
+      topCitedDomains: topDomains.map(d => ({
+        domain: d.domain,
+        citationCount: Number(d.citationCount),
+        uniqueKeywords: Number(d.uniqueKeywords),
+      })),
+      keywordsWithAiOverview: Number(aiKeywordCount?.count || 0),
+      recentCitations: recentCitationsData.map(r => ({
+        keyword: r.keyword,
+        domain: r.domain,
+        pageTitle: r.pageTitle,
+        citedText: r.citedText,
+        referencePosition: r.referencePosition,
+        capturedAt: r.capturedAt,
+      })),
+      contentTypeBreakdown: contentTypes.map(ct => ({
+        contentType: ct.contentType || 'unknown',
+        count: Number(ct.count),
+      })),
+    };
   }
 
   // ============================================
