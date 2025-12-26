@@ -4363,6 +4363,290 @@ export class DatabaseStorage implements IStorage {
       localPackOpportunities: localPackOpportunities.sort((a, b) => (a.position || 99) - (b.position || 99)),
     };
   }
+
+  // ============================================
+  // Keyword Intelligence - Comprehensive keyword data with SERP/AI enrichment
+  // ============================================
+
+  async getKeywordIntelligence(projectId: string): Promise<{
+    keywords: Array<{
+      keywordId: number;
+      keyword: string;
+      targetUrl: string | null;
+      cluster: string | null;
+      priority: string | null;
+      intent: string | null;
+      position: number | null;
+      positionDelta: number;
+      searchVolume: number | null;
+      difficulty: string | null;
+      opportunityScore: number | null;
+      serpFeatures: string[];
+      hasAiOverview: boolean;
+      hasFeaturedSnippet: boolean;
+      hasLocalPack: boolean;
+      hasPeopleAlsoAsk: boolean;
+      aiCitationCount: number;
+      isYourBrandCited: boolean;
+      yourCitationPosition: number | null;
+      competitorsCitedCount: number;
+      organicStartPosition: number | null;
+      stabilityScore: number | null;
+      locationName: string | null;
+    }>;
+    summary: {
+      totalKeywords: number;
+      keywordsWithAiOverview: number;
+      keywordsWithFeaturedSnippet: number;
+      keywordsWithLocalPack: number;
+      keywordsWithYourCitation: number;
+      avgPosition: number;
+      avgOpportunityScore: number;
+      avgStabilityScore: number;
+    };
+  }> {
+    // Get project domain for brand detection
+    const project = await this.getProject(projectId);
+    const projectDomain = project?.domain?.toLowerCase().replace(/^www\./, '') || '';
+
+    // Get all keywords for project
+    const projectKeywords = await db.select()
+      .from(keywords)
+      .where(eq(keywords.projectId, projectId));
+
+    if (projectKeywords.length === 0) {
+      return {
+        keywords: [],
+        summary: {
+          totalKeywords: 0,
+          keywordsWithAiOverview: 0,
+          keywordsWithFeaturedSnippet: 0,
+          keywordsWithLocalPack: 0,
+          keywordsWithYourCitation: 0,
+          avgPosition: 0,
+          avgOpportunityScore: 0,
+          avgStabilityScore: 0,
+        },
+      };
+    }
+
+    const keywordIds = projectKeywords.map(k => k.id);
+
+    // Get latest keyword metrics
+    const latestMetrics = await this.getLatestKeywordMetrics(projectId);
+    const metricsMap = new Map(latestMetrics.map(m => [m.keywordId, m]));
+
+    // Get latest SERP layout snapshots per keyword
+    const serpSnapshots = await db.select()
+      .from(serpLayoutSnapshots)
+      .where(eq(serpLayoutSnapshots.projectId, projectId))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt));
+    
+    const serpMap = new Map<number, typeof serpSnapshots[0]>();
+    for (const snap of serpSnapshots) {
+      if (!serpMap.has(snap.keywordId)) {
+        serpMap.set(snap.keywordId, snap);
+      }
+    }
+
+    // Get AI citation counts per keyword
+    const aiCitationCounts = await db.select({
+      keywordId: aiOverviewCitations.keywordId,
+      totalCitations: sql<number>`count(*)`,
+      uniqueDomains: sql<number>`count(distinct ${aiOverviewCitations.domain})`,
+    })
+      .from(aiOverviewCitations)
+      .where(eq(aiOverviewCitations.projectId, projectId))
+      .groupBy(aiOverviewCitations.keywordId);
+    
+    const citationMap = new Map(aiCitationCounts.map(c => [c.keywordId, c]));
+
+    // Check if our brand is cited for each keyword
+    const ourCitations = await db.select({
+      keywordId: aiOverviewCitations.keywordId,
+      position: sql<number>`min(${aiOverviewCitations.referencePosition})`,
+    })
+      .from(aiOverviewCitations)
+      .where(and(
+        eq(aiOverviewCitations.projectId, projectId),
+        sql`lower(${aiOverviewCitations.domain}) LIKE ${'%' + projectDomain + '%'}`
+      ))
+      .groupBy(aiOverviewCitations.keywordId);
+    
+    const ourCitationMap = new Map(ourCitations.map(c => [c.keywordId, c.position]));
+
+    // Get location names
+    const locationMap = new Map<string, string>();
+    const locationIds = Array.from(new Set(projectKeywords.map(k => k.locationId).filter((id): id is string => id !== null)));
+    if (locationIds.length > 0) {
+      const locs = await db.select().from(locations).where(inArray(locations.id, locationIds));
+      for (const loc of locs) {
+        locationMap.set(loc.id, loc.name);
+      }
+    }
+
+    // Build enriched keyword list
+    const enrichedKeywords = projectKeywords.map(kw => {
+      const metrics = metricsMap.get(kw.id);
+      const serp = serpMap.get(kw.id);
+      const citations = citationMap.get(kw.id);
+      const ourPosition = ourCitationMap.get(kw.id);
+
+      return {
+        keywordId: kw.id,
+        keyword: kw.keyword,
+        targetUrl: kw.targetUrl,
+        cluster: kw.cluster,
+        priority: kw.priority,
+        intent: metrics?.intent || kw.intentHint,
+        position: metrics?.currentPosition || null,
+        positionDelta: metrics?.positionDelta || 0,
+        searchVolume: metrics?.searchVolume || kw.searchVolume,
+        difficulty: metrics?.difficulty || kw.difficulty,
+        opportunityScore: metrics?.opportunityScore || null,
+        serpFeatures: metrics?.serpFeatures || [],
+        hasAiOverview: serp?.hasAiOverview || false,
+        hasFeaturedSnippet: serp?.hasFeaturedSnippet || false,
+        hasLocalPack: serp?.hasLocalPack || false,
+        hasPeopleAlsoAsk: serp?.hasPeopleAlsoAsk || false,
+        aiCitationCount: Number(citations?.totalCitations || 0),
+        isYourBrandCited: !!ourPosition,
+        yourCitationPosition: ourPosition || null,
+        competitorsCitedCount: Number(citations?.uniqueDomains || 0) - (ourPosition ? 1 : 0),
+        organicStartPosition: serp?.organicStartPosition || null,
+        stabilityScore: serp?.stabilityScore ? Number(serp.stabilityScore) : null,
+        locationName: kw.locationId ? locationMap.get(kw.locationId) || null : null,
+      };
+    });
+
+    // Calculate summary
+    const keywordsWithAiOverview = enrichedKeywords.filter(k => k.hasAiOverview).length;
+    const keywordsWithFeaturedSnippet = enrichedKeywords.filter(k => k.hasFeaturedSnippet).length;
+    const keywordsWithLocalPack = enrichedKeywords.filter(k => k.hasLocalPack).length;
+    const keywordsWithYourCitation = enrichedKeywords.filter(k => k.isYourBrandCited).length;
+    
+    const validPositions = enrichedKeywords.filter(k => k.position && k.position > 0);
+    const avgPosition = validPositions.length > 0
+      ? validPositions.reduce((sum, k) => sum + (k.position || 0), 0) / validPositions.length
+      : 0;
+    
+    const validOpportunities = enrichedKeywords.filter(k => k.opportunityScore !== null);
+    const avgOpportunityScore = validOpportunities.length > 0
+      ? validOpportunities.reduce((sum, k) => sum + (k.opportunityScore || 0), 0) / validOpportunities.length
+      : 0;
+    
+    const validStability = enrichedKeywords.filter(k => k.stabilityScore !== null);
+    const avgStabilityScore = validStability.length > 0
+      ? validStability.reduce((sum, k) => sum + (k.stabilityScore || 0), 0) / validStability.length
+      : 0;
+
+    return {
+      keywords: enrichedKeywords,
+      summary: {
+        totalKeywords: enrichedKeywords.length,
+        keywordsWithAiOverview,
+        keywordsWithFeaturedSnippet,
+        keywordsWithLocalPack,
+        keywordsWithYourCitation,
+        avgPosition: Math.round(avgPosition * 10) / 10,
+        avgOpportunityScore: Math.round(avgOpportunityScore),
+        avgStabilityScore: Math.round(avgStabilityScore),
+      },
+    };
+  }
+
+  async getKeywordDetail(keywordId: number, projectId: string): Promise<{
+    keyword: Keyword;
+    metrics: any;
+    serpSnapshot: SerpLayoutSnapshot | null;
+    serpLayoutItems: SerpLayoutItem[];
+    aiCitations: AiOverviewCitation[];
+    competitorPresence: CompetitorSerpPresence[];
+    rankingsHistory: Array<{ date: string; position: number | null }>;
+    alerts: IntentAlert[];
+  } | null> {
+    // Get keyword
+    const kw = await db.select().from(keywords).where(eq(keywords.id, keywordId)).limit(1);
+    if (kw.length === 0) return null;
+
+    // Get latest metrics
+    const metrics = await this.getLatestKeywordMetrics(projectId);
+    const kwMetrics = metrics.find(m => m.keywordId === keywordId);
+
+    // Get latest SERP snapshot
+    const [serpSnapshot] = await db.select()
+      .from(serpLayoutSnapshots)
+      .where(and(
+        eq(serpLayoutSnapshots.keywordId, keywordId),
+        eq(serpLayoutSnapshots.projectId, projectId)
+      ))
+      .orderBy(desc(serpLayoutSnapshots.capturedAt))
+      .limit(1);
+
+    // Get SERP layout items if snapshot exists
+    let layoutItems: SerpLayoutItem[] = [];
+    if (serpSnapshot) {
+      layoutItems = await db.select()
+        .from(serpLayoutItems)
+        .where(eq(serpLayoutItems.snapshotId, serpSnapshot.id))
+        .orderBy(serpLayoutItems.blockIndex);
+    }
+
+    // Get AI citations for this keyword
+    const citations = await db.select()
+      .from(aiOverviewCitations)
+      .where(and(
+        eq(aiOverviewCitations.keywordId, keywordId),
+        eq(aiOverviewCitations.projectId, projectId)
+      ))
+      .orderBy(desc(aiOverviewCitations.capturedAt))
+      .limit(50);
+
+    // Get competitor presence
+    let presence: CompetitorSerpPresence[] = [];
+    if (serpSnapshot) {
+      presence = await db.select()
+        .from(competitorSerpPresence)
+        .where(eq(competitorSerpPresence.snapshotId, serpSnapshot.id));
+    }
+
+    // Get rankings history (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+    
+    const rankings = await db.select({
+      date: rankingsHistory.date,
+      position: rankingsHistory.position,
+    })
+      .from(rankingsHistory)
+      .where(and(
+        eq(rankingsHistory.keywordId, keywordId),
+        sql`${rankingsHistory.date} >= ${thirtyDaysAgoStr}`
+      ))
+      .orderBy(desc(rankingsHistory.date));
+
+    // Get alerts for this keyword
+    const kwAlerts = await db.select()
+      .from(intentAlerts)
+      .where(and(
+        eq(intentAlerts.keywordId, keywordId),
+        eq(intentAlerts.projectId, projectId)
+      ))
+      .orderBy(desc(intentAlerts.createdAt))
+      .limit(20);
+
+    return {
+      keyword: kw[0],
+      metrics: kwMetrics || null,
+      serpSnapshot: serpSnapshot || null,
+      serpLayoutItems: layoutItems,
+      aiCitations: citations,
+      competitorPresence: presence,
+      rankingsHistory: rankings,
+      alerts: kwAlerts,
+    };
+  }
 }
 
 export const storage = new DatabaseStorage();

@@ -739,6 +739,47 @@ export async function registerRoutes(
     }
   });
 
+  // Keyword Intelligence - comprehensive keyword data with SERP/AI enrichment
+  app.get("/api/keyword-intelligence", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const data = await storage.getKeywordIntelligence(projectId);
+      res.json(data);
+    } catch (error) {
+      console.error("Error fetching keyword intelligence:", error);
+      res.status(500).json({ error: "Failed to fetch keyword intelligence" });
+    }
+  });
+
+  // Keyword Detail - deep dive into a single keyword
+  app.get("/api/keyword-intelligence/:keywordId", async (req, res) => {
+    try {
+      const keywordId = parseInt(req.params.keywordId);
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (isNaN(keywordId)) {
+        return res.status(400).json({ error: "Valid keywordId is required" });
+      }
+
+      const detail = await storage.getKeywordDetail(keywordId, projectId);
+      if (!detail) {
+        return res.status(404).json({ error: "Keyword not found" });
+      }
+      
+      res.json(detail);
+    } catch (error) {
+      console.error("Error fetching keyword detail:", error);
+      res.status(500).json({ error: "Failed to fetch keyword detail" });
+    }
+  });
+
   // Get keywords list for a project (used by scheduled crawls for keyword selection)
   app.get("/api/keywords", async (req, res) => {
     try {
