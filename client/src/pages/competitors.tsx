@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { CompetitorsTable } from "@/components/competitors-table";
+import { CompetitorSerpVisibilityTable } from "@/components/competitor-serp-visibility-table";
 import { KpiCard } from "@/components/kpi-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Target, Shield, TrendingUp } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Users, Target, Shield, TrendingUp, Bot, Sparkles, MapPin } from "lucide-react";
 
 interface CompetitorsPageProps {
   projectId: string | null;
@@ -70,33 +72,52 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KpiCard
-          title="Competitors Tracked"
-          value={items.length}
-          testId="kpi-competitors-count"
-        />
-        <KpiCard
-          title="Shared Keywords"
-          value={totalSharedKeywords.toLocaleString()}
-          testId="kpi-shared-keywords"
-        />
-        <KpiCard
-          title="Keywords Above Us"
-          value={totalAboveUs.toLocaleString()}
-          status={totalAboveUs > 50 ? "declining" : totalAboveUs > 20 ? "at_risk" : "healthy"}
-          testId="kpi-keywords-above-us"
-        />
-        <KpiCard
-          title="Avg Pressure Index"
-          value={avgPressure.toFixed(1)}
-          suffix="/100"
-          status={avgPressure >= 60 ? "declining" : avgPressure >= 40 ? "at_risk" : "healthy"}
-          testId="kpi-avg-pressure"
-        />
-      </div>
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview" data-testid="tab-competitor-overview">
+            <Target className="mr-2 h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="serp-visibility" data-testid="tab-serp-visibility">
+            <Bot className="mr-2 h-4 w-4" />
+            SERP Visibility
+          </TabsTrigger>
+        </TabsList>
 
-      <CompetitorsTable data={items} isLoading={isLoading} projectId={projectId} />
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              title="Competitors Tracked"
+              value={items.length}
+              testId="kpi-competitors-count"
+            />
+            <KpiCard
+              title="Shared Keywords"
+              value={totalSharedKeywords.toLocaleString()}
+              testId="kpi-shared-keywords"
+            />
+            <KpiCard
+              title="Keywords Above Us"
+              value={totalAboveUs.toLocaleString()}
+              status={totalAboveUs > 50 ? "declining" : totalAboveUs > 20 ? "at_risk" : "healthy"}
+              testId="kpi-keywords-above-us"
+            />
+            <KpiCard
+              title="Avg Pressure Index"
+              value={avgPressure.toFixed(1)}
+              suffix="/100"
+              status={avgPressure >= 60 ? "declining" : avgPressure >= 40 ? "at_risk" : "healthy"}
+              testId="kpi-avg-pressure"
+            />
+          </div>
+
+          <CompetitorsTable data={items} isLoading={isLoading} projectId={projectId} />
+        </TabsContent>
+
+        <TabsContent value="serp-visibility">
+          <CompetitorSerpVisibilityTable data={items} isLoading={isLoading} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
