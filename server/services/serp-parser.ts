@@ -191,17 +191,36 @@ export class SerpParserService {
         });
       }
 
-      if (blockType === 'ai_overview' && item.items && Array.isArray(item.items)) {
-        for (const aiItem of item.items) {
-          if (aiItem.domain || aiItem.url) {
-            const domain = aiItem.domain || this.extractDomain(aiItem.url || '');
+      // Extract competitors from AI Overview
+      if (blockType === 'ai_overview') {
+        // Try items array first
+        if (item.items && Array.isArray(item.items)) {
+          for (const aiItem of item.items) {
+            const domain = aiItem.domain || this.extractDomain(aiItem.url || aiItem.link || '');
             if (domain) {
               competitorPresences.push({
                 domain: domain.toLowerCase(),
                 blockType: 'ai_overview',
                 position: undefined,
-                url: aiItem.url || '',
-                title: aiItem.title || '',
+                url: aiItem.url || aiItem.link || '',
+                title: aiItem.title || aiItem.snippet || '',
+                isInAiOverview: true,
+                isInFeaturedSnippet: false,
+              });
+            }
+          }
+        }
+        // Try references/sources in AI overview
+        if (item.references && Array.isArray(item.references)) {
+          for (const ref of item.references) {
+            const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
+            if (domain) {
+              competitorPresences.push({
+                domain: domain.toLowerCase(),
+                blockType: 'ai_overview',
+                position: undefined,
+                url: ref.url || ref.link || '',
+                title: ref.title || '',
                 isInAiOverview: true,
                 isInFeaturedSnippet: false,
               });
@@ -210,19 +229,39 @@ export class SerpParserService {
         }
       }
 
-      if (blockType === 'local_pack' && item.items && Array.isArray(item.items)) {
-        for (const lpItem of item.items) {
-          const domain = lpItem.domain || this.extractDomain(lpItem.url || lpItem.website || '');
-          if (domain) {
-            competitorPresences.push({
-              domain: domain.toLowerCase(),
-              blockType: 'local_pack',
-              position: undefined,
-              url: lpItem.url || lpItem.website || '',
-              title: lpItem.title || lpItem.name || '',
-              isInAiOverview: false,
-              isInFeaturedSnippet: false,
-            });
+      // Extract competitors from Featured Snippet
+      if (blockType === 'featured_snippet') {
+        // Featured snippet typically has a single source
+        const domain = item.domain || this.extractDomain(item.url || item.link || '');
+        if (domain && !competitorPresences.some(cp => cp.domain === domain.toLowerCase() && cp.blockType === 'featured_snippet')) {
+          competitorPresences.push({
+            domain: domain.toLowerCase(),
+            blockType: 'featured_snippet',
+            position: item.rank_absolute || 0,
+            url: item.url || item.link || '',
+            title: item.title || '',
+            isInAiOverview: false,
+            isInFeaturedSnippet: true,
+          });
+        }
+      }
+
+      // Extract competitors from Local Pack
+      if (blockType === 'local_pack') {
+        if (item.items && Array.isArray(item.items)) {
+          for (const lpItem of item.items) {
+            const domain = lpItem.domain || this.extractDomain(lpItem.url || lpItem.website || lpItem.link || '');
+            if (domain) {
+              competitorPresences.push({
+                domain: domain.toLowerCase(),
+                blockType: 'local_pack',
+                position: undefined,
+                url: lpItem.url || lpItem.website || lpItem.link || '',
+                title: lpItem.title || lpItem.name || '',
+                isInAiOverview: false,
+                isInFeaturedSnippet: false,
+              });
+            }
           }
         }
       }
