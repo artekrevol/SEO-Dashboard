@@ -17,6 +17,7 @@ import {
   ScrollText,
   Tag,
   Brain,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -87,6 +88,11 @@ const analyticsItems = [
     title: "Rankings",
     url: "/rankings",
     icon: TrendingUp,
+  },
+  {
+    title: "Keyword Intelligence",
+    url: "/keyword-intelligence",
+    icon: Zap,
   },
   {
     title: "Intent Intelligence",

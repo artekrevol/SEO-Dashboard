@@ -28,6 +28,7 @@ import SearchConsolePage from "@/pages/search-console";
 import SystemLogsPage from "@/pages/system-logs";
 import { VersionControlPage } from "@/pages/version-control";
 import IntentIntelligencePage from "@/pages/intent-intelligence";
+import KeywordIntelligencePage from "@/pages/keyword-intelligence";
 import NotFound from "@/pages/not-found";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
@@ -149,6 +150,9 @@ function AppContent() {
               </Route>
               <Route path="/intent-intelligence">
                 <IntentIntelligencePage projectId={selectedProjectId} />
+              </Route>
+              <Route path="/keyword-intelligence">
+                <KeywordIntelligencePage projectId={selectedProjectId} />
               </Route>
               <Route path="/reports">
                 <ReportsPage />
