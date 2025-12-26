@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CompetitorsTable } from "@/components/competitors-table";
 import { CompetitorSerpVisibilityTable } from "@/components/competitor-serp-visibility-table";
@@ -13,9 +13,21 @@ interface CompetitorsPageProps {
   projectId: string | null;
 }
 
+interface SerpVisibilityCompetitor {
+  competitorDomain: string;
+  totalMentions: number;
+  aiOverviewMentions: number;
+  featuredSnippetMentions: number;
+  localPackMentions: number;
+  organicMentions: number;
+}
+
 export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
   const [sharedSortField, setSharedSortField] = useState<string>("sharedKeywords");
   const [sharedSortDirection, setSharedSortDirection] = useState<SortDirection>("desc");
+  const [serpSortField, setSerpSortField] = useState<string>("serpVisibilityTotal");
+  const [serpSortDirection, setSerpSortDirection] = useState<SortDirection>("desc");
+  
   const { data: competitors, isLoading } = useQuery({
     queryKey: ["/api/dashboard/competitors", { projectId }],
     queryFn: async () => {
@@ -25,6 +37,29 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
     },
     enabled: !!projectId,
   });
+
+  const { data: serpVisibilityData, isLoading: serpLoading } = useQuery<{ competitors: SerpVisibilityCompetitor[] }>({
+    queryKey: ["/api/projects", projectId, "competitor-visibility"],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/competitor-visibility`);
+      if (!res.ok) throw new Error("Failed to fetch SERP visibility");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const serpVisibilityItems = useMemo(() => {
+    if (!serpVisibilityData?.competitors) return [];
+    return serpVisibilityData.competitors.map((c) => ({
+      competitorDomain: c.competitorDomain,
+      sharedKeywords: 0,
+      aiOverviewCount: c.aiOverviewMentions,
+      featuredSnippetCount: c.featuredSnippetMentions,
+      localPackCount: c.localPackMentions,
+      organicTop10Count: c.organicMentions,
+      serpVisibilityTotal: c.totalMentions,
+    }));
+  }, [serpVisibilityData]);
 
   if (!projectId) {
     return (
@@ -131,14 +166,14 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
 
         <TabsContent value="serp-visibility">
           <CompetitorSerpVisibilityTable 
-            data={items} 
-            isLoading={isLoading}
+            data={serpVisibilityItems} 
+            isLoading={serpLoading}
             projectId={projectId}
-            sortField={sharedSortField}
-            sortDirection={sharedSortDirection}
+            sortField={serpSortField}
+            sortDirection={serpSortDirection}
             onSortChange={(field: string, direction: SortDirection) => {
-              setSharedSortField(field);
-              setSharedSortDirection(direction);
+              setSerpSortField(field);
+              setSerpSortDirection(direction);
             }}
           />
         </TabsContent>
