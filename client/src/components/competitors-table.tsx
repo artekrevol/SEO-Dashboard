@@ -461,8 +461,8 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-            <Table className="min-w-[1100px] w-full">
+        <CardContent className="p-0 overflow-x-auto">
+            <Table className="min-w-[1300px] w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead 
@@ -530,7 +530,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center">
+                    <TableCell colSpan={10} className="h-32 text-center">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <Search className="h-8 w-8" />
                         <p>No competitors found</p>
