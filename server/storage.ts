@@ -1511,6 +1511,12 @@ export class DatabaseStorage implements IStorage {
     for (const row of results) {
       const key = `${row.keywordId}-${row.blockType}`;
       if (!uniqueKeywords.has(key)) {
+        let capturedAtStr = '';
+        if (row.capturedAt) {
+          capturedAtStr = row.capturedAt instanceof Date 
+            ? row.capturedAt.toISOString() 
+            : String(row.capturedAt);
+        }
         uniqueKeywords.set(key, {
           keywordId: row.keywordId,
           keyword: row.keyword,
@@ -1518,7 +1524,7 @@ export class DatabaseStorage implements IStorage {
           position: row.position || 0,
           url: row.url || '',
           blockType: row.blockType,
-          capturedAt: row.capturedAt?.toISOString() || '',
+          capturedAt: capturedAtStr,
         });
       }
     }
