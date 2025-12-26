@@ -385,7 +385,7 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
         </CardContent>
       </Card>
 
-      <Card data-testid="competitors-table" className="w-full overflow-hidden">
+      <Card data-testid="competitors-table" className="w-full">
         <CardHeader className="flex flex-col gap-4 pb-4">
           <div className="flex flex-row flex-wrap items-center justify-between gap-4">
             <CardTitle className="text-lg font-medium">Organic Search Competitors</CardTitle>
