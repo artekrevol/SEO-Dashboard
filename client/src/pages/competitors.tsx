@@ -2,10 +2,11 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CompetitorsTable } from "@/components/competitors-table";
 import { CompetitorSerpVisibilityTable } from "@/components/competitor-serp-visibility-table";
+import { AiMentionsPanel } from "@/components/ai-mentions-panel";
 import { KpiCard } from "@/components/kpi-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Target, Shield, TrendingUp, Bot, Sparkles, MapPin } from "lucide-react";
+import { Users, Target, Shield, TrendingUp, Bot, Sparkles, MapPin, Quote } from "lucide-react";
 
 type SortDirection = "asc" | "desc";
 
@@ -122,6 +123,10 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
             <Bot className="mr-2 h-4 w-4" />
             SERP Visibility
           </TabsTrigger>
+          <TabsTrigger value="ai-mentions" data-testid="tab-ai-mentions">
+            <Quote className="mr-2 h-4 w-4" />
+            AI Mentions
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -176,6 +181,10 @@ export function CompetitorsPage({ projectId }: CompetitorsPageProps) {
               setSerpSortDirection(direction);
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="ai-mentions">
+          <AiMentionsPanel projectId={projectId} />
         </TabsContent>
       </Tabs>
     </div>

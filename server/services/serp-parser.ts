@@ -217,8 +217,11 @@ export class SerpParserService {
             
             // Check for element-level references
             if (aiItem.references && Array.isArray(aiItem.references)) {
-              for (const ref of aiItem.references) {
+              for (let refIdx = 0; refIdx < aiItem.references.length; refIdx++) {
+                const ref = aiItem.references[refIdx];
                 globalRefPosition++;
+                // Use DataForSEO order/position fields if available, fallback to index
+                const refPosition = ref.order ?? ref.position ?? refIdx + 1;
                 const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
                 if (domain) {
                   competitorPresences.push({
@@ -238,7 +241,7 @@ export class SerpParserService {
                     pageTitle: ref.title || '',
                     sourceName: ref.source || this.extractSourceName(domain),
                     citedText: ref.text || null,
-                    referencePosition: globalRefPosition,
+                    referencePosition: refPosition,
                     isElementLevel: true,
                     aiGeneratedContext: elementText.substring(0, 500) || null,
                     contentType: this.detectContentType(ref.url, ref.title, ref.text),
@@ -265,8 +268,11 @@ export class SerpParserService {
         
         // Process overview-level references
         if (item.references && Array.isArray(item.references)) {
-          for (const ref of item.references) {
+          for (let refIdx = 0; refIdx < item.references.length; refIdx++) {
+            const ref = item.references[refIdx];
             globalRefPosition++;
+            // Use DataForSEO order/position fields if available, fallback to index
+            const refPosition = ref.order ?? ref.position ?? refIdx + 1;
             const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
             if (domain) {
               // Only add to competitorPresences if not already added from element-level
@@ -290,7 +296,7 @@ export class SerpParserService {
                   pageTitle: ref.title || '',
                   sourceName: ref.source || this.extractSourceName(domain),
                   citedText: ref.text || null,
-                  referencePosition: globalRefPosition,
+                  referencePosition: refPosition,
                   isElementLevel: false,
                   aiGeneratedContext: null,
                   contentType: this.detectContentType(ref.url, ref.title, ref.text),
