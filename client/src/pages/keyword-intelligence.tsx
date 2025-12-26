@@ -217,11 +217,21 @@ export default function KeywordIntelligence({ projectId }: Props) {
 
   const { data: intelligenceData, isLoading } = useQuery<KeywordIntelligenceData>({
     queryKey: ['/api/keyword-intelligence', projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/keyword-intelligence?projectId=${projectId}`);
+      if (!res.ok) throw new Error('Failed to fetch keyword intelligence');
+      return res.json();
+    },
     enabled: !!projectId,
   });
 
   const { data: keywordDetail, isLoading: isLoadingDetail } = useQuery<KeywordDetailData>({
     queryKey: ['/api/keyword-intelligence', selectedKeywordId, projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/keyword-intelligence/${selectedKeywordId}?projectId=${projectId}`);
+      if (!res.ok) throw new Error('Failed to fetch keyword detail');
+      return res.json();
+    },
     enabled: !!selectedKeywordId && !!projectId,
   });
 
