@@ -38,7 +38,17 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2, Bot, Sparkles, MapPin } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2, Bot, Sparkles, MapPin, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { ExportButton } from "@/components/export-button";
 import type { ExportColumn } from "@/lib/export-utils";
@@ -109,7 +119,34 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [pressureFilter, setPressureFilter] = useState<string>("all");
   const [threatFilter, setThreatFilter] = useState<string>("all");
+  const [competitorToDelete, setCompetitorToDelete] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const deleteCompetitorMutation = useMutation({
+    mutationFn: async (domain: string) => {
+      if (!projectId) {
+        throw new Error("Project ID is required");
+      }
+      const res = await apiRequest("DELETE", `/api/competitors/${encodeURIComponent(domain)}?projectId=${projectId}`);
+      return res.json();
+    },
+    onSuccess: (result, domain) => {
+      toast({
+        title: "Competitor Removed",
+        description: `${domain} has been removed from your competitor list.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/competitors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/competitors/summary"] });
+      setCompetitorToDelete(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to Remove Competitor",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleSort = (field: CompetitorSortField) => {
     if (sortField === field) {
@@ -646,9 +683,24 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCompetitorToDelete(item.competitorDomain);
+                            }}
+                            title="Remove competitor"
+                            data-testid={`button-delete-competitor-${index}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -785,6 +837,36 @@ export function CompetitorsTable({ data, isLoading, projectId }: CompetitorsTabl
           competitorDomain={backlinksDrawerDomain || ""}
         />
       )}
+
+      <AlertDialog open={!!competitorToDelete} onOpenChange={(open) => !open && setCompetitorToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Competitor</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove <strong>{competitorToDelete}</strong> from your competitor list? 
+              This will delete all competitor tracking data for this domain. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => competitorToDelete && deleteCompetitorMutation.mutate(competitorToDelete)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteCompetitorMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteCompetitorMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove Competitor"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
