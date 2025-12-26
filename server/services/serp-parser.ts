@@ -14,6 +14,7 @@ import type {
   InsertSerpLayoutItem, 
   InsertCompetitorSerpPresence,
   InsertIntentAlert,
+  InsertAiOverviewCitation,
   SerpLayoutSnapshot,
   SerpLayoutBlock,
   SerpBlockType
@@ -36,6 +37,18 @@ export interface ParsedSerpBlock {
   raw?: any;
 }
 
+export interface AiOverviewReference {
+  domain: string;
+  url: string;
+  pageTitle: string;
+  sourceName: string;  // Display name like "Forbes", "Indeed"
+  citedText: string | null;  // The specific text excerpt cited
+  referencePosition: number;  // Order (1 = most prominent)
+  isElementLevel: boolean;  // vs overview-level reference
+  aiGeneratedContext: string | null;  // Surrounding AI-generated text
+  contentType: string | null;  // Detected content type
+}
+
 export interface ParsedSerpResult {
   keyword: string;
   layoutStack: SerpLayoutBlock[];
@@ -56,6 +69,7 @@ export interface ParsedSerpResult {
     isInAiOverview: boolean;
     isInFeaturedSnippet: boolean;
   }>;
+  aiOverviewReferences: AiOverviewReference[];
 }
 
 const TYPE_TO_BLOCK_MAP: Record<string, SerpBlockType | null> = {
@@ -101,6 +115,7 @@ export class SerpParserService {
     const blocks: ParsedSerpBlock[] = [];
     const layoutStack: SerpLayoutBlock[] = [];
     const competitorPresences: ParsedSerpResult['competitorPresences'] = [];
+    const aiOverviewReferences: AiOverviewReference[] = [];
     const seenBlockTypes = new Set<string>();
     
     let organicStartPosition = 0;
@@ -191,13 +206,50 @@ export class SerpParserService {
         });
       }
 
-      // Extract competitors from AI Overview
+      // Extract competitors and enhanced references from AI Overview
       if (blockType === 'ai_overview') {
-        // Try items array first
+        let globalRefPosition = 0;
+        
+        // Process element-level items first (contain more context)
         if (item.items && Array.isArray(item.items)) {
           for (const aiItem of item.items) {
+            const elementText = aiItem.text || aiItem.title || '';
+            
+            // Check for element-level references
+            if (aiItem.references && Array.isArray(aiItem.references)) {
+              for (const ref of aiItem.references) {
+                globalRefPosition++;
+                const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
+                if (domain) {
+                  competitorPresences.push({
+                    domain: domain.toLowerCase(),
+                    blockType: 'ai_overview',
+                    position: undefined,
+                    url: ref.url || ref.link || '',
+                    title: ref.title || '',
+                    isInAiOverview: true,
+                    isInFeaturedSnippet: false,
+                  });
+                  
+                  // Add enhanced citation data
+                  aiOverviewReferences.push({
+                    domain: domain.toLowerCase(),
+                    url: ref.url || ref.link || '',
+                    pageTitle: ref.title || '',
+                    sourceName: ref.source || this.extractSourceName(domain),
+                    citedText: ref.text || null,
+                    referencePosition: globalRefPosition,
+                    isElementLevel: true,
+                    aiGeneratedContext: elementText.substring(0, 500) || null,
+                    contentType: this.detectContentType(ref.url, ref.title, ref.text),
+                  });
+                }
+              }
+            }
+            
+            // Also check if the aiItem itself has domain (older format)
             const domain = aiItem.domain || this.extractDomain(aiItem.url || aiItem.link || '');
-            if (domain) {
+            if (domain && !competitorPresences.some(cp => cp.domain === domain.toLowerCase() && cp.blockType === 'ai_overview')) {
               competitorPresences.push({
                 domain: domain.toLowerCase(),
                 blockType: 'ai_overview',
@@ -210,20 +262,40 @@ export class SerpParserService {
             }
           }
         }
-        // Try references/sources in AI overview
+        
+        // Process overview-level references
         if (item.references && Array.isArray(item.references)) {
           for (const ref of item.references) {
+            globalRefPosition++;
             const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
             if (domain) {
-              competitorPresences.push({
-                domain: domain.toLowerCase(),
-                blockType: 'ai_overview',
-                position: undefined,
-                url: ref.url || ref.link || '',
-                title: ref.title || '',
-                isInAiOverview: true,
-                isInFeaturedSnippet: false,
-              });
+              // Only add to competitorPresences if not already added from element-level
+              if (!competitorPresences.some(cp => cp.domain === domain.toLowerCase() && cp.blockType === 'ai_overview')) {
+                competitorPresences.push({
+                  domain: domain.toLowerCase(),
+                  blockType: 'ai_overview',
+                  position: undefined,
+                  url: ref.url || ref.link || '',
+                  title: ref.title || '',
+                  isInAiOverview: true,
+                  isInFeaturedSnippet: false,
+                });
+              }
+              
+              // Add enhanced citation data (check for duplicates by url)
+              if (!aiOverviewReferences.some(r => r.url === (ref.url || ref.link || ''))) {
+                aiOverviewReferences.push({
+                  domain: domain.toLowerCase(),
+                  url: ref.url || ref.link || '',
+                  pageTitle: ref.title || '',
+                  sourceName: ref.source || this.extractSourceName(domain),
+                  citedText: ref.text || null,
+                  referencePosition: globalRefPosition,
+                  isElementLevel: false,
+                  aiGeneratedContext: null,
+                  contentType: this.detectContentType(ref.url, ref.title, ref.text),
+                });
+              }
             }
           }
         }
@@ -283,6 +355,7 @@ export class SerpParserService {
       hasVideoCarousel,
       blocks,
       competitorPresences,
+      aiOverviewReferences,
     };
   }
 
@@ -488,6 +561,26 @@ export class SerpParserService {
       await storage.createCompetitorSerpPresenceBatch(presenceRecords);
     }
     
+    // Save enhanced AI Overview citations
+    if (parsed.aiOverviewReferences.length > 0) {
+      const citationRecords: InsertAiOverviewCitation[] = parsed.aiOverviewReferences.map(ref => ({
+        snapshotId: snapshot.id,
+        keywordId,
+        projectId,
+        domain: ref.domain,
+        url: ref.url,
+        pageTitle: ref.pageTitle,
+        sourceName: ref.sourceName,
+        citedText: ref.citedText,
+        aiGeneratedContext: ref.aiGeneratedContext,
+        referencePosition: ref.referencePosition,
+        isElementLevel: ref.isElementLevel,
+        contentType: ref.contentType,
+      }));
+      
+      await storage.createAiOverviewCitationsBatch(citationRecords);
+    }
+    
     const alerts = this.detectIntentChanges(projectId, keywordId, keyword, parsed, previousSnapshot || undefined);
     
     for (const alert of alerts) {
@@ -547,6 +640,45 @@ export class SerpParserService {
       const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/]+)/);
       return match ? match[1].replace(/^www\./, '') : '';
     }
+  }
+
+  private extractSourceName(domain: string): string {
+    // Extract a readable source name from domain
+    const cleanDomain = domain.replace(/^www\./, '').replace(/\.(com|org|net|io|co|edu|gov).*$/, '');
+    // Capitalize first letter
+    return cleanDomain.charAt(0).toUpperCase() + cleanDomain.slice(1);
+  }
+
+  private detectContentType(url: string | undefined, title: string | undefined, text: string | undefined): string | null {
+    const combined = `${url || ''} ${title || ''} ${text || ''}`.toLowerCase();
+    
+    // Check URL patterns and content patterns
+    if (combined.includes('/guide') || combined.includes('how to') || combined.includes('step-by-step')) {
+      return 'guide';
+    }
+    if (combined.includes('/blog') || combined.includes('article') || combined.includes('/post')) {
+      return 'article';
+    }
+    if (combined.includes('review') || combined.includes('comparison') || combined.includes(' vs ')) {
+      return 'review';
+    }
+    if (combined.includes('faq') || combined.includes('question') || combined.includes('answer')) {
+      return 'faq';
+    }
+    if (combined.includes('list') || /\d+\s+(best|top|ways|tips|things)/.test(combined)) {
+      return 'list';
+    }
+    if (combined.includes('/product') || combined.includes('/shop') || combined.includes('buy')) {
+      return 'product';
+    }
+    if (combined.includes('definition') || combined.includes('what is') || combined.includes('meaning')) {
+      return 'definition';
+    }
+    if (combined.includes('news') || combined.includes('/press') || combined.includes('announcement')) {
+      return 'news';
+    }
+    
+    return null;
   }
 }
 
