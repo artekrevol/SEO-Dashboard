@@ -442,6 +442,7 @@ export class RankingsSyncService {
 
           // SEID Integration: Process SERP layout data for Intent Intelligence
           // Only process if we have raw SERP items (Standard method returns them)
+          console.log(`[RankingsSync] SEID check: rawSerpItems exists=${!!serpData.rawSerpItems}, size=${serpData.rawSerpItems?.size || 0}`);
           if (serpData.rawSerpItems && serpData.rawSerpItems.size > 0) {
             try {
               const serpLayoutBatch: Array<{ keywordId: number; keyword: string; serpItems: any[] }> = [];
