@@ -37,6 +37,7 @@ import {
   Newspaper,
   ListChecks,
   Brain,
+  Globe,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
@@ -953,34 +954,126 @@ export default function KeywordIntelligence({ projectId }: Props) {
                       {keywordDetail.serpLayoutItems.map((item, idx) => {
                         const Icon = BLOCK_ICONS[item.blockType] || Layers;
                         const color = BLOCK_COLORS[item.blockType] || 'hsl(var(--muted-foreground))';
+                        const isAiOverview = item.blockType === 'ai_overview';
+                        const isOrganic = item.blockType === 'organic';
+                        
                         return (
                           <div
                             key={item.id}
-                            className="flex items-center gap-3 p-3 rounded-lg border"
+                            className="rounded-lg border overflow-hidden"
                             style={{ borderLeftColor: color, borderLeftWidth: 3 }}
                           >
-                            <div className="flex items-center justify-center w-8 h-8 rounded" style={{ backgroundColor: `${color}20` }}>
-                              <Icon className="h-4 w-4" style={{ color }} />
+                            <div className="flex items-center gap-3 p-3">
+                              <div className="flex items-center justify-center w-8 h-8 rounded" style={{ backgroundColor: `${color}20` }}>
+                                <Icon className="h-4 w-4" style={{ color }} />
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium">{formatBlockType(item.blockType)}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Position {item.positionStart ?? idx + 1}
+                                  {item.positionEnd && item.positionEnd !== item.positionStart && ` - ${item.positionEnd}`}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {item.ourBrandPresent && (
+                                  <Badge className="bg-green-500/10 text-green-600 text-xs">
+                                    We're Here
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className="font-medium">{formatBlockType(item.blockType)}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Position {item.positionStart ?? idx + 1}
-                                {item.positionEnd && item.positionEnd !== item.positionStart && ` - ${item.positionEnd}`}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {item.ourBrandPresent && (
-                                <Badge className="bg-green-500/10 text-green-600 text-xs">
-                                  We're Here
-                                </Badge>
-                              )}
-                              {item.competitorDomains && item.competitorDomains.length > 0 && (
-                                <Badge variant="outline" className="text-xs">
-                                  {item.competitorDomains.length} competitors
-                                </Badge>
-                              )}
-                            </div>
+                            
+                            {/* AI Overview Content - Show citations inline */}
+                            {isAiOverview && keywordDetail.aiCitations.length > 0 && (
+                              <div className="border-t bg-violet-500/5 p-3 space-y-2">
+                                <p className="text-xs font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1">
+                                  <Bot className="h-3 w-3" /> AI Overview Sources ({keywordDetail.aiCitations.length})
+                                </p>
+                                {keywordDetail.aiCitations.slice(0, 5).map((citation, cidx) => (
+                                  <div key={citation.id} className="bg-background rounded p-2 text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded">#{citation.referencePosition}</span>
+                                      <span className="font-medium">{citation.sourceDomain}</span>
+                                      {citation.isBrandMention && (
+                                        <Badge className="bg-green-500/10 text-green-600 text-xs">Your Brand</Badge>
+                                      )}
+                                      {citation.sourceUrl && (
+                                        <a href={citation.sourceUrl} target="_blank" rel="noopener noreferrer" className="ml-auto">
+                                          <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                        </a>
+                                      )}
+                                    </div>
+                                    {citation.citedText && (
+                                      <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">"{citation.citedText}"</p>
+                                    )}
+                                  </div>
+                                ))}
+                                {keywordDetail.aiCitations.length > 5 && (
+                                  <p className="text-xs text-muted-foreground">+ {keywordDetail.aiCitations.length - 5} more sources</p>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Organic Position - Show competitor at this position */}
+                            {isOrganic && item.competitorDomains && item.competitorDomains.length > 0 && (
+                              <div className="border-t bg-muted/30 p-3">
+                                <div className="space-y-1.5">
+                                  {item.competitorDomains.slice(0, 3).map((domain, didx) => {
+                                    const isOurBrand = keywordDetail.keyword.targetUrl?.toLowerCase().includes(domain.toLowerCase());
+                                    return (
+                                      <div key={didx} className="flex items-center gap-2 text-sm">
+                                        <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded min-w-[20px] text-center">
+                                          {(item.positionStart || 1) + didx}
+                                        </span>
+                                        <Globe className="h-3 w-3 text-muted-foreground" />
+                                        <span className={isOurBrand ? "font-medium text-green-600 dark:text-green-400" : ""}>
+                                          {domain}
+                                        </span>
+                                        {isOurBrand && (
+                                          <Badge className="bg-green-500/10 text-green-600 text-xs">You</Badge>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  {item.competitorDomains.length > 3 && (
+                                    <p className="text-xs text-muted-foreground pl-8">+ {item.competitorDomains.length - 3} more</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Local Pack - Show competitor businesses */}
+                            {item.blockType === 'local_pack' && item.competitorDomains && item.competitorDomains.length > 0 && (
+                              <div className="border-t bg-emerald-500/5 p-3">
+                                <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mb-2">
+                                  <MapPin className="h-3 w-3" /> Businesses in Local Pack
+                                </p>
+                                <div className="space-y-1">
+                                  {item.competitorDomains.map((domain, didx) => (
+                                    <div key={didx} className="flex items-center gap-2 text-sm">
+                                      <span className="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+                                        {didx + 1}
+                                      </span>
+                                      <span>{domain}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Featured Snippet - Show who owns it */}
+                            {item.blockType === 'featured_snippet' && item.competitorDomains && item.competitorDomains.length > 0 && (
+                              <div className="border-t bg-amber-500/5 p-3">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <Sparkles className="h-3 w-3 text-amber-500" />
+                                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Featured:</span>
+                                  <span className="font-medium">{item.competitorDomains[0]}</span>
+                                  {item.ourBrandPresent && (
+                                    <Badge className="bg-green-500/10 text-green-600 text-xs">You own this!</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
