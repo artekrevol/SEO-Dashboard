@@ -35,6 +35,8 @@ export interface ParsedSerpBlock {
     domain: string;
   }>;
   raw?: any;
+  aiOverviewText?: string;
+  featuredSnippetText?: string;
 }
 
 export interface AiOverviewReference {
@@ -143,12 +145,20 @@ export class SerpParserService {
         });
       }
       
+      // Extract text content for special block types
+      let aiOverviewText: string | undefined;
+      let featuredSnippetText: string | undefined;
+      
       switch (blockType) {
         case 'ai_overview':
           hasAiOverview = true;
+          // Extract the AI Overview text content
+          aiOverviewText = this.extractAiOverviewText(item);
           break;
         case 'featured_snippet':
           hasFeaturedSnippet = true;
+          // Extract Featured Snippet text
+          featuredSnippetText = item.description || item.text || item.snippet || '';
           break;
         case 'local_pack':
           hasLocalPack = true;
@@ -179,6 +189,8 @@ export class SerpParserService {
         url: item.url,
         domain: item.domain,
         description: item.description,
+        aiOverviewText,
+        featuredSnippetText,
       };
 
       if (item.items && Array.isArray(item.items)) {
@@ -366,6 +378,44 @@ export class SerpParserService {
   }
 
   /**
+   * Extract the AI Overview text content from a SERP item
+   * DataForSEO AI Overview structure can vary - check multiple fields
+   */
+  extractAiOverviewText(item: any): string | undefined {
+    const textParts: string[] = [];
+    
+    // Direct text field on the AI Overview item
+    if (item.text) {
+      textParts.push(item.text);
+    }
+    
+    // Check for title/description as fallback
+    if (item.title) {
+      textParts.push(item.title);
+    }
+    if (item.description) {
+      textParts.push(item.description);
+    }
+    
+    // Extract text from nested items (element-level content)
+    if (item.items && Array.isArray(item.items)) {
+      for (const aiItem of item.items) {
+        if (aiItem.text) {
+          textParts.push(aiItem.text);
+        } else if (aiItem.snippet) {
+          textParts.push(aiItem.snippet);
+        } else if (aiItem.title) {
+          textParts.push(aiItem.title);
+        }
+      }
+    }
+    
+    // Combine all text parts and limit length
+    const combinedText = textParts.filter(Boolean).join(' ').trim();
+    return combinedText ? combinedText.substring(0, 2000) : undefined;
+  }
+
+  /**
    * Calculate stability score comparing current layout to previous
    * Score: 0-100 (100 = completely stable, 0 = completely different)
    */
@@ -542,15 +592,27 @@ export class SerpParserService {
     
     const snapshot = await storage.createSerpLayoutSnapshot(snapshotData);
     
-    const layoutItems: InsertSerpLayoutItem[] = parsed.blocks.map(block => ({
-      snapshotId: snapshot.id,
-      blockIndex: block.blockIndex,
-      blockType: block.blockType,
-      positionStart: block.rank_absolute,
-      positionEnd: block.rank_absolute,
-      resultCount: block.items?.length || 1,
-      competitorDomains: block.items?.map(i => i.domain).filter(Boolean) || (block.domain ? [block.domain] : []),
-    }));
+    const layoutItems: InsertSerpLayoutItem[] = parsed.blocks.map(block => {
+      // Build featureMetadata for blocks with text content
+      let featureMetadata: Record<string, any> | undefined;
+      if (block.aiOverviewText || block.featuredSnippetText || block.description) {
+        featureMetadata = {
+          text: block.aiOverviewText || block.featuredSnippetText || block.description || null,
+          title: block.title || null,
+        };
+      }
+      
+      return {
+        snapshotId: snapshot.id,
+        blockIndex: block.blockIndex,
+        blockType: block.blockType,
+        positionStart: block.rank_absolute,
+        positionEnd: block.rank_absolute,
+        resultCount: block.items?.length || 1,
+        competitorDomains: block.items?.map(i => i.domain).filter(Boolean) || (block.domain ? [block.domain] : []),
+        featureMetadata,
+      };
+    });
     
     if (layoutItems.length > 0) {
       await storage.createSerpLayoutItems(layoutItems);

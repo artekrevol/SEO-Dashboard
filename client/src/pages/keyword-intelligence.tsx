@@ -983,33 +983,57 @@ export default function KeywordIntelligence({ projectId }: Props) {
                               </div>
                             </div>
                             
-                            {/* AI Overview Content - Show citations inline */}
-                            {isAiOverview && keywordDetail.aiCitations.length > 0 && (
-                              <div className="border-t bg-violet-500/5 p-3 space-y-2">
-                                <p className="text-xs font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1">
-                                  <Bot className="h-3 w-3" /> AI Overview Sources ({keywordDetail.aiCitations.length})
-                                </p>
-                                {keywordDetail.aiCitations.slice(0, 5).map((citation, cidx) => (
-                                  <div key={citation.id} className="bg-background rounded p-2 text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded">#{citation.referencePosition}</span>
-                                      <span className="font-medium">{citation.sourceDomain}</span>
-                                      {citation.isBrandMention && (
-                                        <Badge className="bg-green-500/10 text-green-600 text-xs">Your Brand</Badge>
-                                      )}
-                                      {citation.sourceUrl && (
-                                        <a href={citation.sourceUrl} target="_blank" rel="noopener noreferrer" className="ml-auto">
-                                          <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                                        </a>
-                                      )}
-                                    </div>
-                                    {citation.citedText && (
-                                      <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">"{citation.citedText}"</p>
+                            {/* AI Overview Content - Show text and citations inline */}
+                            {isAiOverview && (
+                              <div className="border-t bg-violet-500/5 p-3 space-y-3">
+                                {/* AI Overview Text Content */}
+                                {(item as any).featureMetadata?.text && (
+                                  <div className="bg-background rounded-lg p-3 border border-violet-200 dark:border-violet-800">
+                                    <p className="text-xs font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1 mb-2">
+                                      <Bot className="h-3 w-3" /> AI Generated Content
+                                    </p>
+                                    <p className="text-sm text-foreground leading-relaxed">
+                                      {(item as any).featureMetadata.text}
+                                    </p>
+                                  </div>
+                                )}
+                                
+                                {/* AI Overview Sources */}
+                                {keywordDetail.aiCitations.length > 0 && (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1">
+                                      <ExternalLink className="h-3 w-3" /> Sources ({keywordDetail.aiCitations.length})
+                                    </p>
+                                    {keywordDetail.aiCitations.slice(0, 5).map((citation) => (
+                                      <div key={citation.id} className="bg-background rounded p-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded">#{citation.referencePosition}</span>
+                                          <span className="font-medium">{citation.sourceDomain}</span>
+                                          {citation.isBrandMention && (
+                                            <Badge className="bg-green-500/10 text-green-600 text-xs">Your Brand</Badge>
+                                          )}
+                                          {citation.sourceUrl && (
+                                            <a href={citation.sourceUrl} target="_blank" rel="noopener noreferrer" className="ml-auto">
+                                              <ExternalLink className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                                            </a>
+                                          )}
+                                        </div>
+                                        {citation.citedText && (
+                                          <p className="text-xs text-muted-foreground mt-1 italic line-clamp-2">"{citation.citedText}"</p>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {keywordDetail.aiCitations.length > 5 && (
+                                      <p className="text-xs text-muted-foreground">+ {keywordDetail.aiCitations.length - 5} more sources</p>
                                     )}
                                   </div>
-                                ))}
-                                {keywordDetail.aiCitations.length > 5 && (
-                                  <p className="text-xs text-muted-foreground">+ {keywordDetail.aiCitations.length - 5} more sources</p>
+                                )}
+                                
+                                {/* No content available message */}
+                                {!((item as any).featureMetadata?.text) && keywordDetail.aiCitations.length === 0 && (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    AI Overview detected but content not captured. Run a new crawl to capture the full content.
+                                  </p>
                                 )}
                               </div>
                             )}
