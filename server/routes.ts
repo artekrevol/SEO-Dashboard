@@ -1703,6 +1703,99 @@ export async function registerRoutes(
     }
   });
 
+  // Data Diagnostics API - shows summary of all collected data for debugging
+  app.get("/api/data-diagnostics", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Get counts from all major tables
+      const [
+        keywords,
+        keywordMetrics,
+        rankingsHistory,
+        competitors,
+        backlinks,
+        pageMetrics,
+        serpSnapshots,
+        aiCitations,
+        crawlResults,
+      ] = await Promise.all([
+        storage.getKeywords(projectId),
+        storage.getLatestKeywordMetrics(projectId),
+        storage.getRankingsHistoryByProject(projectId),
+        storage.getAggregatedCompetitors(projectId),
+        storage.getBacklinks(projectId),
+        storage.getPageMetrics(projectId),
+        storage.getSerpLayoutSnapshotsByProject(projectId, { limit: 1 }),
+        storage.getAiOverviewCitations(projectId),
+        storage.getCrawlResults(projectId, 10),
+      ]);
+
+      // Get the last crawl details
+      const lastCrawl = crawlResults.length > 0 ? crawlResults[0] : null;
+
+      // Categorize crawl results by type
+      const crawlsByType = crawlResults.reduce<Record<string, Array<{ id: number; status: string | null; date: Date | null; itemsProcessed: number | null; itemsTotal: number | null }>>>((acc, cr) => {
+        const type = cr.type || 'unknown';
+        if (!acc[type]) acc[type] = [];
+        acc[type].push({
+          id: cr.id,
+          status: cr.status,
+          date: cr.startedAt,
+          itemsProcessed: cr.itemsProcessed,
+          itemsTotal: cr.itemsTotal,
+        });
+        return acc;
+      }, {});
+
+      res.json({
+        project: {
+          id: project.id,
+          name: project.name,
+          domain: project.domain,
+        },
+        dataCounts: {
+          keywords: keywords.length,
+          keywordMetrics: keywordMetrics.length,
+          rankingsHistory: rankingsHistory.length,
+          competitors: competitors.length,
+          backlinks: backlinks.length,
+          pageMetrics: pageMetrics.length,
+          serpSnapshots: serpSnapshots.length,
+          aiCitations: aiCitations.length,
+        },
+        lastCrawl: lastCrawl ? {
+          id: lastCrawl.id,
+          type: lastCrawl.type,
+          status: lastCrawl.status,
+          startedAt: lastCrawl.startedAt,
+          completedAt: lastCrawl.completedAt,
+          itemsProcessed: lastCrawl.itemsProcessed,
+          itemsTotal: lastCrawl.itemsTotal,
+          currentStage: lastCrawl.currentStage,
+        } : null,
+        recentCrawlsByType: crawlsByType,
+        keywordsWithMetrics: keywordMetrics.filter((m: { position: number | null }) => m.position && m.position > 0).length,
+        keywordsWithRankings: new Set(rankingsHistory.map((r: { keywordId: number }) => r.keywordId)).size,
+        topCompetitors: competitors.slice(0, 5).map((c: { competitorDomain: string; sharedKeywords: number }) => ({
+          domain: c.competitorDomain,
+          sharedKeywords: c.sharedKeywords,
+        })),
+      });
+    } catch (error) {
+      console.error("Error fetching data diagnostics:", error);
+      res.status(500).json({ error: "Failed to fetch data diagnostics" });
+    }
+  });
+
   // Crawl Results History API
   app.get("/api/crawl-results", async (req, res) => {
     try {
