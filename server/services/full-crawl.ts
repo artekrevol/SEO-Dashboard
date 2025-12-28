@@ -60,7 +60,13 @@ export async function runFullCrawl(projectId: string, onProgress?: (progress: Cr
 
   const BATCH_SIZE = 10;
   const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
-  const today = new Date().toISOString().split('T')[0];
+  // Use America/Chicago timezone for date consistency (handles DST)
+  const today = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
   
   const keywordPositions = new Map<number, number>();
 
@@ -346,7 +352,13 @@ export async function runKeywordCrawl(projectId: string, keywordIds?: number[]):
   const errors: string[] = [];
   let keywordsProcessed = 0;
   let competitorsFound = 0;
-  const today = new Date().toISOString().split('T')[0];
+  // Use America/Chicago timezone for date consistency (handles DST)
+  const today = new Intl.DateTimeFormat('en-CA', { 
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
 
   const BATCH_SIZE = 10;
   const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);

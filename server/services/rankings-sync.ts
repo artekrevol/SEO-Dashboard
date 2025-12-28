@@ -245,7 +245,14 @@ export class RankingsSyncService {
         };
       }
 
-      const today = new Date().toISOString().split("T")[0];
+      // Use America/Chicago timezone for date to match user's business day
+      // This handles both CST (UTC-6) and CDT (UTC-5) automatically
+      const today = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
       const totalKeywords = activeKeywords.length;
 
       if (crawlResultId) {
@@ -272,6 +279,7 @@ export class RankingsSyncService {
 
       let lastProgressLog = 0;
       let lastProgressUpdate = 0;
+      let processedKeywords = 0; // Shared counter for real-time progress
 
       // Process keywords in bulk batches using DataForSEO bulk API
       for (let i = 0; i < activeKeywords.length; i += this.bulkBatchSize) {
@@ -305,12 +313,25 @@ export class RankingsSyncService {
           } else {
             // Use Standard method (task_post + task_get) for bulk operations
             // This is 3.3x cheaper than Live method
+            // Create progress callback to update crawl progress in real-time
+            const onProgress = async (batchProcessed: number, _batchTotal: number) => {
+              // Use shared counter - only increment, never reset
+              processedKeywords = i + batchProcessed;
+              if (crawlResultId && processedKeywords - lastProgressUpdate >= 10) {
+                await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
+                lastProgressUpdate = processedKeywords;
+              }
+            };
+            
             serpData = await Promise.race([
-              this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain),
+              this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain, 2840, onProgress),
               new Promise<never>((_, reject) => 
                 setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
               )
             ]);
+            
+            // Update processed count after batch completes
+            processedKeywords = Math.min(i + batch.length, totalKeywords);
           }
           
           const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = serpData;
@@ -466,25 +487,24 @@ export class RankingsSyncService {
             }
           }
 
-          const processed = Math.min(i + batch.length, totalKeywords);
-          const progressPercent = Math.round(processed / totalKeywords * 100);
+          const progressPercent = Math.round(processedKeywords / totalKeywords * 100);
           
           // Log progress every 50 keywords or at milestones
-          if (processed - lastProgressLog >= 50 || processed === totalKeywords) {
-            console.log(`[RankingsSync] Progress: ${processed}/${totalKeywords} (${progressPercent}%)`);
-            lastProgressLog = processed;
+          if (processedKeywords - lastProgressLog >= 50 || processedKeywords === totalKeywords) {
+            console.log(`[RankingsSync] Progress: ${processedKeywords}/${totalKeywords} (${progressPercent}%)`);
+            lastProgressLog = processedKeywords;
           }
 
-          // Update crawl progress every 25 keywords
-          if (crawlResultId && (processed - lastProgressUpdate >= 25 || processed === totalKeywords)) {
-            await storage.updateCrawlProgress(crawlResultId, processed, "fetching_rankings");
-            lastProgressUpdate = processed;
+          // Update crawl progress after batch (only if not already updated by callback)
+          if (crawlResultId && processedKeywords > lastProgressUpdate) {
+            await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
+            lastProgressUpdate = processedKeywords;
           }
 
           // Log progress at milestones
-          if (taskContext && (progressPercent === 25 || progressPercent === 50 || progressPercent === 75 || processed === totalKeywords)) {
+          if (taskContext && (progressPercent === 25 || progressPercent === 50 || progressPercent === 75 || processedKeywords === totalKeywords)) {
             await TaskLogger.info(taskContext, `Keyword crawl progress: ${progressPercent}%`, {
-              processed,
+              processed: processedKeywords,
               total: totalKeywords,
               keywordsUpdated,
               competitorsFound,
@@ -499,11 +519,17 @@ export class RankingsSyncService {
           console.error(`[RankingsSync] Batch error:`, err);
           
           // Continue with next batch even if this one failed
-          const processed = Math.min(i + batch.length, totalKeywords);
+          processedKeywords = Math.min(i + batch.length, totalKeywords);
           if (crawlResultId) {
-            await storage.updateCrawlProgress(crawlResultId, processed, "fetching_rankings");
+            await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
+            lastProgressUpdate = processedKeywords;
           }
         }
+      }
+
+      // Final progress update to ensure we reach 100%
+      if (crawlResultId && lastProgressUpdate < totalKeywords) {
+        await storage.updateCrawlProgress(crawlResultId, totalKeywords, "fetching_rankings");
       }
 
       console.log(`[RankingsSync] Completed: ${keywordsUpdated}/${totalKeywords} keywords synced`);
@@ -658,7 +684,13 @@ export class RankingsSyncService {
       const backlinkData = await this.dataForSEO.syncPagesBacklinks(urls);
       console.log(`[PageMetrics] Retrieved backlinks for ${backlinkData.size}/${urls.length} URLs from DataForSEO`);
 
-      const today = new Date().toISOString().split('T')[0];
+      // Use America/Chicago timezone for date consistency (handles DST)
+      const today = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
       const totalUrls = urls.length;
 
       for (let i = 0; i < urls.length; i++) {
@@ -846,7 +878,13 @@ export class RankingsSyncService {
       );
 
       let pagesUpdated = 0;
-      const today = new Date().toISOString().split('T')[0];
+      // Use America/Chicago timezone for date consistency (handles DST)
+      const today = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'America/Chicago',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
 
       const onPageEntries = Array.from(onPageData.entries());
       for (const entry of onPageEntries) {
