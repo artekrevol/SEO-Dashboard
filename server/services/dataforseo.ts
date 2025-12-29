@@ -748,13 +748,19 @@ export class DataForSEOService {
         }>("/serp/google/organic/task_post", "POST", tasks, 60000);
 
         if (response.tasks) {
+          let successCount = 0;
           for (const task of response.tasks) {
             if (task.status_code === 20100 && task.id) {
               // Task successfully submitted
               const keyword = task.data?.tag || task.data?.keyword || '';
               allTaskIds.push({ taskId: task.id, keyword });
+              successCount++;
+              // Log first task ID for debugging
+              if (successCount === 1) {
+                console.log(`[DataForSEO] First task ID: ${task.id} (keyword: ${keyword})`);
+              }
             } else {
-              console.warn(`[DataForSEO] Task submission failed: ${task.status_message}`);
+              console.warn(`[DataForSEO] Task submission failed: ${task.status_code} - ${task.status_message}`);
               // Initialize as null for failed submissions
               const keyword = task.data?.tag || task.data?.keyword || '';
               if (keyword) {
@@ -798,29 +804,23 @@ export class DataForSEOService {
 
     console.log(`[DataForSEO] Starting poll loop for ${pendingTaskIds.size} tasks (max ${MAX_POLL_TIME / 60000} min, priority: ${useHighPriority ? 'HIGH' : 'NORMAL'})`);
 
+    // Wait initial time for high priority tasks to complete (60s recommended for high priority)
+    const INITIAL_WAIT = useHighPriority ? 60000 : 120000;
+    console.log(`[DataForSEO] Waiting ${INITIAL_WAIT / 1000}s for tasks to process before fetching...`);
+    await new Promise(resolve => setTimeout(resolve, INITIAL_WAIT));
+    
     while (pendingTaskIds.size > 0 && (Date.now() - startTime) < MAX_POLL_TIME) {
       try {
-        // Check which tasks are ready
-        const readyResponse = await this.makeRequest<{
-          tasks: Array<{
-            result: Array<{
-              id: string;
-              se: string;
-              se_type: string;
-            }>;
-          }>;
-        }>("/serp/google/organic/tasks_ready", "GET", undefined, 30000);
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        
+        // DIRECT FETCH APPROACH: Skip tasks_ready and directly try fetching by ID
+        // This bypasses any backlog of old tasks in the ready queue
+        const readyTaskIds: string[] = Array.from(pendingTaskIds);
+        
+        // Log polling status
+        console.log(`[DataForSEO] Direct fetch @ ${elapsed}s: attempting to fetch ${readyTaskIds.length} tasks`);
 
-        const readyTaskIds: string[] = [];
-        if (readyResponse.tasks?.[0]?.result) {
-          for (const item of readyResponse.tasks[0].result) {
-            if (pendingTaskIds.has(item.id)) {
-              readyTaskIds.push(item.id);
-            }
-          }
-        }
-
-        // Fetch results for ready tasks
+        // Fetch results for tasks (directly by ID)
         for (const taskId of readyTaskIds) {
           try {
             const resultResponse = await this.makeRequest<{
@@ -923,7 +923,16 @@ export class DataForSEOService {
 
             // Small delay between result fetches
             await new Promise(resolve => setTimeout(resolve, 100));
-          } catch (error) {
+          } catch (error: any) {
+            // Check if error is "task not ready" vs actual failure
+            const errorMsg = error?.message || '';
+            const isNotReady = errorMsg.includes('40501') || errorMsg.includes('40601') || errorMsg.includes('Task In Queue');
+            
+            if (isNotReady) {
+              // Task not ready yet, keep in pending set for next poll
+              continue;
+            }
+            
             console.error(`[DataForSEO] Error fetching task ${taskId}:`, error);
             pendingTaskIds.delete(taskId);
             const keyword = taskKeywordMap.get(taskId) || '';
