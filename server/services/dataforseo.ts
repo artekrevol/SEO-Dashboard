@@ -663,11 +663,22 @@ export class DataForSEOService {
   /**
    * OPTIMIZED: Standard Method for SERP Rankings
    * Uses task_post + task_get for bulk keyword processing
-   * - 3.3x cheaper than Live method ($0.0006 vs $0.002 per task)
-   * - Supports true batching (100 tasks per POST request)
-   * - More reliable for bulk operations
+   * 
+   * Priority options:
+   * - Normal (priority: 1): ~20 min completion, $0.0006/task
+   * - High (priority: 2): ~1 min completion, $0.0012/task (still 40% cheaper than Live)
+   * 
+   * High priority recommended for:
+   * - Environments with frequent restarts (Railway, etc.)
+   * - Smaller batches that need quick turnaround
    */
-  async getSerpRankingsStandardMethod(keywords: string[], domain: string, locationCode: number = 2840, onProgress?: (processed: number, total: number) => void): Promise<{
+  async getSerpRankingsStandardMethod(
+    keywords: string[], 
+    domain: string, 
+    locationCode: number = 2840, 
+    onProgress?: (processed: number, total: number) => void,
+    useHighPriority: boolean = true  // Default to high priority for faster results
+  ): Promise<{
     rankings: Map<string, SerpResultItem | null>;
     competitors: Map<string, Array<{
       domain: string;
@@ -703,7 +714,8 @@ export class DataForSEOService {
     const domainLower = domain.toLowerCase();
     const BATCH_SIZE = 100; // Max 100 tasks per POST request
 
-    console.log(`[DataForSEO] Standard Method: Processing ${keywords.length} keywords in batches of ${BATCH_SIZE}`);
+    const priorityLabel = useHighPriority ? "HIGH (~1 min)" : "NORMAL (~20 min)";
+    console.log(`[DataForSEO] Standard Method [${priorityLabel}]: Processing ${keywords.length} keywords in batches of ${BATCH_SIZE}`);
 
     // Step 1: Submit all tasks using task_post (batched)
     const allTaskIds: { taskId: string; keyword: string }[] = [];
@@ -712,6 +724,7 @@ export class DataForSEOService {
       const batch = keywords.slice(i, Math.min(i + BATCH_SIZE, keywords.length));
       
       try {
+        const priority = useHighPriority ? 2 : 1; // 2 = High (~1 min), 1 = Normal (~20 min)
         const tasks = batch.map(keyword => ({
           keyword,
           location_code: locationCode,
@@ -719,6 +732,7 @@ export class DataForSEOService {
           device: "desktop",
           os: "windows",
           depth: 100,
+          priority, // High priority: ~1 min completion, Normal: ~20 min
           tag: keyword, // Use tag to identify keyword in results
         }));
 
@@ -775,13 +789,14 @@ export class DataForSEOService {
     const pendingTaskIds = new Set(allTaskIds.map(t => t.taskId));
     const taskKeywordMap = new Map(allTaskIds.map(t => [t.taskId, t.keyword]));
     
-    const MAX_POLL_TIME = 20 * 60 * 1000; // 20 minutes max per batch (increased from 10 for large crawls)
-    const POLL_INTERVAL = 5000; // Check every 5 seconds
+    // High priority: ~1-2 min, Normal: ~20 min - set timeout accordingly
+    const MAX_POLL_TIME = useHighPriority ? 5 * 60 * 1000 : 25 * 60 * 1000; // 5 min for high, 25 min for normal
+    const POLL_INTERVAL = 3000; // Check every 3 seconds (faster for high priority)
     const startTime = Date.now();
     let processedCount = 0;
     let lastProgressLog = 0;
 
-    console.log(`[DataForSEO] Starting poll loop for ${pendingTaskIds.size} tasks (max ${MAX_POLL_TIME / 60000} minutes)`);
+    console.log(`[DataForSEO] Starting poll loop for ${pendingTaskIds.size} tasks (max ${MAX_POLL_TIME / 60000} min, priority: ${useHighPriority ? 'HIGH' : 'NORMAL'})`);
 
     while (pendingTaskIds.size > 0 && (Date.now() - startTime) < MAX_POLL_TIME) {
       try {
