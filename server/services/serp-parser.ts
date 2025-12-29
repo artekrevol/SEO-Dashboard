@@ -233,7 +233,10 @@ export class SerpParserService {
                 const ref = aiItem.references[refIdx];
                 globalRefPosition++;
                 // Use DataForSEO order/position fields if available, fallback to index
-                const refPosition = ref.order ?? ref.position ?? refIdx + 1;
+                // Note: ref.position may be a string like "left" or "right", so validate it's a number
+                const refOrder = typeof ref.order === 'number' ? ref.order : null;
+                const refPos = typeof ref.position === 'number' ? ref.position : null;
+                const refPosition = refOrder ?? refPos ?? refIdx + 1;
                 const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
                 if (domain) {
                   competitorPresences.push({
@@ -284,7 +287,10 @@ export class SerpParserService {
             const ref = item.references[refIdx];
             globalRefPosition++;
             // Use DataForSEO order/position fields if available, fallback to index
-            const refPosition = ref.order ?? ref.position ?? refIdx + 1;
+            // Note: ref.position may be a string like "left" or "right", so validate it's a number
+            const refOrder = typeof ref.order === 'number' ? ref.order : null;
+            const refPos = typeof ref.position === 'number' ? ref.position : null;
+            const refPosition = refOrder ?? refPos ?? refIdx + 1;
             const domain = ref.domain || this.extractDomain(ref.url || ref.link || '');
             if (domain) {
               // Only add to competitorPresences if not already added from element-level
