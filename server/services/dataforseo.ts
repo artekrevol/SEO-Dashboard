@@ -724,7 +724,7 @@ export class DataForSEOService {
       const batch = keywords.slice(i, Math.min(i + BATCH_SIZE, keywords.length));
       
       try {
-        const priority = useHighPriority ? 2 : 1; // 2 = High (~1 min), 1 = Normal (~20 min)
+        const priority = useHighPriority ? 1 : 2; // 1 = High (~1 min), 2 = Normal (~20 min)
         const tasks = batch.map(keyword => ({
           keyword,
           location_code: locationCode,
