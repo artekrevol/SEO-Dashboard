@@ -308,8 +308,8 @@ export class RankingsSyncService {
       const allProcessedIds = new Set(alreadyProcessedIds); // Track all processed IDs for checkpoint saves
 
       // Process keywords in bulk batches using DataForSEO bulk API
-      // Use smaller batch size (20) to minimize work lost if server restarts mid-batch
-      const RESUMABLE_BATCH_SIZE = 20;
+      // DataForSEO API handles up to 100 keywords per request
+      const RESUMABLE_BATCH_SIZE = 100;
       for (let i = 0; i < keywordsToProcess.length; i += RESUMABLE_BATCH_SIZE) {
         const batch = keywordsToProcess.slice(i, Math.min(i + RESUMABLE_BATCH_SIZE, keywordsToProcess.length));
         const keywordTexts = batch.map(kw => kw.keyword);

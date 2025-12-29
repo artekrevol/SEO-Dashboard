@@ -58,7 +58,7 @@ export async function runFullCrawl(projectId: string, onProgress?: (progress: Cr
   
   console.log(`[FullCrawl] Starting crawl for ${project.name} (${domain}) with ${keywords.length} keywords`);
 
-  const BATCH_SIZE = 10;
+  const BATCH_SIZE = 100; // DataForSEO API handles up to 100 keywords per request
   const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
   // Use America/Chicago timezone for date consistency (handles DST)
   const today = new Intl.DateTimeFormat('en-CA', { 
@@ -360,7 +360,7 @@ export async function runKeywordCrawl(projectId: string, keywordIds?: number[]):
     day: '2-digit'
   }).format(new Date());
 
-  const BATCH_SIZE = 10;
+  const BATCH_SIZE = 100; // DataForSEO API handles up to 100 keywords per request
   const totalBatches = Math.ceil(keywords.length / BATCH_SIZE);
 
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
