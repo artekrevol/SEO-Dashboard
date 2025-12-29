@@ -1,0 +1,61 @@
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 20 tasks did not complete within time limit
+[DataForSEO] 5 tasks did not complete within time limit
+npm error path /app
+npm error command failed
+npm error signal SIGTERM
+npm error command sh -c NODE_ENV=production node dist/index.cjs
+npm error A complete log of this run can be found in: /root/.npm/_logs/2025-12-29T00_53_52_280Z-debug-0.log
+[DataForSEO] 100 tasks did not complete within time limit
+[RankingsSync] SEID: No keywords with SERP layout data in this batch
+[DataForSEO] 100 tasks did not complete within time limit
+[RankingsSync] SEID: No keywords with SERP layout data in this batch
+[RankingsSync] SEID: No keywords with SERP layout data in this batch
+[DataForSEO] 100 tasks did not complete within time limit
+[RankingsSync] SEID: No keywords with SERP layout data in this batch
+Open in Log Explorer
+
+Project usage
+
+Current usage
+
+$ 0.47
+
+Estimated usage
+
+$ 0.93
+
+CPU usage
+
+$ 0.00
+
+Memory usage
+
+$ 0.46
+
+Network usage
+
+$ 0.00
+
+Volume usage
+
+$ 0.00

@@ -775,10 +775,13 @@ export class DataForSEOService {
     const pendingTaskIds = new Set(allTaskIds.map(t => t.taskId));
     const taskKeywordMap = new Map(allTaskIds.map(t => [t.taskId, t.keyword]));
     
-    const MAX_POLL_TIME = 10 * 60 * 1000; // 10 minutes max
+    const MAX_POLL_TIME = 20 * 60 * 1000; // 20 minutes max per batch (increased from 10 for large crawls)
     const POLL_INTERVAL = 5000; // Check every 5 seconds
     const startTime = Date.now();
     let processedCount = 0;
+    let lastProgressLog = 0;
+
+    console.log(`[DataForSEO] Starting poll loop for ${pendingTaskIds.size} tasks (max ${MAX_POLL_TIME / 60000} minutes)`);
 
     while (pendingTaskIds.size > 0 && (Date.now() - startTime) < MAX_POLL_TIME) {
       try {
@@ -920,9 +923,13 @@ export class DataForSEOService {
           }
         }
 
-        // If we processed some tasks, log progress
-        if (readyTaskIds.length > 0) {
-          console.log(`[DataForSEO] Processed ${processedCount}/${allTaskIds.length} tasks. ${pendingTaskIds.size} remaining.`);
+        // Log progress periodically (every 20 tasks or every 30 seconds)
+        const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+        if (readyTaskIds.length > 0 || (processedCount - lastProgressLog >= 20) || (Date.now() - startTime) % 30000 < POLL_INTERVAL) {
+          if (processedCount > lastProgressLog) {
+            console.log(`[DataForSEO] Processed ${processedCount}/${allTaskIds.length} tasks. ${pendingTaskIds.size} remaining. (${elapsedMinutes}m elapsed)`);
+            lastProgressLog = processedCount;
+          }
         }
 
         // Wait before next poll if tasks still pending
@@ -937,7 +944,8 @@ export class DataForSEOService {
 
     // Mark any remaining pending tasks as failed
     if (pendingTaskIds.size > 0) {
-      console.warn(`[DataForSEO] ${pendingTaskIds.size} tasks did not complete within time limit`);
+      const elapsedMinutes = Math.floor((Date.now() - startTime) / 60000);
+      console.warn(`[DataForSEO] ${pendingTaskIds.size}/${allTaskIds.length} tasks did not complete within ${elapsedMinutes} minutes. Completed: ${processedCount}. These keywords will have no SERP layout data.`);
       Array.from(pendingTaskIds).forEach(taskId => {
         const keyword = taskKeywordMap.get(taskId) || '';
         if (keyword && !rankings.has(keyword)) {
