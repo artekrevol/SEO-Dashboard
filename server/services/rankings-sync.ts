@@ -268,13 +268,18 @@ export class RankingsSyncService {
         });
       }
 
-      // Determine crawl method: Live for selected keywords, Standard for bulk
+      // Determine crawl method:
+      // - Live Method: More reliable, synchronous, works with server restarts. Use for < 100 keywords.
+      // - Standard Method: Cheaper but uses async polling which gets orphaned on server restarts.
+      // IMPORTANT: Prefer Live Method for reliability unless we have a very large keyword set.
+      const LIVE_METHOD_THRESHOLD = 100; // Use Live method for up to 100 keywords
       const useSelectedKeywordsMode = keywordIds && keywordIds.length > 0;
+      const useLiveMethod = useSelectedKeywordsMode || totalKeywords <= LIVE_METHOD_THRESHOLD;
       
-      if (useSelectedKeywordsMode) {
-        console.log(`[RankingsSync] Using LIVE method for ${totalKeywords} selected keywords (sequential crawl)`);
+      if (useLiveMethod) {
+        console.log(`[RankingsSync] Using LIVE method for ${totalKeywords} keywords (synchronous, reliable)`);
       } else {
-        console.log(`[RankingsSync] Using STANDARD method for ${totalKeywords} keywords (batch processing)`);
+        console.log(`[RankingsSync] Using STANDARD method for ${totalKeywords} keywords (async batch - may be interrupted by restarts)`);
       }
 
       let lastProgressLog = 0;
@@ -302,18 +307,24 @@ export class RankingsSyncService {
             rawSerpItems?: Map<string, any[]>;
           };
           
-          if (useSelectedKeywordsMode) {
-            // Use Live method for selected keywords - more reliable, real-time results
+          if (useLiveMethod) {
+            // Use Live method - more reliable, synchronous, won't be orphaned by server restarts
             serpData = await Promise.race([
               this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain),
               new Promise<never>((_, reject) => 
                 setTimeout(() => reject(new Error("SERP API request timed out after 5 minutes")), 300000)
               )
             ]);
+            
+            // Update progress for Live method
+            processedKeywords = Math.min(i + batch.length, totalKeywords);
+            if (crawlResultId) {
+              await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
+            }
           } else {
-            // Use Standard method (task_post + task_get) for bulk operations
-            // This is 3.3x cheaper than Live method
-            // Create progress callback to update crawl progress in real-time
+            // Use Standard method (task_post + task_get) for bulk operations (100+ keywords)
+            // This is 3.3x cheaper than Live method but uses async polling
+            // WARNING: Async polling can be interrupted by server restarts
             const onProgress = async (batchProcessed: number, _batchTotal: number) => {
               // Use shared counter - only increment, never reset
               processedKeywords = i + batchProcessed;

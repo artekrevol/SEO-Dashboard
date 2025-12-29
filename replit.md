@@ -19,7 +19,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Data Ingestion**: Supports bulk CSV/XLSX imports for various SEO data.
 - **Priority Classification**: Automatic keyword tiering (P1, P2, P3) based on intent and ranking.
 - **Automated Crawls**: Scheduled crawls for keyword rankings (3x weekly), page metrics (4x weekly), and competitor analysis (2x weekly), including weekly backlink verification.
-- **DataForSEO Dual-Method Strategy**: Uses Standard Method ($0.0006/task) for batch crawls (3.3x cost savings), Live Method ($0.002/task) for single keyword lookups.
+- **DataForSEO Crawl Strategy**: Prioritizes Live Method ($0.002/task) for reliability - synchronous calls that complete quickly and won't be orphaned by server restarts. Standard Method ($0.0006/task) is only used for very large batches (100+ keywords) where cost savings outweigh the risk of interruption.
 - **Stale Crawl Recovery**: Server startup automatically cancels orphaned crawls that were running before a restart, preventing stuck crawl states from blocking new crawls.
 - **Dual Data Sync for Rankings**: Rankings sync now updates both `rankings_history` (for position charts) AND `keywordMetrics` (for Keywords table, Quick Wins, Falling Stars). This ensures all views stay synchronized after crawls.
 - **Pages Health Scoring**: Calculates `techRiskScore`, `contentGapScore`, and `authorityGapScore` based on various SEO factors.
