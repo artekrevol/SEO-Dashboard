@@ -480,28 +480,41 @@ export class RankingsSyncService {
 
           // SEID Integration: Process SERP layout data for Intent Intelligence
           // Only process if we have raw SERP items (Standard method returns them)
-          console.log(`[RankingsSync] SEID check: rawSerpItems exists=${!!serpData.rawSerpItems}, size=${serpData.rawSerpItems?.size || 0}`);
-          if (serpData.rawSerpItems && serpData.rawSerpItems.size > 0) {
+          const rawItemsExists = !!serpData.rawSerpItems;
+          const rawItemsSize = serpData.rawSerpItems?.size || 0;
+          console.log(`[RankingsSync] SEID check: rawSerpItems exists=${rawItemsExists}, size=${rawItemsSize}, batch=${batch.length} keywords`);
+          
+          if (rawItemsExists && rawItemsSize > 0) {
             try {
               const serpLayoutBatch: Array<{ keywordId: number; keyword: string; serpItems: any[] }> = [];
+              let emptyItems = 0;
+              
               for (const kw of batch) {
-                const rawItems = serpData.rawSerpItems.get(kw.keyword);
+                const rawItems = serpData.rawSerpItems!.get(kw.keyword);
                 if (rawItems && rawItems.length > 0) {
                   serpLayoutBatch.push({
                     keywordId: kw.id,
                     keyword: kw.keyword,
                     serpItems: rawItems,
                   });
+                } else {
+                  emptyItems++;
                 }
               }
+              
+              console.log(`[RankingsSync] SEID batch prepared: ${serpLayoutBatch.length} with data, ${emptyItems} empty`);
               
               if (serpLayoutBatch.length > 0) {
                 const layoutResult = await serpParser.processBatch(projectId, serpLayoutBatch);
                 console.log(`[RankingsSync] SEID processed ${layoutResult.processed} layouts, generated ${layoutResult.alertsGenerated} alerts`);
+              } else {
+                console.warn(`[RankingsSync] SEID: No keywords with SERP layout data in this batch`);
               }
             } catch (serpLayoutErr) {
               console.error(`[RankingsSync] SEID layout processing error (non-fatal):`, serpLayoutErr);
             }
+          } else {
+            console.warn(`[RankingsSync] SEID skipped: rawSerpItems not available (exists=${rawItemsExists}, size=${rawItemsSize})`);
           }
 
           const progressPercent = Math.round(processedKeywords / totalKeywords * 100);
