@@ -86,8 +86,8 @@ export async function runFullCrawl(projectId: string, onProgress?: (progress: Cr
     console.log(`[FullCrawl] Processing batch ${batchIndex + 1}/${totalBatches}: ${keywordTexts.length} keywords`);
 
     try {
-      // Use Live method (synchronous) for reliability - won't be orphaned by server restarts
-      const { rankings, competitors, serpFeatures } = await dataForSEO.getSerpRankingsWithCompetitors(
+      // Use Standard method for cost savings (3.3x cheaper) - resumable via checkpoint system
+      const { rankings, competitors, serpFeatures } = await dataForSEO.getSerpRankingsStandardMethod(
         keywordTexts,
         domain
       );
@@ -370,8 +370,8 @@ export async function runKeywordCrawl(projectId: string, keywordIds?: number[]):
     const keywordTexts = batchKeywords.map((k: Keyword) => k.keyword);
 
     try {
-      // Use Live method (synchronous) for reliability - won't be orphaned by server restarts
-      const { rankings, competitors, serpFeatures } = await dataForSEO.getSerpRankingsWithCompetitors(
+      // Use Standard method for cost savings (3.3x cheaper) - resumable via checkpoint system
+      const { rankings, competitors, serpFeatures } = await dataForSEO.getSerpRankingsStandardMethod(
         keywordTexts,
         domain
       );

@@ -75,24 +75,100 @@ export class CrawlSchedulerService {
     try {
       console.log(`[CrawlScheduler] Checking for stale running crawls from before server startup...`);
       
-      const staleCrawls = await storage.cancelStaleCrawls(this.startupTime);
+      // Get all stale crawls instead of cancelling them immediately
+      const staleCrawls = await storage.getStaleCrawls(this.startupTime);
       
-      if (staleCrawls > 0) {
-        console.log(`[CrawlScheduler] Cancelled ${staleCrawls} stale crawl(s) from previous server session`);
-        
-        await TaskLogger.warn(
-          TaskLogger.createContext("startup_recovery", "system", {}),
-          `Cancelled ${staleCrawls} stale crawl(s) that were running before server restart`,
-          { staleCrawls, startupTime: this.startupTime.toISOString() }
-        );
-      } else {
+      if (staleCrawls.length === 0) {
         console.log(`[CrawlScheduler] No stale crawls found`);
+        return 0;
       }
       
-      return staleCrawls;
+      console.log(`[CrawlScheduler] Found ${staleCrawls.length} stale crawl(s), checking for resumable ones...`);
+      
+      let resumed = 0;
+      let cancelled = 0;
+      
+      for (const crawl of staleCrawls) {
+        // Check if crawl has checkpoint data (can be resumed)
+        const details = crawl.details as { processedKeywordIds?: number[]; lastCheckpointAt?: string } | null;
+        const hasCheckpoint = details?.processedKeywordIds && details.processedKeywordIds.length > 0;
+        
+        if (hasCheckpoint && crawl.type === 'keyword_ranks') {
+          // Resume this crawl by re-triggering it with the same crawl result ID
+          console.log(`[CrawlScheduler] Resuming crawl ${crawl.id} from checkpoint (${details!.processedKeywordIds!.length} keywords already done)`);
+          
+          await TaskLogger.info(
+            TaskLogger.createContext("startup_recovery", "system", {}),
+            `Resuming keyword crawl ${crawl.id} from checkpoint`,
+            { 
+              crawlId: crawl.id, 
+              processedCount: details!.processedKeywordIds!.length,
+              lastCheckpoint: details!.lastCheckpointAt,
+            }
+          );
+          
+          // Trigger async resume - don't await to avoid blocking startup
+          this.resumeKeywordCrawl(crawl.id, crawl.projectId).catch(err => {
+            console.error(`[CrawlScheduler] Failed to resume crawl ${crawl.id}:`, err);
+          });
+          
+          resumed++;
+        } else {
+          // No checkpoint - mark as cancelled
+          await storage.updateCrawlResult(crawl.id, {
+            status: "cancelled",
+            completedAt: new Date(),
+            message: "Cancelled: Server restart - no checkpoint data to resume from",
+          });
+          cancelled++;
+        }
+      }
+      
+      if (resumed > 0) {
+        await TaskLogger.info(
+          TaskLogger.createContext("startup_recovery", "system", {}),
+          `Resumed ${resumed} crawl(s), cancelled ${cancelled} non-resumable crawl(s)`,
+          { resumed, cancelled, startupTime: this.startupTime.toISOString() }
+        );
+      }
+      
+      console.log(`[CrawlScheduler] Stale crawl recovery: ${resumed} resumed, ${cancelled} cancelled`);
+      return staleCrawls.length;
     } catch (error) {
       console.error("[CrawlScheduler] Error recovering stale crawls:", error);
       return 0;
+    }
+  }
+  
+  private async resumeKeywordCrawl(crawlResultId: number, projectId: string): Promise<void> {
+    try {
+      const { rankingsSyncService } = await import("./rankings-sync");
+      
+      // The sync service will detect the checkpoint and resume from there
+      const result = await rankingsSyncService.syncRankingsForProject(
+        projectId,
+        undefined, // All keywords
+        crawlResultId,
+        TaskLogger.createContext("crawl_resume", "crawl", { crawlResultId })
+      );
+      
+      // Update crawl result with final status
+      await storage.updateCrawlResult(crawlResultId, {
+        status: result.success ? "success" : "failed",
+        completedAt: new Date(),
+        message: result.message,
+        keywordsUpdated: result.keywordsUpdated,
+        errorsCount: result.errors.length,
+      });
+      
+      console.log(`[CrawlScheduler] Resumed crawl ${crawlResultId} completed: ${result.message}`);
+    } catch (error) {
+      console.error(`[CrawlScheduler] Resume crawl ${crawlResultId} failed:`, error);
+      await storage.updateCrawlResult(crawlResultId, {
+        status: "failed",
+        completedAt: new Date(),
+        message: `Resume failed: ${error}`,
+      });
     }
   }
 

@@ -320,6 +320,7 @@ export interface IStorage {
   getRunningCrawlsByType(projectId: string, type: string): Promise<CrawlResult[]>;
   getAllRunningCrawls(): Promise<CrawlResult[]>;
   updateCrawlProgress(id: number, itemsProcessed: number, stage?: string, itemsTotal?: number): Promise<CrawlResult | undefined>;
+  getStaleCrawls(serverStartTime: Date): Promise<CrawlResult[]>;
   cancelStaleCrawls(serverStartTime: Date): Promise<number>;
   
   // Scheduled Reports
@@ -3073,6 +3074,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(crawlResults.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  async getStaleCrawls(serverStartTime: Date): Promise<CrawlResult[]> {
+    return await db
+      .select()
+      .from(crawlResults)
+      .where(
+        and(
+          eq(crawlResults.status, "running"),
+          lt(crawlResults.startedAt, serverStartTime)
+        )
+      )
+      .orderBy(desc(crawlResults.startedAt));
   }
 
   async cancelStaleCrawls(serverStartTime: Date): Promise<number> {

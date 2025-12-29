@@ -268,27 +268,50 @@ export class RankingsSyncService {
         });
       }
 
-      // Determine crawl method:
-      // - Live Method: More reliable, synchronous, works with server restarts. Use for < 100 keywords.
-      // - Standard Method: Cheaper but uses async polling which gets orphaned on server restarts.
-      // IMPORTANT: Prefer Live Method for reliability unless we have a very large keyword set.
-      const LIVE_METHOD_THRESHOLD = 100; // Use Live method for up to 100 keywords
+      // Always use Standard Method for cost savings (3.3x cheaper than Live)
+      // Crawls are resumable - if server restarts, they continue from where they left off
       const useSelectedKeywordsMode = keywordIds && keywordIds.length > 0;
-      const useLiveMethod = useSelectedKeywordsMode || totalKeywords <= LIVE_METHOD_THRESHOLD;
+      const useLiveMethod = false; // Always use Standard Method for cost savings
       
-      if (useLiveMethod) {
-        console.log(`[RankingsSync] Using LIVE method for ${totalKeywords} keywords (synchronous, reliable)`);
-      } else {
-        console.log(`[RankingsSync] Using STANDARD method for ${totalKeywords} keywords (async batch - may be interrupted by restarts)`);
+      console.log(`[RankingsSync] Using STANDARD method for ${totalKeywords} keywords (resumable, cost-effective)`);
+      
+      // Check if this is a resumed crawl - load already-processed keyword IDs from details
+      let alreadyProcessedIds = new Set<number>();
+      if (crawlResultId) {
+        const existingCrawl = await storage.getCrawlResult(crawlResultId);
+        if (existingCrawl?.details && typeof existingCrawl.details === 'object') {
+          const details = existingCrawl.details as { processedKeywordIds?: number[] };
+          if (details.processedKeywordIds && Array.isArray(details.processedKeywordIds)) {
+            alreadyProcessedIds = new Set(details.processedKeywordIds);
+            console.log(`[RankingsSync] Resuming crawl - ${alreadyProcessedIds.size} keywords already processed`);
+          }
+        }
+      }
+      
+      // Filter out already-processed keywords for resumed crawls
+      const keywordsToProcess = activeKeywords.filter(k => !alreadyProcessedIds.has(k.id));
+      console.log(`[RankingsSync] Processing ${keywordsToProcess.length} remaining keywords (${alreadyProcessedIds.size} already done)`);
+      
+      if (keywordsToProcess.length === 0) {
+        return {
+          success: true,
+          message: `All ${totalKeywords} keywords already processed`,
+          keywordsUpdated: alreadyProcessedIds.size,
+          competitorsFound: 0,
+          errors: [],
+        };
       }
 
       let lastProgressLog = 0;
       let lastProgressUpdate = 0;
-      let processedKeywords = 0; // Shared counter for real-time progress
+      let processedKeywords = alreadyProcessedIds.size; // Start from already processed count
+      const allProcessedIds = new Set(alreadyProcessedIds); // Track all processed IDs for checkpoint saves
 
       // Process keywords in bulk batches using DataForSEO bulk API
-      for (let i = 0; i < activeKeywords.length; i += this.bulkBatchSize) {
-        const batch = activeKeywords.slice(i, Math.min(i + this.bulkBatchSize, activeKeywords.length));
+      // Use smaller batch size (20) to minimize work lost if server restarts mid-batch
+      const RESUMABLE_BATCH_SIZE = 20;
+      for (let i = 0; i < keywordsToProcess.length; i += RESUMABLE_BATCH_SIZE) {
+        const batch = keywordsToProcess.slice(i, Math.min(i + RESUMABLE_BATCH_SIZE, keywordsToProcess.length));
         const keywordTexts = batch.map(kw => kw.keyword);
         
         if (batch.length === 0) {
@@ -297,8 +320,9 @@ export class RankingsSyncService {
         }
         
         try {
-          const batchNum = Math.floor(i / this.bulkBatchSize) + 1;
-          console.log(`[RankingsSync] Fetching SERP data for batch ${batchNum} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
+          const batchNum = Math.floor(i / RESUMABLE_BATCH_SIZE) + 1;
+          const totalBatches = Math.ceil(keywordsToProcess.length / RESUMABLE_BATCH_SIZE);
+          console.log(`[RankingsSync] Fetching SERP data for batch ${batchNum}/${totalBatches} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
           
           let serpData: {
             rankings: Map<string, { keyword: string; rank_group: number; rank_absolute: number; domain: string; url: string; title: string; description: string; breadcrumb: string; is_featured_snippet: boolean; is_image: boolean; is_video: boolean; } | null>;
@@ -307,43 +331,25 @@ export class RankingsSyncService {
             rawSerpItems?: Map<string, any[]>;
           };
           
-          if (useLiveMethod) {
-            // Use Live method - more reliable, synchronous, won't be orphaned by server restarts
-            serpData = await Promise.race([
-              this.dataForSEO.getSerpRankingsWithCompetitors(keywordTexts, project.domain),
-              new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error("SERP API request timed out after 5 minutes")), 300000)
-              )
-            ]);
-            
-            // Update progress for Live method
-            processedKeywords = Math.min(i + batch.length, totalKeywords);
-            if (crawlResultId) {
-              await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
+          // Always use Standard method for cost savings (3.3x cheaper)
+          // Progress callback for real-time updates during batch processing
+          const onProgress = async (batchProcessed: number, _batchTotal: number) => {
+            const currentTotal = alreadyProcessedIds.size + i + batchProcessed;
+            if (crawlResultId && currentTotal - lastProgressUpdate >= 5) {
+              await storage.updateCrawlProgress(crawlResultId, currentTotal, "fetching_rankings");
+              lastProgressUpdate = currentTotal;
             }
-          } else {
-            // Use Standard method (task_post + task_get) for bulk operations (100+ keywords)
-            // This is 3.3x cheaper than Live method but uses async polling
-            // WARNING: Async polling can be interrupted by server restarts
-            const onProgress = async (batchProcessed: number, _batchTotal: number) => {
-              // Use shared counter - only increment, never reset
-              processedKeywords = i + batchProcessed;
-              if (crawlResultId && processedKeywords - lastProgressUpdate >= 10) {
-                await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
-                lastProgressUpdate = processedKeywords;
-              }
-            };
-            
-            serpData = await Promise.race([
-              this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain, 2840, onProgress),
-              new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
-              )
-            ]);
-            
-            // Update processed count after batch completes
-            processedKeywords = Math.min(i + batch.length, totalKeywords);
-          }
+          };
+          
+          serpData = await Promise.race([
+            this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain, 2840, onProgress),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
+            )
+          ]);
+          
+          // Update processed count after batch completes
+          processedKeywords = alreadyProcessedIds.size + i + batch.length;
           
           const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = serpData;
           console.log(`[RankingsSync] Received SERP data: ${bulkRankings.size} rankings, ${bulkCompetitors.size} competitor sets`);
@@ -510,6 +516,20 @@ export class RankingsSyncService {
           if (crawlResultId && processedKeywords > lastProgressUpdate) {
             await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
             lastProgressUpdate = processedKeywords;
+          }
+
+          // CHECKPOINT: Save processed keyword IDs so crawl can resume if server restarts
+          for (const kw of batch) {
+            allProcessedIds.add(kw.id);
+          }
+          if (crawlResultId) {
+            await storage.updateCrawlResult(crawlResultId, {
+              details: {
+                processedKeywordIds: Array.from(allProcessedIds),
+                lastCheckpointAt: new Date().toISOString(),
+              },
+            });
+            console.log(`[RankingsSync] Checkpoint saved: ${allProcessedIds.size}/${totalKeywords} keywords processed`);
           }
 
           // Log progress at milestones
