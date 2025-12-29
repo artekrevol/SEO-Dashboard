@@ -791,7 +791,7 @@ export class DataForSEOService {
     
     // High priority: ~1-2 min, Normal: ~20 min - set timeout accordingly
     const MAX_POLL_TIME = useHighPriority ? 5 * 60 * 1000 : 25 * 60 * 1000; // 5 min for high, 25 min for normal
-    const POLL_INTERVAL = 3000; // Check every 3 seconds (faster for high priority)
+    const POLL_INTERVAL = 6000; // Check every 6 seconds (DataForSEO rate limit: 20 calls/min on tasks_ready)
     const startTime = Date.now();
     let processedCount = 0;
     let lastProgressLog = 0;
