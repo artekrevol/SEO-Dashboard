@@ -3,9 +3,13 @@ import { db } from "../db";
 import { DataForSEOService, createDataForSEOService } from "./dataforseo";
 import { TaskLogger, TaskContext } from "./task-logger";
 import { serpParser } from "./serp-parser";
-import type { Project, Keyword, InsertRankingsHistory, InsertKeywordCompetitorMetrics } from "@shared/schema";
-import { rankingsHistory } from "@shared/schema";
+import type { Project, Keyword, InsertRankingsHistory, InsertKeywordCompetitorMetrics, Location } from "@shared/schema";
+import { rankingsHistory, locations } from "@shared/schema";
 import { eq, desc, and, inArray } from "drizzle-orm";
+
+// Cache of location codes to avoid repeated DB lookups
+const locationCodeCache = new Map<string, number>();
+const DEFAULT_LOCATION_CODE = 2840; // United States
 
 const normalizeUrl = (url: string) => url.toLowerCase().replace(/\/+$/, '');
 
@@ -42,6 +46,62 @@ export class RankingsSyncService {
 
   constructor() {
     this.dataForSEO = createDataForSEOService();
+  }
+
+  /**
+   * Get location code for a keyword's location_id
+   * Uses cache to avoid repeated DB lookups
+   */
+  private async getLocationCode(locationId: string | null): Promise<number> {
+    if (!locationId) return DEFAULT_LOCATION_CODE;
+    
+    // Check cache first
+    if (locationCodeCache.has(locationId)) {
+      return locationCodeCache.get(locationId)!;
+    }
+    
+    // Lookup from database
+    try {
+      const [location] = await db.select({ 
+        code: locations.dataforseoLocationCode 
+      })
+        .from(locations)
+        .where(eq(locations.id, locationId))
+        .limit(1);
+      
+      const code = location?.code || DEFAULT_LOCATION_CODE;
+      locationCodeCache.set(locationId, code);
+      return code;
+    } catch (error) {
+      console.error(`[RankingsSync] Error looking up location ${locationId}:`, error);
+      return DEFAULT_LOCATION_CODE;
+    }
+  }
+
+  /**
+   * Group keywords by their location code for efficient batching
+   */
+  private async groupKeywordsByLocation(keywords: Keyword[]): Promise<Map<number, Keyword[]>> {
+    const groups = new Map<number, Keyword[]>();
+    
+    // Build location code lookup for all unique location IDs
+    const locationIds = Array.from(new Set(keywords.map(k => k.locationId).filter((id): id is string => id !== null)));
+    
+    // Pre-fetch all location codes
+    for (const locId of locationIds) {
+      await this.getLocationCode(locId);
+    }
+    
+    // Group keywords by location code
+    for (const kw of keywords) {
+      const locationCode = await this.getLocationCode(kw.locationId);
+      if (!groups.has(locationCode)) {
+        groups.set(locationCode, []);
+      }
+      groups.get(locationCode)!.push(kw);
+    }
+    
+    return groups;
   }
 
   async getSerpResultForSingleKeyword(
@@ -307,22 +367,42 @@ export class RankingsSyncService {
       let processedKeywords = alreadyProcessedIds.size; // Start from already processed count
       const allProcessedIds = new Set(alreadyProcessedIds); // Track all processed IDs for checkpoint saves
 
+      // CRITICAL FIX: Group keywords by location to use correct DataForSEO location codes
+      // This ensures Saudi Arabia keywords are crawled from Saudi Arabia, not US
+      const locationGroups = await this.groupKeywordsByLocation(keywordsToProcess);
+      const locationCodesUsed = Array.from(locationGroups.keys());
+      console.log(`[RankingsSync] Keywords grouped into ${locationGroups.size} location(s): ${locationCodesUsed.map(c => `${c} (${locationGroups.get(c)!.length} kws)`).join(', ')}`);
+
+      // Flatten location groups into batches while maintaining location context
+      // Each batch contains keywords from a single location for correct SERP results
+      const RESUMABLE_BATCH_SIZE = 100;
+      const allBatches: { keywords: Keyword[]; locationCode: number }[] = [];
+      
+      for (const [locationCode, locationKeywords] of Array.from(locationGroups.entries())) {
+        for (let i = 0; i < locationKeywords.length; i += RESUMABLE_BATCH_SIZE) {
+          const batchKeywords = locationKeywords.slice(i, Math.min(i + RESUMABLE_BATCH_SIZE, locationKeywords.length));
+          allBatches.push({ keywords: batchKeywords, locationCode });
+        }
+      }
+      
+      console.log(`[RankingsSync] Created ${allBatches.length} batches across ${locationGroups.size} location(s)`);
+
       // Process keywords in bulk batches using DataForSEO bulk API
       // DataForSEO API handles up to 100 keywords per request
-      const RESUMABLE_BATCH_SIZE = 100;
-      for (let i = 0; i < keywordsToProcess.length; i += RESUMABLE_BATCH_SIZE) {
-        const batch = keywordsToProcess.slice(i, Math.min(i + RESUMABLE_BATCH_SIZE, keywordsToProcess.length));
+      let totalProcessedInLoop = 0;
+      for (let batchIdx = 0; batchIdx < allBatches.length; batchIdx++) {
+        const { keywords: batch, locationCode } = allBatches[batchIdx];
         const keywordTexts = batch.map(kw => kw.keyword);
         
         if (batch.length === 0) {
-          console.warn(`[RankingsSync] Empty batch at index ${i}, skipping`);
+          console.warn(`[RankingsSync] Empty batch at index ${batchIdx}, skipping`);
           continue;
         }
         
         try {
-          const batchNum = Math.floor(i / RESUMABLE_BATCH_SIZE) + 1;
-          const totalBatches = Math.ceil(keywordsToProcess.length / RESUMABLE_BATCH_SIZE);
-          console.log(`[RankingsSync] Fetching SERP data for batch ${batchNum}/${totalBatches} (${batch.length} keywords): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
+          const batchNum = batchIdx + 1;
+          const totalBatches = allBatches.length;
+          console.log(`[RankingsSync] Fetching SERP data for batch ${batchNum}/${totalBatches} (${batch.length} keywords, location: ${locationCode}): ${keywordTexts.slice(0, 3).join(", ")}${keywordTexts.length > 3 ? "..." : ""}`);
           
           let serpData: {
             rankings: Map<string, { keyword: string; rank_group: number; rank_absolute: number; domain: string; url: string; title: string; description: string; breadcrumb: string; is_featured_snippet: boolean; is_image: boolean; is_video: boolean; } | null>;
@@ -334,22 +414,24 @@ export class RankingsSyncService {
           // Always use Standard method for cost savings (3.3x cheaper)
           // Progress callback for real-time updates during batch processing
           const onProgress = async (batchProcessed: number, _batchTotal: number) => {
-            const currentTotal = alreadyProcessedIds.size + i + batchProcessed;
+            const currentTotal = alreadyProcessedIds.size + totalProcessedInLoop + batchProcessed;
             if (crawlResultId && currentTotal - lastProgressUpdate >= 5) {
               await storage.updateCrawlProgress(crawlResultId, currentTotal, "fetching_rankings");
               lastProgressUpdate = currentTotal;
             }
           };
           
+          // Use the correct location code for this batch
           serpData = await Promise.race([
-            this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain, 2840, onProgress),
+            this.dataForSEO.getSerpRankingsStandardMethod(keywordTexts, project.domain, locationCode, onProgress),
             new Promise<never>((_, reject) => 
               setTimeout(() => reject(new Error("SERP API request timed out after 12 minutes")), 720000)
             )
           ]);
           
           // Update processed count after batch completes
-          processedKeywords = alreadyProcessedIds.size + i + batch.length;
+          totalProcessedInLoop += batch.length;
+          processedKeywords = alreadyProcessedIds.size + totalProcessedInLoop;
           
           const { rankings: bulkRankings, competitors: bulkCompetitors, serpFeatures: bulkFeatures } = serpData;
           console.log(`[RankingsSync] Received SERP data: ${bulkRankings.size} rankings, ${bulkCompetitors.size} competitor sets`);
@@ -475,7 +557,7 @@ export class RankingsSyncService {
           const results = await Promise.allSettled(dbOperations);
           const failed = results.filter(r => r.status === 'rejected').length;
           if (failed > 0) {
-            console.warn(`[RankingsSync] ${failed} database operations failed in batch ${Math.floor(i / this.bulkBatchSize) + 1}`);
+            console.warn(`[RankingsSync] ${failed} database operations failed in batch ${batchIdx + 1}`);
           }
 
           // SEID Integration: Process SERP layout data for Intent Intelligence
@@ -563,7 +645,8 @@ export class RankingsSyncService {
           console.error(`[RankingsSync] Batch error:`, err);
           
           // Continue with next batch even if this one failed
-          processedKeywords = Math.min(i + batch.length, totalKeywords);
+          totalProcessedInLoop += batch.length;
+          processedKeywords = Math.min(alreadyProcessedIds.size + totalProcessedInLoop, totalKeywords);
           if (crawlResultId) {
             await storage.updateCrawlProgress(crawlResultId, processedKeywords, "fetching_rankings");
             lastProgressUpdate = processedKeywords;
