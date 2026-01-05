@@ -20,6 +20,7 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Priority Classification**: Automatic keyword tiering (P1, P2, P3) based on intent and ranking.
 - **Automated Crawls**: Scheduled crawls for keyword rankings (3x weekly), page metrics (4x weekly), and competitor analysis (2x weekly), including weekly backlink verification.
 - **DataForSEO Crawl Strategy**: Uses Standard Method ($0.0006/task) for cost savings (3.3x cheaper than Live). Crawls save checkpoints after each batch of 20 keywords, enabling automatic resume if server restarts mid-crawl.
+- **Location-Based Keyword Grouping**: Keywords are grouped by their location settings before crawling. Each location group is processed with the correct DataForSEO location code (e.g., Saudi Arabia uses 2780/2782, not US 2840). This ensures SERP results accurately reflect rankings in the target geographic location.
 - **Resumable Crawl System**: Keyword crawls save progress checkpoints (processed keyword IDs) to the database after each batch. If server restarts during a crawl, the system automatically resumes from the last checkpoint instead of cancelling. Non-resumable crawls (no checkpoint data) are marked as cancelled.
 - **Dual Data Sync for Rankings**: Rankings sync now updates both `rankings_history` (for position charts) AND `keywordMetrics` (for Keywords table, Quick Wins, Falling Stars). This ensures all views stay synchronized after crawls.
 - **Pages Health Scoring**: Calculates `techRiskScore`, `contentGapScore`, and `authorityGapScore` based on various SEO factors.
