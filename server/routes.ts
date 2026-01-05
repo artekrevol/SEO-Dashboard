@@ -3760,9 +3760,17 @@ export async function registerRoutes(
 
       const { getGscAuthUrl } = await import("./services/gsc-service");
       
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const host = req.headers["x-forwarded-host"] || req.headers.host;
-      const redirectUri = `${protocol}://${host}/api/gsc/callback`;
+      // Use configurable base URL or derive from request headers
+      let redirectUri: string;
+      if (process.env.GOOGLE_REDIRECT_URI_BASE) {
+        redirectUri = `${process.env.GOOGLE_REDIRECT_URI_BASE}/api/gsc/callback`;
+      } else {
+        const protocol = req.headers["x-forwarded-proto"] || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        redirectUri = `${protocol}://${host}/api/gsc/callback`;
+      }
+      
+      console.log("[GSC] Generated redirect URI:", redirectUri);
       
       const state = Buffer.from(JSON.stringify({ projectId, siteUrl })).toString("base64");
       const authUrl = getGscAuthUrl(redirectUri, state);
@@ -3800,9 +3808,15 @@ export async function registerRoutes(
 
       const { handleGscAuthCallback } = await import("./services/gsc-service");
       
-      const protocol = req.headers["x-forwarded-proto"] || "https";
-      const host = req.headers["x-forwarded-host"] || req.headers.host;
-      const redirectUri = `${protocol}://${host}/api/gsc/callback`;
+      // Use configurable base URL or derive from request headers (must match auth-url)
+      let redirectUri: string;
+      if (process.env.GOOGLE_REDIRECT_URI_BASE) {
+        redirectUri = `${process.env.GOOGLE_REDIRECT_URI_BASE}/api/gsc/callback`;
+      } else {
+        const protocol = req.headers["x-forwarded-proto"] || "https";
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        redirectUri = `${protocol}://${host}/api/gsc/callback`;
+      }
 
       const credentials = await handleGscAuthCallback(code, redirectUri, projectId, siteUrl);
 
