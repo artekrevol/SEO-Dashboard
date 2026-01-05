@@ -85,7 +85,12 @@ export class RankingsSyncService {
     const groups = new Map<number, Keyword[]>();
     
     // Build location code lookup for all unique location IDs
-    const locationIds = Array.from(new Set(keywords.map(k => k.locationId).filter((id): id is string => id !== null)));
+    // Use strict null/undefined check with id != null (covers both null and undefined)
+    const locationIds = Array.from(new Set(
+      keywords
+        .map(k => k.locationId)
+        .filter((id): id is string => id != null && typeof id === 'string' && id.length > 0)
+    ));
     
     // Pre-fetch all location codes
     for (const locId of locationIds) {
