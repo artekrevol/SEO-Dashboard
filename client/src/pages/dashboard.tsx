@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { KpiCard } from "@/components/kpi-card";
 import { SeoHealthChart } from "@/components/seo-health-chart";
 import { KeywordsTable } from "@/components/keywords-table";
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock, Info } from "lucide-react";
+import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock, Info, ChevronRight } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
@@ -19,6 +20,7 @@ interface DashboardProps {
 
 export function Dashboard({ projectId }: DashboardProps) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ["/api/dashboard/overview", { projectId }],
@@ -350,25 +352,30 @@ export function Dashboard({ projectId }: DashboardProps) {
                   ?.filter((k: any) => k.opportunityScore >= 50)
                   .slice(0, 5)
                   .map((keyword: any) => (
-                    <div
+                    <button
                       key={keyword.keywordId}
-                      className="flex items-center justify-between rounded-lg border p-3 hover-elevate"
+                      onClick={() => setLocation("/keywords")}
+                      className="flex w-full items-center justify-between rounded-lg border p-3 hover-elevate cursor-pointer text-left"
+                      data-testid={`button-keyword-${keyword.keywordId}`}
                     >
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-1 flex-1 min-w-0">
                         <span className="font-medium">{keyword.keyword}</span>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span>Position: {keyword.currentPosition}</span>
                           <span>Vol: {keyword.searchVolume.toLocaleString()}</span>
                         </div>
                       </div>
-                      <Badge
-                        variant="secondary"
-                        className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0"
-                      >
-                        <TrendingUp className="mr-1 h-3 w-3" />
-                        {keyword.opportunityScore.toFixed(0)}
-                      </Badge>
-                    </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        <Badge
+                          variant="secondary"
+                          className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-0"
+                        >
+                          <TrendingUp className="mr-1 h-3 w-3" />
+                          {keyword.opportunityScore.toFixed(0)}
+                        </Badge>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </button>
                   ))}
                 {(!keywords?.items || keywords.items.filter((k: any) => k.opportunityScore >= 50).length === 0) && (
                   <div className="py-8 text-center text-muted-foreground">
@@ -398,29 +405,34 @@ export function Dashboard({ projectId }: DashboardProps) {
             ) : (
               <div className="space-y-3">
                 {recommendations?.items?.slice(0, 5).map((rec: any) => (
-                  <div
+                  <button
                     key={rec.id}
-                    className="flex items-start justify-between rounded-lg border p-3 hover-elevate"
+                    onClick={() => setLocation("/recommendations")}
+                    className="flex w-full items-center justify-between rounded-lg border p-3 hover-elevate cursor-pointer text-left"
+                    data-testid={`button-recommendation-${rec.id}`}
                   >
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
                       <span className="font-medium">{rec.title}</span>
                       <span className="text-xs text-muted-foreground line-clamp-1">
                         {rec.description}
                       </span>
                     </div>
-                    <Badge
-                      variant="secondary"
-                      className={
-                        rec.severity === "high"
-                          ? "bg-red-500/10 text-red-600 dark:text-red-400 border-0"
-                          : rec.severity === "medium"
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0"
-                          : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-0"
-                      }
-                    >
-                      {rec.severity}
-                    </Badge>
-                  </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <Badge
+                        variant="secondary"
+                        className={
+                          rec.severity === "high"
+                            ? "bg-red-500/10 text-red-600 dark:text-red-400 border-0"
+                            : rec.severity === "medium"
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0"
+                            : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-0"
+                        }
+                      >
+                        {rec.severity}
+                      </Badge>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </button>
                 ))}
                 {(!recommendations?.items || recommendations.items.length === 0) && (
                   <div className="py-8 text-center text-muted-foreground">
