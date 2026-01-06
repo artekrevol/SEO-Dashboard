@@ -212,6 +212,7 @@ export function Dashboard({ projectId }: DashboardProps) {
           trend={healthTrend}
           status={latestSnapshot ? getHealthStatus(latestSnapshot.seoHealthScore) : "neutral"}
           testId="kpi-health-score"
+          onClick={() => setLocation("/recommendations")}
         />
         <KpiCard
           title="Avg. Position"
@@ -221,6 +222,7 @@ export function Dashboard({ projectId }: DashboardProps) {
           trend={positionTrend}
           status={latestSnapshot?.avgPosition <= 10 ? "healthy" : latestSnapshot?.avgPosition <= 30 ? "at_risk" : "declining"}
           testId="kpi-avg-position"
+          onClick={() => setLocation("/rankings")}
         />
         <KpiCard
           title="Keywords in Top 10"
@@ -231,6 +233,7 @@ export function Dashboard({ projectId }: DashboardProps) {
           trend={keywordsTrend}
           status={needsRankingSync ? "at_risk" : "healthy"}
           testId="kpi-top10-keywords"
+          onClick={() => setLocation("/keywords")}
         />
         <KpiCard
           title="Top 3 Keywords"
@@ -239,6 +242,7 @@ export function Dashboard({ projectId }: DashboardProps) {
           changeLabel="vs last week"
           status="healthy"
           testId="kpi-top3-keywords"
+          onClick={() => setLocation("/keywords")}
         />
       </div>
 

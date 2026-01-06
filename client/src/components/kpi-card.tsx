@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, ChevronRight } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ interface KpiCardProps {
   status?: "healthy" | "at_risk" | "declining" | "neutral";
   suffix?: string;
   testId?: string;
+  onClick?: () => void;
 }
 
 export function KpiCard({
@@ -24,6 +25,7 @@ export function KpiCard({
   status = "neutral",
   suffix,
   testId,
+  onClick,
 }: KpiCardProps) {
   const isPositive = change && change > 0;
   const isNegative = change && change < 0;
@@ -62,7 +64,11 @@ export function KpiCard({
   };
 
   return (
-    <Card className="hover-elevate" data-testid={testId}>
+    <Card 
+      className={cn("hover-elevate", onClick && "cursor-pointer")} 
+      data-testid={testId}
+      onClick={onClick}
+    >
       <CardContent className="p-6">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -78,7 +84,10 @@ export function KpiCard({
               )}
             </div>
           </div>
-          {getStatusBadge()}
+          <div className="flex items-center gap-2">
+            {getStatusBadge()}
+            {onClick && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          </div>
         </div>
 
         {(change !== undefined || changeLabel) && (
