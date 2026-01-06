@@ -2157,9 +2157,18 @@ export async function registerRoutes(
       const keywords = await storage.getKeywords(projectId);
       const keywordMap = new Map(keywords.map(k => [k.id, k]));
       
-      // Enrich history with keyword details
+      // Helper to normalize date to YYYY-MM-DD format
+      const normalizeDate = (date: string | Date): string => {
+        if (typeof date === 'string') {
+          return date.split('T')[0]; // Strip time component from ISO string
+        }
+        return date.toISOString().split('T')[0];
+      };
+      
+      // Enrich history with keyword details and normalize dates
       const enrichedHistory = history.map(h => ({
         ...h,
+        date: normalizeDate(h.date),
         keyword: keywordMap.get(h.keywordId)?.keyword || 'Unknown',
         cluster: keywordMap.get(h.keywordId)?.cluster || null,
       }));
@@ -2177,7 +2186,7 @@ export async function registerRoutes(
       }>();
       
       for (const item of history) {
-        const date = item.date;
+        const date = normalizeDate(item.date);
         if (!dailyAggregations.has(date)) {
           dailyAggregations.set(date, {
             date,
