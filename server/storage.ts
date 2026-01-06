@@ -766,7 +766,13 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
-    const normalizeUrl = (url: string) => url.toLowerCase().replace(/\/+$/, '');
+    const normalizeUrl = (url: string) => {
+      return url
+        .toLowerCase()
+        .replace(/^https?:\/\//, '') // Strip http:// or https://
+        .replace(/^www\./, '') // Optionally strip www.
+        .replace(/\/+$/, ''); // Remove trailing slashes
+    };
     
     const keywordsByUrl = new Map<string, Array<{ keyword: Keyword; position: number }>>();
     for (const kw of allKeywords) {
