@@ -4012,15 +4012,28 @@ export async function registerRoutes(
   // Get GSC query stats
   app.get("/api/gsc/queries", async (req, res) => {
     try {
-      const { projectId, startDate, endDate, query, page, limit } = req.query;
+      const { projectId, startDate, endDate, daysBack, query, page, limit } = req.query;
       
       if (!projectId || typeof projectId !== "string") {
         return res.status(400).json({ error: "projectId is required" });
       }
 
+      // Calculate date range from daysBack if provided
+      let calculatedStartDate = startDate as string | undefined;
+      let calculatedEndDate = endDate as string | undefined;
+      
+      if (daysBack && !startDate && !endDate) {
+        const days = Number(daysBack);
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - days);
+        calculatedStartDate = start.toISOString().split('T')[0];
+        calculatedEndDate = end.toISOString().split('T')[0];
+      }
+
       const stats = await storage.getGscQueryStats(projectId, {
-        startDate: startDate as string,
-        endDate: endDate as string,
+        startDate: calculatedStartDate,
+        endDate: calculatedEndDate,
         query: query as string,
         page: page as string,
         limit: limit ? Number(limit) : undefined,

@@ -123,7 +123,7 @@ export default function SearchConsolePage() {
   });
 
   const { data: queriesData, isLoading: queriesLoading } = useQuery<{ stats: GscQueryStats[] }>({
-    queryKey: [`/api/gsc/queries?projectId=${selectedProjectId}`],
+    queryKey: [`/api/gsc/queries?projectId=${selectedProjectId}&daysBack=${daysBack}`],
     enabled: !!selectedProjectId && gscStatus?.connected && gscStatus?.isConnected,
   });
 
@@ -201,8 +201,8 @@ export default function SearchConsolePage() {
     },
     onSuccess: (result: { synced: number; errors: number }) => {
       toast({ title: "Sync completed", description: `Synced ${result.synced} records` });
-      queryClient.invalidateQueries({ queryKey: [`/api/gsc/summary?projectId=${selectedProjectId}`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/gsc/queries?projectId=${selectedProjectId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/gsc/summary?projectId=${selectedProjectId}&daysBack=${daysBack}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/gsc/queries?projectId=${selectedProjectId}&daysBack=${daysBack}`] });
       refetchStatus();
     },
     onError: (error) => {
