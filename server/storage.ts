@@ -1905,7 +1905,7 @@ export class DatabaseStorage implements IStorage {
     const topAnchors = Array.from(anchorCounts.entries())
       .map(([anchor, count]) => ({ anchor, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
+      .slice(0, 50);
     
     const typeCounts = new Map<string, number>();
     allBacklinks.filter(b => b.isLive).forEach(b => {

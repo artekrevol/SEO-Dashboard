@@ -120,6 +120,7 @@ export function BacklinkDetailDrawer({
   const [linkTypeFilter, setLinkTypeFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "live" | "lost">("all");
   const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
+  const [showAllAnchors, setShowAllAnchors] = useState(false);
   const { toast } = useToast();
 
   const spamScoreMutation = useMutation({
@@ -325,25 +326,49 @@ export function BacklinkDetailDrawer({
                   {aggregations?.topAnchors && aggregations.topAnchors.length > 0 && (
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <Anchor className="h-4 w-4" />
-                          Top Anchor Texts
+                        <CardTitle className="text-sm flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Anchor className="h-4 w-4" />
+                            Top Anchor Texts
+                          </div>
+                          <Badge variant="secondary">{aggregations.topAnchors.length} total</Badge>
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-2" data-testid="anchor-list">
-                          {aggregations.topAnchors.slice(0, 5).map((anchor, i) => (
+                          {aggregations.topAnchors.slice(0, showAllAnchors ? 50 : 10).map((anchor, i) => (
                             <div
                               key={i}
                               className="flex items-center justify-between text-sm"
                               data-testid={`anchor-item-${i}`}
                             >
-                              <span className="truncate max-w-[200px]" title={anchor.anchor}>
-                                {anchor.anchor || "(empty)"}
+                              <span className="truncate max-w-[280px] font-mono text-xs" title={anchor.anchor}>
+                                {anchor.anchor || "(no anchor text)"}
                               </span>
                               <Badge variant="secondary">{anchor.count}</Badge>
                             </div>
                           ))}
+                          {aggregations.topAnchors.length > 10 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowAllAnchors(!showAllAnchors)}
+                              className="w-full mt-2"
+                              data-testid="button-toggle-anchors"
+                            >
+                              {showAllAnchors ? (
+                                <>
+                                  <ChevronDown className="h-4 w-4 mr-1" />
+                                  Show less
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight className="h-4 w-4 mr-1" />
+                                  Show all {aggregations.topAnchors.length} anchors
+                                </>
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>

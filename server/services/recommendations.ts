@@ -100,6 +100,7 @@ export function generateRecommendationsFromKeywords(
         }),
         status: "open",
         keywordId: metric.keywordId,
+        url: keyword?.targetUrl || undefined,
       });
     }
 
@@ -129,6 +130,7 @@ export function generateRecommendationsFromKeywords(
         description: `Keyword "${keyword?.keyword || metric.keywordId}" has featured snippet opportunity. Page ranks at position ${position}. Structure content with clear headers, lists, or tables to win the snippet.`,
         status: "open",
         keywordId: metric.keywordId,
+        url: keyword?.targetUrl || undefined,
       });
     }
   }
@@ -267,6 +269,7 @@ export function generateRecommendationsFromTechnicalAudit(
         title: `Fix Duplicate ${issue.type === "duplicate_title" ? "Titles" : "Descriptions"} (${issue.count} found)`,
         description: `Found ${issue.count} pages with duplicate ${issue.type === "duplicate_title" ? "title tags" : "meta descriptions"}. Make each unique and descriptive to improve CTR and avoid ranking conflicts.`,
         status: "open",
+        url: issue.pages[0] || undefined,
       });
     }
   }

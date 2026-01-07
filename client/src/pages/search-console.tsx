@@ -104,6 +104,7 @@ export default function SearchConsolePage() {
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false);
   const [inspectUrl, setInspectUrl] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  const [daysBack, setDaysBack] = useState<number>(7);
 
   const { data: projectsData, isLoading: projectsLoading } = useQuery<{ projects?: Project[] }>({
     queryKey: ["/api/projects"],
@@ -117,7 +118,7 @@ export default function SearchConsolePage() {
   });
 
   const { data: gscSummary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery<GscSummary>({
-    queryKey: [`/api/gsc/summary?projectId=${selectedProjectId}`],
+    queryKey: [`/api/gsc/summary?projectId=${selectedProjectId}&daysBack=${daysBack}`],
     enabled: !!selectedProjectId && gscStatus?.connected && gscStatus?.isConnected,
   });
 
@@ -515,24 +516,40 @@ export default function SearchConsolePage() {
           </Card>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList>
-              <TabsTrigger value="overview" data-testid="tab-overview">
-                <BarChart3 className="w-4 h-4 mr-2" />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="queries" data-testid="tab-queries">
-                <Search className="w-4 h-4 mr-2" />
-                Top Queries
-              </TabsTrigger>
-              <TabsTrigger value="pages" data-testid="tab-pages">
-                <FileSearch className="w-4 h-4 mr-2" />
-                Top Pages
-              </TabsTrigger>
-              <TabsTrigger value="indexing" data-testid="tab-indexing">
-                <Eye className="w-4 h-4 mr-2" />
-                URL Inspection
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <TabsList>
+                <TabsTrigger value="overview" data-testid="tab-overview">
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Overview
+                </TabsTrigger>
+                <TabsTrigger value="queries" data-testid="tab-queries">
+                  <Search className="w-4 h-4 mr-2" />
+                  Top Queries
+                </TabsTrigger>
+                <TabsTrigger value="pages" data-testid="tab-pages">
+                  <FileSearch className="w-4 h-4 mr-2" />
+                  Top Pages
+                </TabsTrigger>
+                <TabsTrigger value="indexing" data-testid="tab-indexing">
+                  <Eye className="w-4 h-4 mr-2" />
+                  URL Inspection
+                </TabsTrigger>
+              </TabsList>
+              
+              {(activeTab === "overview" || activeTab === "queries" || activeTab === "pages") && (
+                <Select value={String(daysBack)} onValueChange={(val) => setDaysBack(Number(val))}>
+                  <SelectTrigger className="w-40" data-testid="select-date-range">
+                    <SelectValue placeholder="Date Range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7">Last 7 days</SelectItem>
+                    <SelectItem value="28">Last 28 days</SelectItem>
+                    <SelectItem value="90">Last 3 months</SelectItem>
+                    <SelectItem value="180">Last 6 months</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
 
             <TabsContent value="overview" className="mt-4">
               {summaryLoading ? (
