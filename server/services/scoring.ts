@@ -154,6 +154,36 @@ export function getHealthStatus(score: number): "healthy" | "at_risk" | "declini
   return "declining";
 }
 
+export interface IssueBasedMetrics {
+  totalInternalPages: number;
+  pagesWithErrors: number;
+  pagesWithWarnings: number;
+  pagesWithNotices: number;
+}
+
+export function calculateIssueBasedHealthScore(metrics: IssueBasedMetrics): number {
+  if (metrics.totalInternalPages === 0) return 100;
+  
+  const pagesWithoutErrors = metrics.totalInternalPages - metrics.pagesWithErrors;
+  const score = (pagesWithoutErrors / metrics.totalInternalPages) * 100;
+  
+  return Math.round(Math.min(100, Math.max(0, score)));
+}
+
+export function getIssueBasedHealthRating(score: number): "weak" | "fair" | "good" | "excellent" {
+  if (score >= 91) return "excellent";
+  if (score >= 71) return "good";
+  if (score >= 31) return "fair";
+  return "weak";
+}
+
+export function getIssueBasedHealthColor(score: number): string {
+  if (score >= 91) return "#22c55e";
+  if (score >= 71) return "#84cc16";
+  if (score >= 31) return "#eab308";
+  return "#ef4444";
+}
+
 export function calculateOpportunityScore(
   position: number,
   searchVolume: number,
