@@ -312,7 +312,7 @@ export interface IStorage {
   getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>>;
   
   // Get issue-based health metrics for Ahrefs-style health score calculation
-  getIssueBasedHealthMetrics(projectId: string): Promise<{
+  getIssueBasedHealthMetrics(projectId: string, techCrawlId?: number): Promise<{
     totalInternalPages: number;
     pagesWithErrors: number;
     pagesWithWarnings: number;
@@ -2797,31 +2797,34 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getIssueBasedHealthMetrics(projectId: string): Promise<{
+  async getIssueBasedHealthMetrics(projectId: string, crawlId?: number): Promise<{
     totalInternalPages: number;
     pagesWithErrors: number;
     pagesWithWarnings: number;
     pagesWithNotices: number;
   }> {
-    const latestCrawl = await db.select()
-      .from(techCrawls)
-      .where(and(
-        eq(techCrawls.projectId, projectId),
-        eq(techCrawls.status, "completed")
-      ))
-      .orderBy(desc(techCrawls.createdAt))
-      .limit(1);
+    let techCrawlId = crawlId;
+    
+    if (!techCrawlId) {
+      const latestCrawl = await db.select()
+        .from(techCrawls)
+        .where(and(
+          eq(techCrawls.projectId, projectId),
+          eq(techCrawls.status, "completed")
+        ))
+        .orderBy(desc(techCrawls.createdAt))
+        .limit(1);
 
-    if (latestCrawl.length === 0) {
-      return {
-        totalInternalPages: 0,
-        pagesWithErrors: 0,
-        pagesWithWarnings: 0,
-        pagesWithNotices: 0,
-      };
+      if (latestCrawl.length === 0) {
+        return {
+          totalInternalPages: 0,
+          pagesWithErrors: 0,
+          pagesWithWarnings: 0,
+          pagesWithNotices: 0,
+        };
+      }
+      techCrawlId = latestCrawl[0].id;
     }
-
-    const techCrawlId = latestCrawl[0].id;
 
     const audits = await db.select()
       .from(pageAudits)

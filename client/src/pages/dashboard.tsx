@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock, Info, ChevronRight } from "lucide-react";
+import { Activity, TrendingUp, Search, AlertTriangle, CheckCircle2, RefreshCw, Clock, Info, ChevronRight, ShieldCheck, AlertCircle, CircleAlert } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
@@ -139,6 +139,20 @@ export function Dashboard({ projectId }: DashboardProps) {
     return "declining";
   };
 
+  const getSiteHealthStatus = (score: number): "healthy" | "at_risk" | "declining" => {
+    if (score >= 91) return "healthy";
+    if (score >= 71) return "healthy";
+    if (score >= 31) return "at_risk";
+    return "declining";
+  };
+
+  const getSiteHealthRating = (score: number): string => {
+    if (score >= 91) return "Excellent";
+    if (score >= 71) return "Good";
+    if (score >= 31) return "Fair";
+    return "Weak";
+  };
+
   const lastUpdated = latestSnapshot?.date ? new Date(latestSnapshot.date) : null;
   
   // Determine if data needs syncing
@@ -202,9 +216,18 @@ export function Dashboard({ projectId }: DashboardProps) {
         </Alert>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <KpiCard
-          title="SEO Health Score"
+          title="Site Health"
+          value={latestSnapshot?.issueBasedHealthScore?.toFixed(0) || "—"}
+          suffix="%"
+          changeLabel={latestSnapshot?.issueBasedHealthScore ? getSiteHealthRating(latestSnapshot.issueBasedHealthScore) : ""}
+          status={latestSnapshot?.issueBasedHealthScore ? getSiteHealthStatus(latestSnapshot.issueBasedHealthScore) : "neutral"}
+          testId="kpi-site-health"
+          onClick={() => setLocation("/site-audit")}
+        />
+        <KpiCard
+          title="SEO Performance"
           value={latestSnapshot?.seoHealthScore?.toFixed(0) || "—"}
           suffix="/100"
           change={5.2}
@@ -331,6 +354,44 @@ export function Dashboard({ projectId }: DashboardProps) {
                 />
               </div>
             </div>
+
+            {latestSnapshot?.totalInternalPages > 0 && (
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-muted-foreground">Issues Distribution</span>
+                  <span className="text-xs text-muted-foreground">{latestSnapshot.totalInternalPages} pages crawled</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-500" />
+                      <span className="text-sm">Errors</span>
+                    </div>
+                    <Badge variant="secondary" className="bg-red-500/10 text-red-600 dark:text-red-400 border-0">
+                      {latestSnapshot.pagesWithErrors || 0}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CircleAlert className="h-4 w-4 text-amber-500" />
+                      <span className="text-sm">Warnings</span>
+                    </div>
+                    <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-0">
+                      {latestSnapshot.pagesWithWarnings || 0}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm">Notices</span>
+                    </div>
+                    <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-0">
+                      {latestSnapshot.pagesWithNotices || 0}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -185,6 +185,11 @@ export async function registerRoutes(
               techScore: Number(latestSnapshot.techScore) || 0,
               contentScore: Number(latestSnapshot.contentScore) || 0,
               status: getStatus(Number(latestSnapshot.seoHealthScore) || 0),
+              totalInternalPages: latestSnapshot.totalInternalPages || 0,
+              pagesWithErrors: latestSnapshot.pagesWithErrors || 0,
+              pagesWithWarnings: latestSnapshot.pagesWithWarnings || 0,
+              pagesWithNotices: latestSnapshot.pagesWithNotices || 0,
+              issueBasedHealthScore: Number(latestSnapshot.issueBasedHealthScore) || 0,
             }
           : null,
         trend,
@@ -2886,7 +2891,27 @@ export async function registerRoutes(
       if (!crawl) {
         return res.status(404).json({ error: "No tech crawl found for this project" });
       }
-      res.json(crawl);
+      
+      if (crawl.status === "completed") {
+        const healthMetrics = await storage.getIssueBasedHealthMetrics(projectId, crawl.id);
+        const { calculateIssueBasedHealthScore, getIssueBasedHealthRating } = await import("./services/scoring");
+        const issueBasedHealthScore = calculateIssueBasedHealthScore(healthMetrics);
+        const healthRating = getIssueBasedHealthRating(issueBasedHealthScore);
+        
+        res.json({
+          ...crawl,
+          issueBasedHealthMetrics: {
+            totalInternalPages: healthMetrics.totalInternalPages,
+            pagesWithErrors: healthMetrics.pagesWithErrors,
+            pagesWithWarnings: healthMetrics.pagesWithWarnings,
+            pagesWithNotices: healthMetrics.pagesWithNotices,
+            healthScore: issueBasedHealthScore,
+            healthRating,
+          }
+        });
+      } else {
+        res.json(crawl);
+      }
     } catch (error) {
       console.error("Error fetching latest tech crawl:", error);
       res.status(500).json({ error: "Failed to fetch latest tech crawl" });

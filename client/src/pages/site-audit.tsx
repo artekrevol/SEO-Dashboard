@@ -37,6 +37,15 @@ interface SiteAuditPageProps {
   projectId: string | null;
 }
 
+interface IssueBasedHealthMetrics {
+  totalInternalPages: number;
+  pagesWithErrors: number;
+  pagesWithWarnings: number;
+  pagesWithNotices: number;
+  healthScore: number;
+  healthRating: string;
+}
+
 interface TechCrawlResponse {
   id: number;
   projectId: string;
@@ -53,6 +62,7 @@ interface TechCrawlResponse {
   startedAt: string;
   completedAt: string | null;
   createdAt: string;
+  issueBasedHealthMetrics?: IssueBasedHealthMetrics;
 }
 
 interface IssuesSummary {
@@ -256,6 +266,14 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
   const errorCount = issues.filter(i => i.severity === "error").reduce((s, i) => s + i.count, 0);
   const warningCount = issues.filter(i => i.severity === "warning").reduce((s, i) => s + i.count, 0);
 
+  const healthMetrics = latestCrawl?.issueBasedHealthMetrics;
+  const siteHealthScore = healthMetrics?.healthScore ?? 0;
+  const siteHealthRating = healthMetrics?.healthRating ?? "Weak";
+  const pagesWithErrors = healthMetrics?.pagesWithErrors ?? 0;
+  const pagesWithWarnings = healthMetrics?.pagesWithWarnings ?? 0;
+  const pagesWithNotices = healthMetrics?.pagesWithNotices ?? 0;
+  const totalPagesFromMetrics = healthMetrics?.totalInternalPages ?? (audits.length || latestCrawl?.pagesCrawled || 0);
+
   const getScoreColor = (score: number) => {
     if (score >= 80) return "text-green-500";
     if (score >= 60) return "text-yellow-500";
@@ -266,6 +284,13 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
     if (score >= 80) return "Good";
     if (score >= 60) return "Needs Improvement";
     return "Poor";
+  };
+
+  const getHealthColor = (score: number) => {
+    if (score >= 91) return "text-green-600";
+    if (score >= 71) return "text-green-500";
+    if (score >= 31) return "text-yellow-500";
+    return "text-red-500";
   };
 
   const categoryGroups = issues.reduce((acc, issue) => {
@@ -366,7 +391,22 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
 
       {isCompleted && latestCrawl && (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-5">
+            <Card data-testid="card-site-health">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Site Health</CardTitle>
+                <CheckCircle2 className={`h-4 w-4 ${getHealthColor(siteHealthScore)}`} />
+              </CardHeader>
+              <CardContent>
+                <div className={`text-4xl font-bold ${getHealthColor(siteHealthScore)}`}>
+                  {siteHealthScore}%
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {siteHealthRating} - {totalPagesFromMetrics - pagesWithErrors} of {totalPagesFromMetrics} pages healthy
+                </p>
+              </CardContent>
+            </Card>
+
             <Card data-testid="card-onpage-score">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">OnPage Score</CardTitle>
@@ -377,7 +417,7 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
                   {avgScore.toFixed(0)}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {getScoreLabel(avgScore)} - {latestCrawl.pagesCrawled} pages analyzed
+                  {getScoreLabel(avgScore)} - {latestCrawl.pagesCrawled} pages
                 </p>
               </CardContent>
             </Card>
