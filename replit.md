@@ -29,7 +29,10 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Google Search Console Integration**: OAuth2 flow, search analytics sync, and URL inspection capabilities.
 
 ### Feature Specifications
-- **SEO Health Score**: Aggregated 0-100 score reflecting overall SEO performance.
+- **Dual Health Scoring System**:
+    - **SEO Performance Score**: Weighted composite score (35% rank, 25% authority, 20% technical, 20% content) reflecting overall SEO performance.
+    - **Site Health Score**: Ahrefs-style percentage based on pages without errors. Formula: (pages without errors / total pages) × 100. Rating tiers: Weak (0-30%), Fair (31-70%), Good (71-90%), Excellent (91-100%).
+    - **Issues Distribution**: Tracks pages with errors, warnings, and notices separately. Uses highest severity per page to avoid double-counting.
 - **Opportunity Scoring**: Identifies high-potential keywords.
 - **Technical Risk Analysis**: Monitors indexability, schema, Core Web Vitals, and duplicate content.
 - **Competitor Pressure Index**: Volume-weighted threat score measuring competitive intensity.
