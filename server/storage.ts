@@ -2764,7 +2764,18 @@ export class DatabaseStorage implements IStorage {
     if (techCrawlId) {
       const auditIds = audits.map(a => a.id);
       if (auditIds.length > 0) {
-        issueConditions.push(sql`${pageIssues.pageAuditId} = ANY(${auditIds})`);
+        issueConditions.push(inArray(pageIssues.pageAuditId, auditIds));
+      } else {
+        // No audits found for this crawl, return early
+        return {
+          totalPages,
+          avgOnpageScore: Math.round(avgOnpageScore * 100) / 100,
+          indexablePages,
+          nonIndexablePages,
+          pagesWithIssues: 0,
+          issuesBySeverity: { critical: 0, warning: 0, info: 0 },
+          issuesByCategory: {},
+        };
       }
     }
 
@@ -2844,9 +2855,11 @@ export class DatabaseStorage implements IStorage {
     }
 
     const auditIds = audits.map(a => a.id);
-    const issues = await db.select()
-      .from(pageIssues)
-      .where(sql`${pageIssues.pageAuditId} = ANY(${auditIds})`);
+    const issues = auditIds.length > 0 
+      ? await db.select()
+          .from(pageIssues)
+          .where(inArray(pageIssues.pageAuditId, auditIds))
+      : [];
 
     const pageHighestSeverity = new Map<number, string>();
     for (const issue of issues) {
@@ -2943,7 +2956,7 @@ export class DatabaseStorage implements IStorage {
         .where(eq(pageAudits.techCrawlId, techCrawlId));
       const auditIds = audits.map(a => a.id);
       if (auditIds.length > 0) {
-        conditions.push(sql`${pageIssues.pageAuditId} = ANY(${auditIds})`);
+        conditions.push(inArray(pageIssues.pageAuditId, auditIds));
       }
     }
 
