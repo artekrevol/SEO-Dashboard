@@ -291,6 +291,11 @@ export const seoHealthSnapshots = pgTable("seo_health_snapshots", {
   techScore: numeric("tech_score", { precision: 5, scale: 2 }),
   contentScore: numeric("content_score", { precision: 5, scale: 2 }),
   seoHealthScore: numeric("seo_health_score", { precision: 5, scale: 2 }),
+  totalInternalPages: integer("total_internal_pages").default(0),
+  pagesWithErrors: integer("pages_with_errors").default(0),
+  pagesWithWarnings: integer("pages_with_warnings").default(0),
+  pagesWithNotices: integer("pages_with_notices").default(0),
+  issueBasedHealthScore: numeric("issue_based_health_score", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdIdx: index("seo_health_project_id_idx").on(table.projectId),
