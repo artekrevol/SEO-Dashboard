@@ -311,6 +311,14 @@ export interface IStorage {
   // Get latest page audit scores indexed by normalized URL for integration with Pages table
   getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>>;
   
+  // Get issue-based health metrics for Ahrefs-style health score calculation
+  getIssueBasedHealthMetrics(projectId: string): Promise<{
+    totalInternalPages: number;
+    pagesWithErrors: number;
+    pagesWithWarnings: number;
+    pagesWithNotices: number;
+  }>;
+  
   // Global Settings
   getGlobalSetting(key: string): Promise<GlobalSetting | undefined>;
   setGlobalSetting(key: string, value: string, description?: string): Promise<GlobalSetting>;
@@ -2786,6 +2794,84 @@ export class DatabaseStorage implements IStorage {
       pagesWithIssues,
       issuesBySeverity,
       issuesByCategory,
+    };
+  }
+
+  async getIssueBasedHealthMetrics(projectId: string): Promise<{
+    totalInternalPages: number;
+    pagesWithErrors: number;
+    pagesWithWarnings: number;
+    pagesWithNotices: number;
+  }> {
+    const latestCrawl = await db.select()
+      .from(techCrawls)
+      .where(and(
+        eq(techCrawls.projectId, projectId),
+        eq(techCrawls.status, "completed")
+      ))
+      .orderBy(desc(techCrawls.createdAt))
+      .limit(1);
+
+    if (latestCrawl.length === 0) {
+      return {
+        totalInternalPages: 0,
+        pagesWithErrors: 0,
+        pagesWithWarnings: 0,
+        pagesWithNotices: 0,
+      };
+    }
+
+    const techCrawlId = latestCrawl[0].id;
+
+    const audits = await db.select()
+      .from(pageAudits)
+      .where(and(
+        eq(pageAudits.projectId, projectId),
+        eq(pageAudits.techCrawlId, techCrawlId)
+      ));
+
+    const totalInternalPages = audits.length;
+    if (totalInternalPages === 0) {
+      return {
+        totalInternalPages: 0,
+        pagesWithErrors: 0,
+        pagesWithWarnings: 0,
+        pagesWithNotices: 0,
+      };
+    }
+
+    const auditIds = audits.map(a => a.id);
+    const issues = await db.select()
+      .from(pageIssues)
+      .where(sql`${pageIssues.pageAuditId} = ANY(${auditIds})`);
+
+    const pageHighestSeverity = new Map<number, string>();
+    for (const issue of issues) {
+      const currentSeverity = pageHighestSeverity.get(issue.pageAuditId);
+      if (!currentSeverity) {
+        pageHighestSeverity.set(issue.pageAuditId, issue.severity);
+      } else if (issue.severity === 'critical') {
+        pageHighestSeverity.set(issue.pageAuditId, 'critical');
+      } else if (issue.severity === 'warning' && currentSeverity !== 'critical') {
+        pageHighestSeverity.set(issue.pageAuditId, 'warning');
+      }
+    }
+
+    let pagesWithErrors = 0;
+    let pagesWithWarnings = 0;
+    let pagesWithNotices = 0;
+
+    pageHighestSeverity.forEach((severity) => {
+      if (severity === 'critical') pagesWithErrors++;
+      else if (severity === 'warning') pagesWithWarnings++;
+      else pagesWithNotices++;
+    });
+
+    return {
+      totalInternalPages,
+      pagesWithErrors,
+      pagesWithWarnings,
+      pagesWithNotices,
     };
   }
 

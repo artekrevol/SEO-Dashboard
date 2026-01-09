@@ -8,6 +8,7 @@ import {
   calculateOverallHealthScore,
   calculateOpportunityScore,
   calculateCompetitorPressure,
+  calculateIssueBasedHealthScore,
 } from "./scoring";
 import {
   generateRecommendationsFromKeywords,
@@ -142,6 +143,9 @@ async function calculateAndSaveSnapshot(
   const contentScore = calculateContentScore(contentMetrics);
   const seoHealthScore = calculateOverallHealthScore(rankScore, authorityScore, techScore, contentScore);
 
+  const issueBasedMetrics = await storage.getIssueBasedHealthMetrics(project.id);
+  const issueBasedHealthScore = calculateIssueBasedHealthScore(issueBasedMetrics);
+
   const today = new Date().toISOString().split("T")[0];
 
   const snapshot: InsertSeoHealthSnapshot = {
@@ -155,6 +159,11 @@ async function calculateAndSaveSnapshot(
     techScore: techScore.toFixed(2),
     contentScore: contentScore.toFixed(2),
     seoHealthScore: seoHealthScore.toFixed(2),
+    totalInternalPages: issueBasedMetrics.totalInternalPages,
+    pagesWithErrors: issueBasedMetrics.pagesWithErrors,
+    pagesWithWarnings: issueBasedMetrics.pagesWithWarnings,
+    pagesWithNotices: issueBasedMetrics.pagesWithNotices,
+    issueBasedHealthScore: issueBasedHealthScore.toFixed(2),
   };
 
   return snapshot;
