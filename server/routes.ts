@@ -2938,6 +2938,29 @@ export async function registerRoutes(
     }
   });
 
+  // Get pages affected by a specific issue code
+  app.get("/api/tech-crawls/issues/:issueCode/pages", async (req, res) => {
+    try {
+      const { projectId, techCrawlId } = req.query;
+      const { issueCode } = req.params;
+      
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const pages = await storage.getPagesByIssueCode(
+        projectId,
+        decodeURIComponent(issueCode),
+        techCrawlId ? Number(techCrawlId) : undefined
+      );
+
+      res.json({ pages });
+    } catch (error) {
+      console.error("Error fetching pages by issue code:", error);
+      res.status(500).json({ error: "Failed to fetch pages by issue code" });
+    }
+  });
+
   // Get running tech crawls
   app.get("/api/tech-crawls/running", async (req, res) => {
     try {

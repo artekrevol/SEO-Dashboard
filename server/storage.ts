@@ -3008,6 +3008,47 @@ export class DatabaseStorage implements IStorage {
       });
   }
 
+  async getPagesByIssueCode(projectId: string, issueCode: string, techCrawlId?: number): Promise<{
+    url: string;
+    pageAuditId: number;
+    onpageScore: number | null;
+    occurrences: number;
+  }[]> {
+    const conditions = [
+      eq(pageIssues.projectId, projectId),
+      eq(pageIssues.issueCode, issueCode)
+    ];
+
+    if (techCrawlId) {
+      const audits = await db.select({ id: pageAudits.id })
+        .from(pageAudits)
+        .where(eq(pageAudits.techCrawlId, techCrawlId));
+      const auditIds = audits.map(a => a.id);
+      if (auditIds.length > 0) {
+        conditions.push(inArray(pageIssues.pageAuditId, auditIds));
+      } else {
+        return [];
+      }
+    }
+
+    const issues = await db.select({
+      pageAuditId: pageIssues.pageAuditId,
+      occurrences: pageIssues.occurrences,
+      url: pageAudits.url,
+      onpageScore: pageAudits.onpageScore,
+    })
+      .from(pageIssues)
+      .innerJoin(pageAudits, eq(pageIssues.pageAuditId, pageAudits.id))
+      .where(and(...conditions));
+
+    return issues.map(i => ({
+      url: i.url,
+      pageAuditId: i.pageAuditId,
+      onpageScore: i.onpageScore ? Number(i.onpageScore) : null,
+      occurrences: i.occurrences || 1,
+    }));
+  }
+
   async getLatestPageAuditsByUrl(projectId: string): Promise<Map<string, { onpageScore: number | null; issueCount: number }>> {
     // Strategy: Find the latest tech crawl that has audits, prioritizing completed ones
     // First try to get latest completed crawl

@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
@@ -75,12 +77,21 @@ interface IssuesSummary {
 
 type CrawlScope = "full_site" | "tracked_pages";
 
+interface AffectedPage {
+  url: string;
+  pageAuditId: number;
+  onpageScore: number | null;
+  occurrences: number;
+}
+
 export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
   const { toast } = useToast();
   const [selectedAuditUrl, setSelectedAuditUrl] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [crawlScope, setCrawlScope] = useState<CrawlScope>("tracked_pages");
   const [showStartDialog, setShowStartDialog] = useState(false);
+  const [selectedIssue, setSelectedIssue] = useState<IssuesSummary | null>(null);
+  const [issueSheetOpen, setIssueSheetOpen] = useState(false);
 
   const { data: latestCrawl, isLoading: crawlLoading } = useQuery<TechCrawlResponse | null>({
     queryKey: ["/api/tech-crawls/latest", { projectId }],
@@ -119,6 +130,23 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
     },
     enabled: !!projectId && !!latestCrawl?.id && latestCrawl?.status === "completed",
   });
+
+  const { data: affectedPagesData, isLoading: affectedPagesLoading } = useQuery<{ pages: AffectedPage[] }>({
+    queryKey: ["/api/tech-crawls/issues", selectedIssue?.issueCode, { projectId, techCrawlId: latestCrawl?.id }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/tech-crawls/issues/${encodeURIComponent(selectedIssue!.issueCode)}/pages?projectId=${projectId}&techCrawlId=${latestCrawl?.id}`
+      );
+      if (!res.ok) throw new Error("Failed to fetch affected pages");
+      return res.json();
+    },
+    enabled: !!projectId && !!latestCrawl?.id && !!selectedIssue?.issueCode,
+  });
+
+  const handleIssueClick = (issue: IssuesSummary) => {
+    setSelectedIssue(issue);
+    setIssueSheetOpen(true);
+  };
 
   const startCrawlMutation = useMutation({
     mutationFn: async (scope: CrawlScope) => {
@@ -495,8 +523,9 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
                         {categoryIssues.map((issue) => (
                           <div
                             key={issue.issueCode}
-                            className="flex items-center justify-between rounded-md border p-3 hover-elevate"
+                            className="flex items-center justify-between rounded-md border p-3 hover-elevate cursor-pointer"
                             data-testid={`issue-${issue.issueCode}`}
+                            onClick={() => handleIssueClick(issue)}
                           >
                             <div className="flex items-center gap-3">
                               {getSeverityBadge(issue.severity)}
@@ -711,6 +740,81 @@ export function SiteAuditPage({ projectId }: SiteAuditPageProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Sheet open={issueSheetOpen} onOpenChange={setIssueSheetOpen}>
+        <SheetContent className="sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              {selectedIssue && getSeverityBadge(selectedIssue.severity)}
+              <span>{selectedIssue?.issueLabel}</span>
+            </SheetTitle>
+            <SheetDescription>
+              {selectedIssue?.count} pages affected by this issue
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-150px)] mt-4">
+            {affectedPagesLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2 pr-4">
+                {affectedPagesData?.pages.map((page) => (
+                  <div
+                    key={page.pageAuditId}
+                    className="flex items-center justify-between rounded-md border p-3 hover-elevate cursor-pointer"
+                    onClick={() => {
+                      setSelectedAuditUrl(page.url);
+                      setDrawerOpen(true);
+                      setIssueSheetOpen(false);
+                    }}
+                    data-testid={`affected-page-${page.pageAuditId}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-mono text-sm truncate">{page.url}</p>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        {page.onpageScore !== null && (
+                          <span className={`font-medium ${
+                            page.onpageScore >= 80 ? "text-green-600" :
+                            page.onpageScore >= 60 ? "text-yellow-600" :
+                            "text-red-600"
+                          }`}>
+                            Score: {page.onpageScore.toFixed(0)}
+                          </span>
+                        )}
+                        {page.occurrences > 1 && (
+                          <span>{page.occurrences} occurrences</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(page.url, "_blank");
+                        }}
+                        data-testid={`open-page-${page.pageAuditId}`}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                ))}
+                {affectedPagesData?.pages.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No pages found with this issue.
+                  </div>
+                )}
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
