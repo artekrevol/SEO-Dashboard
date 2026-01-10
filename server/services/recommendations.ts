@@ -106,13 +106,14 @@ export function generateRecommendationsFromKeywords(
 
     if (positionDelta > 5 && position <= 30) {
       const template = RECOMMENDATION_TEMPLATES.find(t => t.type === "content_refresh")!;
+      const displayUrl = keyword?.targetUrl || (keyword?.keyword ? `keyword "${keyword.keyword}"` : `keyword #${metric.keywordId}`);
       recommendations.push({
         projectId,
         type: template.type,
         severity: positionDelta > 10 ? "high" : "medium",
         title: template.title,
         description: template.generateDescription({
-          url: keyword?.targetUrl || "targeted page",
+          url: displayUrl,
           positionDelta,
         }),
         status: "open",
