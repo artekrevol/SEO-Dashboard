@@ -171,6 +171,26 @@ export async function registerRoutes(
         return "declining";
       };
 
+      // If snapshot has 0% issue-based health but there's a completed crawl, calculate live
+      let issueBasedHealthScore = Number(latestSnapshot?.issueBasedHealthScore) || 0;
+      let totalInternalPages = latestSnapshot?.totalInternalPages || 0;
+      let pagesWithErrors = latestSnapshot?.pagesWithErrors || 0;
+      let pagesWithWarnings = latestSnapshot?.pagesWithWarnings || 0;
+      let pagesWithNotices = latestSnapshot?.pagesWithNotices || 0;
+
+      if (issueBasedHealthScore === 0) {
+        const latestCrawl = await storage.getLatestTechCrawl(projectId);
+        if (latestCrawl && latestCrawl.status === "completed") {
+          const { calculateIssueBasedHealthScore } = await import("./services/scoring");
+          const healthMetrics = await storage.getIssueBasedHealthMetrics(projectId, latestCrawl.id);
+          issueBasedHealthScore = calculateIssueBasedHealthScore(healthMetrics);
+          totalInternalPages = healthMetrics.totalInternalPages;
+          pagesWithErrors = healthMetrics.pagesWithErrors;
+          pagesWithWarnings = healthMetrics.pagesWithWarnings;
+          pagesWithNotices = healthMetrics.pagesWithNotices;
+        }
+      }
+
       res.json({
         projectId,
         latestSnapshot: latestSnapshot
@@ -185,11 +205,11 @@ export async function registerRoutes(
               techScore: Number(latestSnapshot.techScore) || 0,
               contentScore: Number(latestSnapshot.contentScore) || 0,
               status: getStatus(Number(latestSnapshot.seoHealthScore) || 0),
-              totalInternalPages: latestSnapshot.totalInternalPages || 0,
-              pagesWithErrors: latestSnapshot.pagesWithErrors || 0,
-              pagesWithWarnings: latestSnapshot.pagesWithWarnings || 0,
-              pagesWithNotices: latestSnapshot.pagesWithNotices || 0,
-              issueBasedHealthScore: Number(latestSnapshot.issueBasedHealthScore) || 0,
+              totalInternalPages,
+              pagesWithErrors,
+              pagesWithWarnings,
+              pagesWithNotices,
+              issueBasedHealthScore,
             }
           : null,
         trend,
