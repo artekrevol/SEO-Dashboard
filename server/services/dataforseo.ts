@@ -39,6 +39,81 @@ interface OnPageIssue {
   pages: string[];
 }
 
+// LLM Mentions API Types
+interface LlmMentionsAggregatedResult {
+  total: {
+    mentions: number;
+    ai_search_volume: number;
+    impressions: number;
+  };
+  platforms: Array<{
+    key: string;
+    mentions: number;
+    ai_search_volume: number;
+    impressions: number;
+  }>;
+  topSourceDomains: Array<{
+    key: string;
+    mentions: number;
+    ai_search_volume: number;
+    impressions: number;
+  }>;
+  cost: number;
+}
+
+interface LlmMentionItem {
+  platform: string;
+  locationCode: number;
+  languageCode: string;
+  question: string;
+  answer: string;
+  sources: Array<{
+    snippet: string;
+    source_name: string;
+    position: number;
+    title: string;
+    domain: string;
+    url: string;
+  }>;
+  searchResults: Array<{
+    description: string;
+    position: number;
+    title: string;
+    domain: string;
+    url: string;
+  }>;
+  aiSearchVolume: number;
+  impressions: number;
+}
+
+interface LlmMentionsCrossAggregatedResult {
+  aggregationKey: string;
+  total: {
+    mentions: number;
+    ai_search_volume: number;
+    impressions: number;
+  };
+  platforms: Array<{
+    key: string;
+    mentions: number;
+    ai_search_volume: number;
+    impressions: number;
+  }>;
+  topSourceDomains: Array<{
+    key: string;
+    mentions: number;
+  }>;
+}
+
+interface LlmMentionTopPage {
+  url: string;
+  domain: string;
+  title: string;
+  mentions: number;
+  aiSearchVolume: number;
+  impressions: number;
+}
+
 export class DataForSEOService {
   private config: DataForSEOConfig;
   private baseUrl: string;
@@ -2506,6 +2581,282 @@ export class DataForSEOService {
     }
     
     return Math.min(100, Math.max(0, score));
+  }
+
+  // ============================================
+  // LLM MENTIONS API (AI Optimization)
+  // ============================================
+
+  async getLlmMentionsAggregated(
+    domain: string,
+    platform: "google" | "chat_gpt" = "google",
+    locationCode: number = 2840,
+    languageCode: string = "en"
+  ): Promise<LlmMentionsAggregatedResult | null> {
+    try {
+      console.log(`[DataForSEO] Fetching LLM mentions for ${domain} on ${platform}`);
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          cost: number;
+          result: Array<{
+            total: {
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            };
+            platform: Array<{
+              key: string;
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+            sources_domain: Array<{
+              key: string;
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+          }>;
+        }>;
+      }>("/ai_optimization/llm_mentions/aggregated_metrics/live", "POST", [{
+        target: [{ domain, search_filter: "include", include_subdomains: true }],
+        platform,
+        location_code: locationCode,
+        language_code: languageCode,
+      }], 120000);
+
+      const task = response.tasks?.[0];
+      if (!task || task.status_code !== 20000) {
+        console.error(`[DataForSEO] LLM Mentions API error:`, task?.status_message);
+        return null;
+      }
+
+      const result = task.result?.[0];
+      if (!result) return null;
+
+      return {
+        total: result.total || { mentions: 0, ai_search_volume: 0, impressions: 0 },
+        platforms: result.platform || [],
+        topSourceDomains: result.sources_domain || [],
+        cost: task.cost || 0,
+      };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching LLM mentions aggregated:`, error);
+      return null;
+    }
+  }
+
+  async getLlmMentionsSearch(
+    domain: string,
+    platform: "google" | "chat_gpt" = "google",
+    locationCode: number = 2840,
+    languageCode: string = "en",
+    limit: number = 100
+  ): Promise<LlmMentionItem[] | null> {
+    try {
+      console.log(`[DataForSEO] Searching LLM mentions for ${domain} on ${platform}`);
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          cost: number;
+          result: Array<{
+            total_count: number;
+            items_count: number;
+            items: Array<{
+              platform: string;
+              location_code: number;
+              language_code: string;
+              question: string;
+              answer: string;
+              sources: Array<{
+                snippet: string;
+                source_name: string;
+                position: number;
+                title: string;
+                domain: string;
+                url: string;
+              }>;
+              search_results: Array<{
+                description: string;
+                position: number;
+                title: string;
+                domain: string;
+                url: string;
+              }>;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+          }>;
+        }>;
+      }>("/ai_optimization/llm_mentions/search/live", "POST", [{
+        target: [{ domain, search_filter: "include", include_subdomains: true }],
+        platform,
+        location_code: locationCode,
+        language_code: languageCode,
+        limit,
+      }], 120000);
+
+      const task = response.tasks?.[0];
+      if (!task || task.status_code !== 20000) {
+        console.error(`[DataForSEO] LLM Mentions Search API error:`, task?.status_message);
+        return null;
+      }
+
+      const result = task.result?.[0];
+      if (!result || !result.items) return [];
+
+      return result.items.map(item => ({
+        platform: item.platform,
+        locationCode: item.location_code,
+        languageCode: item.language_code,
+        question: item.question,
+        answer: item.answer,
+        sources: item.sources || [],
+        searchResults: item.search_results || [],
+        aiSearchVolume: item.ai_search_volume || 0,
+        impressions: item.impressions || 0,
+      }));
+    } catch (error) {
+      console.error(`[DataForSEO] Error searching LLM mentions:`, error);
+      return null;
+    }
+  }
+
+  async getLlmMentionsCrossAggregated(
+    targets: Array<{ key: string; domain: string }>,
+    platform: "google" | "chat_gpt" = "google",
+    locationCode: number = 2840,
+    languageCode: string = "en"
+  ): Promise<LlmMentionsCrossAggregatedResult[] | null> {
+    try {
+      if (targets.length < 2) {
+        console.error(`[DataForSEO] Cross aggregated requires at least 2 targets`);
+        return null;
+      }
+
+      console.log(`[DataForSEO] Fetching cross-aggregated LLM mentions for ${targets.length} domains`);
+
+      const targetsPayload = targets.map(t => ({
+        aggregation_key: t.key,
+        target: [{ domain: t.domain, search_filter: "include", include_subdomains: true }],
+      }));
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          cost: number;
+          result: Array<{
+            aggregation_key: string;
+            total: {
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            };
+            platform: Array<{
+              key: string;
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+            sources_domain: Array<{
+              key: string;
+              mentions: number;
+            }>;
+          }>;
+        }>;
+      }>("/ai_optimization/llm_mentions/cross_aggregated_metrics/live", "POST", [{
+        targets: targetsPayload,
+        platform,
+        location_code: locationCode,
+        language_code: languageCode,
+      }], 120000);
+
+      const task = response.tasks?.[0];
+      if (!task || task.status_code !== 20000) {
+        console.error(`[DataForSEO] LLM Mentions Cross Aggregated API error:`, task?.status_message);
+        return null;
+      }
+
+      if (!task.result) return [];
+
+      return task.result.map(r => ({
+        aggregationKey: r.aggregation_key,
+        total: r.total || { mentions: 0, ai_search_volume: 0, impressions: 0 },
+        platforms: r.platform || [],
+        topSourceDomains: r.sources_domain || [],
+      }));
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching cross-aggregated LLM mentions:`, error);
+      return null;
+    }
+  }
+
+  async getLlmMentionsTopPages(
+    domain: string,
+    platform: "google" | "chat_gpt" = "google",
+    locationCode: number = 2840,
+    languageCode: string = "en",
+    limit: number = 10
+  ): Promise<LlmMentionTopPage[] | null> {
+    try {
+      console.log(`[DataForSEO] Fetching top pages for ${domain} on ${platform}`);
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          cost: number;
+          result: Array<{
+            total: {
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            };
+            items: Array<{
+              url: string;
+              domain: string;
+              title: string;
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+          }>;
+        }>;
+      }>("/ai_optimization/llm_mentions/top_pages/live", "POST", [{
+        target: [{ domain, search_filter: "include", include_subdomains: true }],
+        platform,
+        location_code: locationCode,
+        language_code: languageCode,
+        items_list_limit: limit,
+      }], 120000);
+
+      const task = response.tasks?.[0];
+      if (!task || task.status_code !== 20000) {
+        console.error(`[DataForSEO] LLM Mentions Top Pages API error:`, task?.status_message);
+        return null;
+      }
+
+      const result = task.result?.[0];
+      if (!result || !result.items) return [];
+
+      return result.items.map(item => ({
+        url: item.url,
+        domain: item.domain,
+        title: item.title || "",
+        mentions: item.mentions || 0,
+        aiSearchVolume: item.ai_search_volume || 0,
+        impressions: item.impressions || 0,
+      }));
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching LLM mentions top pages:`, error);
+      return null;
+    }
   }
 
   static isConfigured(): boolean {
