@@ -1597,3 +1597,185 @@ export const insertAiOverviewCitationSchema = createInsertSchema(aiOverviewCitat
 
 export type InsertAiOverviewCitation = z.infer<typeof insertAiOverviewCitationSchema>;
 export type AiOverviewCitation = typeof aiOverviewCitations.$inferSelect;
+
+// ============================================
+// LLM CITATIONS (DataForSEO AI Optimization API)
+// ============================================
+
+// LLM Competitors - Competitor domains to track for AI citation comparison
+export const llmCompetitors = pgTable("llm_competitors", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  domain: text("domain").notNull(),
+  name: text("name"), // Display name for the competitor
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("llm_competitors_project_id_idx").on(table.projectId),
+  domainIdx: index("llm_competitors_domain_idx").on(table.domain),
+  uniqueProjectDomain: unique("llm_competitors_project_domain_unique").on(table.projectId, table.domain),
+}));
+
+export const insertLlmCompetitorSchema = createInsertSchema(llmCompetitors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLlmCompetitor = z.infer<typeof insertLlmCompetitorSchema>;
+export type LlmCompetitor = typeof llmCompetitors.$inferSelect;
+
+// LLM Citation Runs - Track crawl runs for AI citations
+export const llmCitationRuns = pgTable("llm_citation_runs", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  status: text("status").default("pending").notNull(), // pending, running, completed, failed
+  platform: text("platform").notNull(), // 'google', 'chat_gpt'
+  locationCode: integer("location_code").default(2840), // DataForSEO location code
+  languageCode: text("language_code").default("en"),
+  totalCost: numeric("total_cost", { precision: 10, scale: 4 }).default("0"),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdIdx: index("llm_citation_runs_project_id_idx").on(table.projectId),
+  statusIdx: index("llm_citation_runs_status_idx").on(table.status),
+  platformIdx: index("llm_citation_runs_platform_idx").on(table.platform),
+  createdAtIdx: index("llm_citation_runs_created_at_idx").on(table.createdAt),
+}));
+
+export const insertLlmCitationRunSchema = createInsertSchema(llmCitationRuns).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLlmCitationRun = z.infer<typeof insertLlmCitationRunSchema>;
+export type LlmCitationRun = typeof llmCitationRuns.$inferSelect;
+
+// LLM Citation Snapshots - Aggregated metrics per entity (brand or competitor)
+export const llmCitationSnapshots = pgTable("llm_citation_snapshots", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => llmCitationRuns.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(), // 'brand' or 'competitor'
+  entityDomain: text("entity_domain").notNull(), // The tracked domain
+  entityName: text("entity_name"), // Display name
+  platform: text("platform").notNull(), // 'google', 'chat_gpt'
+  
+  // Aggregated metrics from DataForSEO
+  mentionsCount: integer("mentions_count").default(0),
+  aiSearchVolume: integer("ai_search_volume").default(0),
+  impressions: integer("impressions").default(0),
+  pagesCount: integer("pages_count").default(0), // Unique pages cited
+  
+  // Change tracking (compared to previous run)
+  mentionsChange: integer("mentions_change").default(0),
+  aiSearchVolumeChange: integer("ai_search_volume_change").default(0),
+  
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  runIdIdx: index("llm_citation_snapshots_run_id_idx").on(table.runId),
+  projectIdIdx: index("llm_citation_snapshots_project_id_idx").on(table.projectId),
+  entityTypeIdx: index("llm_citation_snapshots_entity_type_idx").on(table.entityType),
+  platformIdx: index("llm_citation_snapshots_platform_idx").on(table.platform),
+  capturedAtIdx: index("llm_citation_snapshots_captured_at_idx").on(table.capturedAt),
+}));
+
+export const insertLlmCitationSnapshotSchema = createInsertSchema(llmCitationSnapshots).omit({
+  id: true,
+  capturedAt: true,
+  createdAt: true,
+});
+
+export type InsertLlmCitationSnapshot = z.infer<typeof insertLlmCitationSnapshotSchema>;
+export type LlmCitationSnapshot = typeof llmCitationSnapshots.$inferSelect;
+
+// LLM Citation Items - Individual citation details (question/answer pairs)
+export const llmCitationItems = pgTable("llm_citation_items", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id").notNull().references(() => llmCitationSnapshots.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  
+  // The Q&A context
+  question: text("question"), // The query/question that triggered the AI response
+  answerExcerpt: text("answer_excerpt"), // The AI-generated response (may be truncated)
+  
+  // Source information
+  citedUrl: text("cited_url"), // URL that was cited
+  citedDomain: text("cited_domain"), // Domain extracted from URL
+  citedPageTitle: text("cited_page_title"),
+  sourceName: text("source_name"), // Display name of source
+  snippet: text("snippet"), // Source description/snippet
+  
+  // Position and metrics
+  referencePosition: integer("reference_position"), // Order in sources (1 = first)
+  aiSearchVolume: integer("ai_search_volume").default(0),
+  impressions: integer("impressions").default(0),
+  
+  // Metadata
+  platform: text("platform").notNull(), // 'google', 'chat_gpt'
+  locationCode: integer("location_code"),
+  languageCode: text("language_code"),
+  
+  capturedAt: timestamp("captured_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  snapshotIdIdx: index("llm_citation_items_snapshot_id_idx").on(table.snapshotId),
+  projectIdIdx: index("llm_citation_items_project_id_idx").on(table.projectId),
+  citedDomainIdx: index("llm_citation_items_cited_domain_idx").on(table.citedDomain),
+  platformIdx: index("llm_citation_items_platform_idx").on(table.platform),
+  capturedAtIdx: index("llm_citation_items_captured_at_idx").on(table.capturedAt),
+}));
+
+export const llmCitationItemsRelations = relations(llmCitationItems, ({ one }) => ({
+  snapshot: one(llmCitationSnapshots, {
+    fields: [llmCitationItems.snapshotId],
+    references: [llmCitationSnapshots.id],
+  }),
+  project: one(projects, {
+    fields: [llmCitationItems.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const insertLlmCitationItemSchema = createInsertSchema(llmCitationItems).omit({
+  id: true,
+  capturedAt: true,
+  createdAt: true,
+});
+
+export type InsertLlmCitationItem = z.infer<typeof insertLlmCitationItemSchema>;
+export type LlmCitationItem = typeof llmCitationItems.$inferSelect;
+
+// LLM Citation Top Pages - Track top cited pages per entity
+export const llmCitationTopPages = pgTable("llm_citation_top_pages", {
+  id: serial("id").primaryKey(),
+  snapshotId: integer("snapshot_id").notNull().references(() => llmCitationSnapshots.id, { onDelete: "cascade" }),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  
+  url: text("url").notNull(),
+  domain: text("domain").notNull(),
+  pageTitle: text("page_title"),
+  
+  mentionsCount: integer("mentions_count").default(0),
+  aiSearchVolume: integer("ai_search_volume").default(0),
+  impressions: integer("impressions").default(0),
+  
+  platform: text("platform").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  snapshotIdIdx: index("llm_citation_top_pages_snapshot_id_idx").on(table.snapshotId),
+  projectIdIdx: index("llm_citation_top_pages_project_id_idx").on(table.projectId),
+  domainIdx: index("llm_citation_top_pages_domain_idx").on(table.domain),
+}));
+
+export const insertLlmCitationTopPageSchema = createInsertSchema(llmCitationTopPages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertLlmCitationTopPage = z.infer<typeof insertLlmCitationTopPageSchema>;
+export type LlmCitationTopPage = typeof llmCitationTopPages.$inferSelect;
