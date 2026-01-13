@@ -776,8 +776,40 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const summary = await storage.getLlmCitationSummary(projectId);
-      res.json(summary);
+      const rawSummary = await storage.getLlmCitationSummary(projectId);
+      
+      const googleSnapshot = rawSummary.brand.google;
+      const chatGptSnapshot = rawSummary.brand.chatGpt;
+      
+      const totalMentions = (googleSnapshot?.mentionsCount || 0) + (chatGptSnapshot?.mentionsCount || 0);
+      const totalAiSearchVolume = (googleSnapshot?.aiSearchVolume || 0) + (chatGptSnapshot?.aiSearchVolume || 0);
+      const totalImpressions = (googleSnapshot?.impressions || 0) + (chatGptSnapshot?.impressions || 0);
+      const totalPagesCount = (googleSnapshot?.pagesCount || 0) + (chatGptSnapshot?.pagesCount || 0);
+
+      const response = {
+        brand: {
+          totalMentions,
+          aiSearchVolume: totalAiSearchVolume,
+          impressions: totalImpressions,
+          pagesCount: totalPagesCount,
+          trend: 0,
+        },
+        platforms: {
+          google: {
+            mentions: googleSnapshot?.mentionsCount || 0,
+            aiSearchVolume: googleSnapshot?.aiSearchVolume || 0,
+            impressions: googleSnapshot?.impressions || 0,
+          },
+          chatgpt: {
+            mentions: chatGptSnapshot?.mentionsCount || 0,
+            aiSearchVolume: chatGptSnapshot?.aiSearchVolume || 0,
+            impressions: chatGptSnapshot?.impressions || 0,
+          },
+        },
+        lastRun: rawSummary.lastUpdated?.toISOString() || null,
+      };
+      
+      res.json(response);
     } catch (error) {
       console.error("Error fetching LLM citation summary:", error);
       res.status(500).json({ error: "Failed to fetch LLM citation summary" });
@@ -831,7 +863,18 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const gaps = await storage.getLlmCitationGaps(projectId);
+      const rawGaps = await storage.getLlmCitationGaps(projectId);
+      
+      const gaps = rawGaps.map(gap => ({
+        competitorDomain: gap.competitorDomain,
+        competitorName: gap.competitorName || gap.competitorDomain,
+        mentionsCount: gap.competitorMentions,
+        brandMentionsCount: gap.brandMentions,
+        gap: gap.gap,
+        aiSearchVolume: 0,
+        platform: gap.platform,
+      }));
+      
       res.json({ gaps });
     } catch (error) {
       console.error("Error fetching LLM citation gaps:", error);

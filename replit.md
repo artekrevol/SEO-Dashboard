@@ -67,9 +67,18 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - **Keyword Detail Drawer**: Tabbed deep-dive view with Overview (metrics), AI Intelligence (citations), SERP Layout (block visualization), Competitors (feature presence), and History (position trends)
     - **AI Citation Tracking**: Shows sources citing your brand in AI Overviews with text excerpts, reference positions, and content types
     - **Competitor SERP Presence**: Tracks competitors appearing in AI Overview, Featured Snippets, and Local Pack for each keyword
+- **AI Citations (LLM Mentions Tracker)**: Comprehensive brand visibility tracking across AI platforms. Features include:
+    - **Platform Coverage**: Tracks mentions in Google AI Overview and ChatGPT (ChatGPT limited to US English)
+    - **Summary Dashboard**: KPI cards showing total mentions, AI search volume, impressions, and pages cited with platform breakdown
+    - **Citations List**: Tabular view of individual AI citations with question, cited page, platform, reference position, and search volume
+    - **Citation Detail Drawer**: Drill-down view showing full question, answer excerpt, citation snippet, and page metadata
+    - **Top Pages**: Rankings of most frequently cited pages across AI platforms
+    - **Competitor Gap Analysis**: Identifies topics where competitors are cited but brand is not, highlighting content opportunities
+    - **Competitor Management**: Add/remove competitors to track for AI citation comparison
+    - **DataForSEO Integration**: Uses LLM Mentions API (AI Optimization module) for aggregated metrics, search results, and top pages data
 
 ### System Design Choices
-- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, `app_versions`, `serp_layout_snapshots`, `serp_layout_items`, `serp_competitor_presence`, `intent_alerts`, and `ai_overview_citations`.
+- **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, `app_versions`, `serp_layout_snapshots`, `serp_layout_items`, `serp_competitor_presence`, `intent_alerts`, `ai_overview_citations`, `llm_competitors`, `llm_citation_runs`, `llm_citation_snapshots`, `llm_citation_items`, and `llm_citation_top_pages`.
 - **Historical Data Tracking**: All crawl data uses date-based rows for trend analysis. Tables with historical tracking: `rankings_history` (keyword positions), `keywordMetrics` (opportunity scores), `competitor_metrics` (competitor pressure), `backlinks_history` (DA/PA/spam score changes), `tech_crawls` (site audit snapshots).
 - **Data Retention Policy**: Automated weekly cleanup (Sundays 2 AM CST) removes records older than 90 days from historical tables to manage database size while preserving 3 months of trend data.
 - **Security**: File path validation, allowed import directories, and Zod schema-based input validation for all API endpoints.
