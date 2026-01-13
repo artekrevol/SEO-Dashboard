@@ -17,7 +17,7 @@ interface CrawlRunResult {
   keywordsUpdated?: number;
 }
 
-type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery" | "backlinks" | "competitor_backlinks";
+type CrawlType = "keyword_ranks" | "competitors" | "pages_health" | "deep_discovery" | "backlinks" | "competitor_backlinks" | "llm_citations";
 
 const DEFAULT_TIMEZONE = "America/Chicago";
 
@@ -28,6 +28,7 @@ const CRAWL_TYPE_DURATIONS: Record<CrawlType, number> = {
   deep_discovery: 300,
   backlinks: 240,
   competitor_backlinks: 300,
+  llm_citations: 60,
 };
 
 function normalizeCrawlType(type: string): CrawlType {
@@ -41,6 +42,8 @@ function normalizeCrawlType(type: string): CrawlType {
     competitor_backlinks: "competitor_backlinks",
     deep_discovery: "deep_discovery",
     technical: "pages_health",
+    llm_citations: "llm_citations",
+    ai_citations: "llm_citations",
   };
   return typeMap[type] || "keyword_ranks";
 }
@@ -337,6 +340,11 @@ export class CrawlSchedulerService {
             message: unifiedResult.message,
             itemsProcessed: (unifiedResult.data as any)?.backlinksIngested || 0,
           };
+          break;
+
+        case "llm_citations":
+          await storage.updateCrawlProgress(crawlResult.id, 0, "fetching_ai_citations");
+          result = await this.runLlmCitationsCrawl(schedule.projectId, crawlResult.id, taskContext);
           break;
 
         default:
@@ -807,6 +815,200 @@ export class CrawlSchedulerService {
       };
     } catch (error) {
       console.error("[CrawlScheduler] Competitor backlinks crawl error:", error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  async runLlmCitationsCrawl(projectId: string, crawlResultId?: number, taskContext?: TaskContext): Promise<{ success: boolean; message: string; itemsProcessed?: number }> {
+    try {
+      console.log(`[CrawlScheduler] Running LLM citations crawl for project ${projectId}`);
+      
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return { success: false, message: "Project not found" };
+      }
+
+      const dataForSEOService = createDataForSEOService();
+      if (!dataForSEOService) {
+        console.warn("[CrawlScheduler] DataForSEO not configured, skipping LLM citations fetch");
+        return { success: false, message: "DataForSEO API not configured" };
+      }
+
+      const domain = project.domain.replace(/^https?:\/\//, "").replace(/^www\./, "");
+      const platforms = ["google", "chat_gpt"] as const;
+      
+      // Update total items: 2 platforms + competitors
+      const competitors = await storage.getLlmCompetitors(projectId);
+      const totalItems = platforms.length + competitors.length * platforms.length;
+      
+      if (crawlResultId) {
+        await storage.updateCrawlResult(crawlResultId, { itemsTotal: totalItems });
+      }
+
+      let itemsProcessed = 0;
+      let totalCitations = 0;
+      let totalPages = 0;
+
+      // Process both platforms for the brand
+      for (const platform of platforms) {
+        try {
+          console.log(`[CrawlScheduler] Fetching LLM mentions for ${domain} on ${platform}`);
+          
+          // Create a run record
+          const run = await storage.createLlmCitationRun({
+            projectId,
+            platform,
+            status: "running",
+            startedAt: new Date(),
+          });
+
+          try {
+            // Fetch aggregated metrics for brand
+            const brandMetrics = await dataForSEOService.getLlmMentionsAggregated(domain, platform);
+            
+            if (brandMetrics) {
+              // Create brand snapshot
+              const brandSnapshot = await storage.createLlmCitationSnapshot({
+                runId: run.id,
+                projectId,
+                entityType: "brand",
+                entityDomain: domain,
+                entityName: project.name,
+                platform,
+                mentionsCount: brandMetrics.total.mentions,
+                aiSearchVolume: brandMetrics.total.ai_search_volume,
+                impressions: brandMetrics.total.impressions,
+                pagesCount: brandMetrics.topSourceDomains.length,
+              });
+
+              totalCitations += brandMetrics.total.mentions;
+
+              // Fetch individual citations for brand
+              const brandItems = await dataForSEOService.getLlmMentionsSearch(domain, platform, 2840, "en", 100);
+              if (brandItems && brandItems.length > 0) {
+                const itemsToInsert = brandItems.flatMap(item => 
+                  item.sources.map((source, idx) => ({
+                    snapshotId: brandSnapshot.id,
+                    projectId,
+                    question: item.question,
+                    answerExcerpt: item.answer?.substring(0, 1000),
+                    citedUrl: source.url,
+                    citedDomain: source.domain,
+                    citedPageTitle: source.title,
+                    sourceName: source.source_name,
+                    snippet: source.snippet,
+                    referencePosition: source.position || idx + 1,
+                    aiSearchVolume: item.aiSearchVolume,
+                    impressions: item.impressions,
+                    platform,
+                  }))
+                );
+                await storage.createLlmCitationItems(itemsToInsert);
+              }
+
+              // Fetch top pages for brand
+              const topPages = await dataForSEOService.getLlmMentionsTopPages(domain, platform);
+              if (topPages && topPages.length > 0) {
+                const pagesToInsert = topPages.map(page => ({
+                  snapshotId: brandSnapshot.id,
+                  projectId,
+                  url: page.url,
+                  domain: page.domain,
+                  pageTitle: page.title,
+                  mentionsCount: page.mentions,
+                  aiSearchVolume: page.aiSearchVolume,
+                  impressions: page.impressions,
+                  platform,
+                }));
+                await storage.createLlmCitationTopPages(pagesToInsert);
+                totalPages += topPages.length;
+              }
+            }
+
+            // Mark run as completed
+            await storage.updateLlmCitationRun(run.id, {
+              status: "completed",
+              completedAt: new Date(),
+              totalCost: String(brandMetrics?.cost || 0),
+            });
+          } catch (error) {
+            console.error(`[CrawlScheduler] Error fetching LLM mentions for ${platform}:`, error);
+            await storage.updateLlmCitationRun(run.id, {
+              status: "failed",
+              completedAt: new Date(),
+              errorMessage: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
+
+          itemsProcessed++;
+          if (crawlResultId) {
+            await storage.updateCrawlProgress(crawlResultId, itemsProcessed, `Processing ${platform}`);
+          }
+        } catch (error) {
+          console.error(`[CrawlScheduler] Error processing platform ${platform}:`, error);
+        }
+      }
+
+      // Fetch competitor data
+      if (competitors.length > 0) {
+        for (const comp of competitors) {
+          for (const platform of platforms) {
+            try {
+              console.log(`[CrawlScheduler] Fetching LLM mentions for competitor ${comp.domain} on ${platform}`);
+              
+              const compMetrics = await dataForSEOService.getLlmMentionsAggregated(comp.domain, platform);
+              if (compMetrics) {
+                // Find the most recent run for this platform
+                const runs = await storage.getLlmCitationRuns(projectId, 1);
+                if (runs.length > 0) {
+                  await storage.createLlmCitationSnapshot({
+                    runId: runs[0].id,
+                    projectId,
+                    entityType: "competitor",
+                    entityDomain: comp.domain,
+                    entityName: comp.name,
+                    platform,
+                    mentionsCount: compMetrics.total.mentions,
+                    aiSearchVolume: compMetrics.total.ai_search_volume,
+                    impressions: compMetrics.total.impressions,
+                    pagesCount: compMetrics.topSourceDomains.length,
+                  });
+                }
+              }
+
+              itemsProcessed++;
+              if (crawlResultId) {
+                await storage.updateCrawlProgress(crawlResultId, itemsProcessed, `Processing competitor ${comp.domain}`);
+              }
+
+              // Small delay to avoid rate limiting
+              await new Promise(resolve => setTimeout(resolve, 300));
+            } catch (error) {
+              console.error(`[CrawlScheduler] Error fetching LLM mentions for competitor ${comp.domain}:`, error);
+            }
+          }
+        }
+      }
+
+      const stats = {
+        platforms: platforms.length,
+        competitors: competitors.length,
+        totalCitations,
+        totalPages,
+      };
+
+      console.log(`[CrawlScheduler] LLM citations crawl completed:`, stats);
+
+      return {
+        success: true,
+        message: `AI Citations crawl completed. Processed ${platforms.length} platforms. Citations: ${totalCitations}, Top pages: ${totalPages}.`,
+        itemsProcessed,
+      };
+    } catch (error) {
+      console.error("[CrawlScheduler] LLM citations crawl error:", error);
       return {
         success: false,
         message: error instanceof Error ? error.message : String(error),

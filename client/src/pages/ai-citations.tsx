@@ -158,21 +158,26 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
     enabled: !!projectId,
   });
 
-  const fetchCitationsMutation = useMutation({
-    mutationFn: async (platform: string) => {
-      return await apiRequest("POST", "/api/llm-citations/fetch", { projectId, platform });
+  const syncCitationsMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/crawls/trigger", { 
+        projectId, 
+        crawlType: "llm_citations",
+        scope: "all",
+      });
     },
     onSuccess: () => {
       toast({
-        title: "AI citations fetch started",
-        description: "Data collection is running in the background.",
+        title: "AI citations sync started",
+        description: "Fetching data from Google AI Overview and ChatGPT.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/runs", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/summary", { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items", { projectId }] });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to start AI citations fetch.",
+        description: "Failed to start AI citations sync.",
         variant: "destructive",
       });
     },
@@ -240,21 +245,12 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            onClick={() => fetchCitationsMutation.mutate("google")}
-            disabled={fetchCitationsMutation.isPending}
-            data-testid="button-fetch-google"
+            onClick={() => syncCitationsMutation.mutate()}
+            disabled={syncCitationsMutation.isPending}
+            data-testid="button-sync-citations"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${fetchCitationsMutation.isPending ? "animate-spin" : ""}`} />
-            Fetch Google AI
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => fetchCitationsMutation.mutate("chat_gpt")}
-            disabled={fetchCitationsMutation.isPending}
-            data-testid="button-fetch-chatgpt"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${fetchCitationsMutation.isPending ? "animate-spin" : ""}`} />
-            Fetch ChatGPT
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncCitationsMutation.isPending ? "animate-spin" : ""}`} />
+            Sync AI Citations
           </Button>
         </div>
       </div>

@@ -25,7 +25,8 @@ import {
   AlertCircle,
   Timer,
   Activity,
-  Square
+  Square,
+  Bot
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
@@ -131,9 +132,21 @@ const CRAWL_TYPE_CONFIG: Record<string, {
     description: "Full site crawl for technical SEO issues",
     color: "text-red-600 dark:text-red-400"
   },
+  llm_citations: { 
+    icon: Bot, 
+    label: "AI Citations", 
+    description: "Track brand mentions in Google AI Overview and ChatGPT",
+    color: "text-pink-600 dark:text-pink-400"
+  },
+  ai_citations: { 
+    icon: Bot, 
+    label: "AI Citations", 
+    description: "Track brand mentions in Google AI Overview and ChatGPT",
+    color: "text-pink-600 dark:text-pink-400"
+  },
 };
 
-type ManualCrawlType = "all_keywords" | "selected_keywords" | "all_pages" | "all_competitors";
+type ManualCrawlType = "all_keywords" | "selected_keywords" | "all_pages" | "all_competitors" | "ai_citations";
 
 export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
   const { toast } = useToast();
@@ -389,6 +402,7 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
       selected_keywords: { crawlType: "keyword_ranks", scope: "selected" },
       all_pages: { crawlType: "pages_health", scope: "all" },
       all_competitors: { crawlType: "competitors", scope: "all" },
+      ai_citations: { crawlType: "llm_citations", scope: "all" },
     };
     
     const params = crawlMap[manualCrawlType];
@@ -750,6 +764,12 @@ export function ScheduledCrawlsPage({ projectId }: { projectId: string }) {
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-purple-600" />
                       All Competitors
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="ai_citations">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-4 h-4 text-pink-600" />
+                      AI Citations
                     </div>
                   </SelectItem>
                 </SelectContent>
