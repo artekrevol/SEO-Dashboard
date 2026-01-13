@@ -886,8 +886,8 @@ export class CrawlSchedulerService {
 
               totalCitations += brandMetrics.total.mentions;
 
-              // Fetch individual citations for brand
-              const brandItems = await dataForSEOService.getLlmMentionsSearch(domain, platform, 2840, "en", 100);
+              // Fetch individual citations for brand (up to 200 per platform)
+              const brandItems = await dataForSEOService.getLlmMentionsSearch(domain, platform, 2840, "en", 200);
               if (brandItems && brandItems.length > 0) {
                 const itemsToInsert = brandItems.flatMap(item => 
                   item.sources.map((source, idx) => ({
@@ -952,7 +952,7 @@ export class CrawlSchedulerService {
         }
       }
 
-      // Fetch competitor data
+      // Fetch competitor data (aggregated metrics, citations, and top pages)
       if (competitors.length > 0) {
         for (const comp of competitors) {
           for (const platform of platforms) {
@@ -964,7 +964,7 @@ export class CrawlSchedulerService {
                 // Find the most recent run for this platform
                 const runs = await storage.getLlmCitationRuns(projectId, 1);
                 if (runs.length > 0) {
-                  await storage.createLlmCitationSnapshot({
+                  const compSnapshot = await storage.createLlmCitationSnapshot({
                     runId: runs[0].id,
                     projectId,
                     entityType: "competitor",
@@ -976,6 +976,48 @@ export class CrawlSchedulerService {
                     impressions: compMetrics.total.impressions,
                     pagesCount: compMetrics.topSourceDomains.length,
                   });
+
+                  // Fetch individual citations for competitor
+                  const compItems = await dataForSEOService.getLlmMentionsSearch(comp.domain, platform, 2840, "en", 200);
+                  if (compItems && compItems.length > 0) {
+                    const itemsToInsert = compItems.flatMap(item => 
+                      item.sources.map((source, idx) => ({
+                        snapshotId: compSnapshot.id,
+                        projectId,
+                        question: item.question,
+                        answerExcerpt: item.answer?.substring(0, 1000),
+                        citedUrl: source.url,
+                        citedDomain: source.domain,
+                        citedPageTitle: source.title,
+                        sourceName: source.source_name,
+                        snippet: source.snippet,
+                        referencePosition: source.position || idx + 1,
+                        aiSearchVolume: item.aiSearchVolume,
+                        impressions: item.impressions,
+                        platform,
+                      }))
+                    );
+                    await storage.createLlmCitationItems(itemsToInsert);
+                    totalCitations += compItems.reduce((sum, item) => sum + item.sources.length, 0);
+                  }
+
+                  // Fetch top pages for competitor
+                  const compTopPages = await dataForSEOService.getLlmMentionsTopPages(comp.domain, platform);
+                  if (compTopPages && compTopPages.length > 0) {
+                    const pagesToInsert = compTopPages.map(page => ({
+                      snapshotId: compSnapshot.id,
+                      projectId,
+                      url: page.url,
+                      domain: page.domain,
+                      pageTitle: page.title,
+                      mentionsCount: page.mentions,
+                      aiSearchVolume: page.aiSearchVolume,
+                      impressions: page.impressions,
+                      platform,
+                    }));
+                    await storage.createLlmCitationTopPages(pagesToInsert);
+                    totalPages += compTopPages.length;
+                  }
                 }
               }
 
@@ -985,7 +1027,7 @@ export class CrawlSchedulerService {
               }
 
               // Small delay to avoid rate limiting
-              await new Promise(resolve => setTimeout(resolve, 300));
+              await new Promise(resolve => setTimeout(resolve, 500));
             } catch (error) {
               console.error(`[CrawlScheduler] Error fetching LLM mentions for competitor ${comp.domain}:`, error);
             }

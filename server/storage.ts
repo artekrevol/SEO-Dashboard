@@ -4961,26 +4961,39 @@ export class DatabaseStorage implements IStorage {
     await db.insert(llmCitationTopPages).values(pages);
   }
 
-  async getLlmCitationTopPages(projectId: string, platform?: string): Promise<LlmCitationTopPage[]> {
+  async getLlmCitationTopPages(projectId: string, platform?: string, entityType?: string): Promise<(LlmCitationTopPage & { entityType: string; entityName: string | null })[]> {
     const latestRun = await this.getLatestLlmCitationRun(projectId, platform);
     if (!latestRun) return [];
 
-    const conditions = [eq(llmCitationTopPages.projectId, projectId)];
+    // Build snapshot query - filter by entity type if specified, otherwise get all
+    const snapshotConditions = [eq(llmCitationSnapshots.runId, latestRun.id)];
+    if (entityType) {
+      snapshotConditions.push(eq(llmCitationSnapshots.entityType, entityType));
+    }
     
-    const snapshotIds = await db.select({ id: llmCitationSnapshots.id })
+    const snapshots = await db.select({ 
+      id: llmCitationSnapshots.id,
+      entityType: llmCitationSnapshots.entityType,
+      entityName: llmCitationSnapshots.entityName,
+    })
       .from(llmCitationSnapshots)
-      .where(and(
-        eq(llmCitationSnapshots.runId, latestRun.id),
-        eq(llmCitationSnapshots.entityType, 'brand')
-      ));
+      .where(and(...snapshotConditions));
 
-    if (snapshotIds.length === 0) return [];
+    if (snapshots.length === 0) return [];
 
-    return db.select()
+    const snapshotMap = new Map(snapshots.map(s => [s.id, s]));
+
+    const pages = await db.select()
       .from(llmCitationTopPages)
-      .where(inArray(llmCitationTopPages.snapshotId, snapshotIds.map(s => s.id)))
+      .where(inArray(llmCitationTopPages.snapshotId, snapshots.map(s => s.id)))
       .orderBy(desc(llmCitationTopPages.mentionsCount))
-      .limit(20);
+      .limit(50);
+
+    return pages.map(page => ({
+      ...page,
+      entityType: snapshotMap.get(page.snapshotId)?.entityType || 'brand',
+      entityName: snapshotMap.get(page.snapshotId)?.entityName || null,
+    }));
   }
 
   async getLlmCitationGaps(projectId: string): Promise<Array<{

@@ -83,6 +83,8 @@ interface LlmCitationTopPage {
   aiSearchVolume: number | null;
   impressions: number | null;
   platform: string;
+  entityType: string;
+  entityName: string | null;
 }
 
 interface LlmCompetitor {
@@ -105,6 +107,7 @@ interface CompetitorGap {
 export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
   const { toast } = useToast();
   const [selectedPlatform, setSelectedPlatform] = useState<"all" | "google" | "chatgpt">("all");
+  const [selectedEntity, setSelectedEntity] = useState<"all" | "brand" | "competitor">("all");
   const [newCompetitorDomain, setNewCompetitorDomain] = useState("");
   const [isAddingCompetitor, setIsAddingCompetitor] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<LlmCitationItem | null>(null);
@@ -130,10 +133,11 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
   });
 
   const { data: topPagesData, isLoading: topPagesLoading } = useQuery<{ pages: LlmCitationTopPage[] }>({
-    queryKey: ["/api/llm-citations/top-pages", { projectId, platform: selectedPlatform }],
+    queryKey: ["/api/llm-citations/top-pages", { projectId, platform: selectedPlatform, entityType: selectedEntity }],
     queryFn: async () => {
       const params = new URLSearchParams({ projectId: projectId! });
       if (selectedPlatform !== "all") params.append("platform", selectedPlatform);
+      if (selectedEntity !== "all") params.append("entityType", selectedEntity);
       const res = await fetch(`/api/llm-citations/top-pages?${params}`);
       return res.json();
     },
@@ -469,11 +473,26 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
 
         <TabsContent value="top-pages" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Top Cited Pages</CardTitle>
-              <CardDescription>
-                Your pages most frequently cited in AI responses
-              </CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle>Top Cited Pages</CardTitle>
+                <CardDescription>
+                  Pages most frequently cited in AI responses (brand and competitors)
+                </CardDescription>
+              </div>
+              <Select
+                value={selectedEntity}
+                onValueChange={(value) => setSelectedEntity(value as "all" | "brand" | "competitor")}
+              >
+                <SelectTrigger className="w-[150px]" data-testid="select-entity-filter">
+                  <SelectValue placeholder="Filter by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Entities</SelectItem>
+                  <SelectItem value="brand">Your Brand</SelectItem>
+                  <SelectItem value="competitor">Competitors</SelectItem>
+                </SelectContent>
+              </Select>
             </CardHeader>
             <CardContent>
               {topPagesLoading ? (
@@ -486,11 +505,13 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No top pages found yet.</p>
+                  <p className="text-sm mt-1">Run an AI Citations sync to fetch data.</p>
                 </div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Entity</TableHead>
                       <TableHead>Page</TableHead>
                       <TableHead>Platform</TableHead>
                       <TableHead className="text-right">Mentions</TableHead>
@@ -502,13 +523,21 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                     {topPagesData.pages.map((page) => (
                       <TableRow key={page.id} data-testid={`row-page-${page.id}`}>
                         <TableCell>
+                          <Badge 
+                            variant={page.entityType === "brand" ? "default" : "secondary"}
+                            className={page.entityType === "brand" ? "bg-blue-500" : ""}
+                          >
+                            {page.entityType === "brand" ? "Your Brand" : page.entityName || page.domain}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
                           <a
                             href={page.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-primary hover:underline"
                           >
-                            <span className="truncate max-w-[300px]">{page.pageTitle || page.url}</span>
+                            <span className="truncate max-w-[250px]">{page.pageTitle || page.url}</span>
                             <ExternalLink className="h-3 w-3 flex-shrink-0" />
                           </a>
                         </TableCell>

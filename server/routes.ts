@@ -841,12 +841,13 @@ export async function registerRoutes(
     try {
       const projectId = req.query.projectId as string;
       const platform = req.query.platform as string | undefined;
+      const entityType = req.query.entityType as string | undefined;
 
       if (!projectId) {
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const pages = await storage.getLlmCitationTopPages(projectId, platform);
+      const pages = await storage.getLlmCitationTopPages(projectId, platform, entityType);
       res.json({ pages });
     } catch (error) {
       console.error("Error fetching LLM citation top pages:", error);
