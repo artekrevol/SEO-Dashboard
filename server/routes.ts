@@ -2289,7 +2289,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId and crawlType are required" });
       }
       
-      const validTypes = ["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks", "competitor_backlinks"];
+      const validTypes = ["keyword_ranks", "competitors", "pages_health", "deep_discovery", "backlinks", "competitor_backlinks", "llm_citations"];
       if (!validTypes.includes(crawlType)) {
         return res.status(400).json({ error: `Invalid crawlType. Must be one of: ${validTypes.join(", ")}` });
       }

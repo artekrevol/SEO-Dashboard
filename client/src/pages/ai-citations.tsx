@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
@@ -164,7 +165,7 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
 
   const syncCitationsMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/crawls/trigger", { 
+      return await apiRequest("POST", "/api/crawl/trigger", { 
         projectId, 
         crawlType: "llm_citations",
         scope: "all",
