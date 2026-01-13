@@ -69,6 +69,16 @@ import {
   type InsertIntentAlert,
   type AiOverviewCitation,
   type InsertAiOverviewCitation,
+  type LlmCompetitor,
+  type InsertLlmCompetitor,
+  type LlmCitationRun,
+  type InsertLlmCitationRun,
+  type LlmCitationSnapshot,
+  type InsertLlmCitationSnapshot,
+  type LlmCitationItem,
+  type InsertLlmCitationItem,
+  type LlmCitationTopPage,
+  type InsertLlmCitationTopPage,
   users,
   projects,
   keywords,
@@ -109,6 +119,11 @@ import {
   competitorSerpPresence,
   intentAlerts,
   aiOverviewCitations,
+  llmCompetitors,
+  llmCitationRuns,
+  llmCitationSnapshots,
+  llmCitationItems,
+  llmCitationTopPages,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, sql, isNull, or, inArray } from "drizzle-orm";
@@ -4809,6 +4824,203 @@ export class DatabaseStorage implements IStorage {
       rankingsHistory: rankings,
       alerts: kwAlerts,
     };
+  }
+
+  // ============================================
+  // LLM CITATIONS (AI Optimization)
+  // ============================================
+
+  async getLlmCompetitors(projectId: string): Promise<LlmCompetitor[]> {
+    return db.select()
+      .from(llmCompetitors)
+      .where(and(
+        eq(llmCompetitors.projectId, projectId),
+        eq(llmCompetitors.isActive, true)
+      ))
+      .orderBy(llmCompetitors.name);
+  }
+
+  async createLlmCompetitor(data: InsertLlmCompetitor): Promise<LlmCompetitor> {
+    const [competitor] = await db.insert(llmCompetitors).values(data).returning();
+    return competitor;
+  }
+
+  async deleteLlmCompetitor(id: number): Promise<void> {
+    await db.delete(llmCompetitors).where(eq(llmCompetitors.id, id));
+  }
+
+  async createLlmCitationRun(data: InsertLlmCitationRun): Promise<LlmCitationRun> {
+    const [run] = await db.insert(llmCitationRuns).values(data).returning();
+    return run;
+  }
+
+  async updateLlmCitationRun(id: number, data: Partial<InsertLlmCitationRun>): Promise<void> {
+    await db.update(llmCitationRuns)
+      .set(data)
+      .where(eq(llmCitationRuns.id, id));
+  }
+
+  async getLatestLlmCitationRun(projectId: string, platform?: string): Promise<LlmCitationRun | null> {
+    const query = db.select()
+      .from(llmCitationRuns)
+      .where(and(
+        eq(llmCitationRuns.projectId, projectId),
+        eq(llmCitationRuns.status, "completed"),
+        platform ? eq(llmCitationRuns.platform, platform) : undefined
+      ))
+      .orderBy(desc(llmCitationRuns.completedAt))
+      .limit(1);
+
+    const [run] = await query;
+    return run || null;
+  }
+
+  async getLlmCitationRuns(projectId: string, limit: number = 20): Promise<LlmCitationRun[]> {
+    return db.select()
+      .from(llmCitationRuns)
+      .where(eq(llmCitationRuns.projectId, projectId))
+      .orderBy(desc(llmCitationRuns.createdAt))
+      .limit(limit);
+  }
+
+  async createLlmCitationSnapshot(data: InsertLlmCitationSnapshot): Promise<LlmCitationSnapshot> {
+    const [snapshot] = await db.insert(llmCitationSnapshots).values(data).returning();
+    return snapshot;
+  }
+
+  async getLatestLlmCitationSnapshots(projectId: string): Promise<LlmCitationSnapshot[]> {
+    const latestRun = await this.getLatestLlmCitationRun(projectId);
+    if (!latestRun) return [];
+
+    return db.select()
+      .from(llmCitationSnapshots)
+      .where(eq(llmCitationSnapshots.runId, latestRun.id))
+      .orderBy(llmCitationSnapshots.entityType, llmCitationSnapshots.platform);
+  }
+
+  async getLlmCitationSummary(projectId: string): Promise<{
+    brand: { google: LlmCitationSnapshot | null; chatGpt: LlmCitationSnapshot | null };
+    competitors: LlmCitationSnapshot[];
+    lastUpdated: Date | null;
+  }> {
+    const snapshots = await this.getLatestLlmCitationSnapshots(projectId);
+    
+    const brandGoogle = snapshots.find(s => s.entityType === 'brand' && s.platform === 'google') || null;
+    const brandChatGpt = snapshots.find(s => s.entityType === 'brand' && s.platform === 'chat_gpt') || null;
+    const competitors = snapshots.filter(s => s.entityType === 'competitor');
+
+    return {
+      brand: { google: brandGoogle, chatGpt: brandChatGpt },
+      competitors,
+      lastUpdated: snapshots.length > 0 ? snapshots[0].capturedAt : null,
+    };
+  }
+
+  async createLlmCitationItem(data: InsertLlmCitationItem): Promise<LlmCitationItem> {
+    const [item] = await db.insert(llmCitationItems).values(data).returning();
+    return item;
+  }
+
+  async createLlmCitationItems(items: InsertLlmCitationItem[]): Promise<void> {
+    if (items.length === 0) return;
+    await db.insert(llmCitationItems).values(items);
+  }
+
+  async getLlmCitationItems(
+    projectId: string,
+    options: { platform?: string; limit?: number; offset?: number } = {}
+  ): Promise<{ items: LlmCitationItem[]; total: number }> {
+    const { platform, limit = 50, offset = 0 } = options;
+
+    const conditions = [eq(llmCitationItems.projectId, projectId)];
+    if (platform) {
+      conditions.push(eq(llmCitationItems.platform, platform));
+    }
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)` })
+      .from(llmCitationItems)
+      .where(and(...conditions));
+
+    const items = await db.select()
+      .from(llmCitationItems)
+      .where(and(...conditions))
+      .orderBy(desc(llmCitationItems.capturedAt))
+      .limit(limit)
+      .offset(offset);
+
+    return { items, total: countResult?.count || 0 };
+  }
+
+  async createLlmCitationTopPage(data: InsertLlmCitationTopPage): Promise<LlmCitationTopPage> {
+    const [page] = await db.insert(llmCitationTopPages).values(data).returning();
+    return page;
+  }
+
+  async createLlmCitationTopPages(pages: InsertLlmCitationTopPage[]): Promise<void> {
+    if (pages.length === 0) return;
+    await db.insert(llmCitationTopPages).values(pages);
+  }
+
+  async getLlmCitationTopPages(projectId: string, platform?: string): Promise<LlmCitationTopPage[]> {
+    const latestRun = await this.getLatestLlmCitationRun(projectId, platform);
+    if (!latestRun) return [];
+
+    const conditions = [eq(llmCitationTopPages.projectId, projectId)];
+    
+    const snapshotIds = await db.select({ id: llmCitationSnapshots.id })
+      .from(llmCitationSnapshots)
+      .where(and(
+        eq(llmCitationSnapshots.runId, latestRun.id),
+        eq(llmCitationSnapshots.entityType, 'brand')
+      ));
+
+    if (snapshotIds.length === 0) return [];
+
+    return db.select()
+      .from(llmCitationTopPages)
+      .where(inArray(llmCitationTopPages.snapshotId, snapshotIds.map(s => s.id)))
+      .orderBy(desc(llmCitationTopPages.mentionsCount))
+      .limit(20);
+  }
+
+  async getLlmCitationGaps(projectId: string): Promise<Array<{
+    competitorDomain: string;
+    competitorName: string | null;
+    competitorMentions: number;
+    brandMentions: number;
+    gap: number;
+    platform: string;
+  }>> {
+    const snapshots = await this.getLatestLlmCitationSnapshots(projectId);
+    
+    const brandSnapshots = snapshots.filter(s => s.entityType === 'brand');
+    const competitorSnapshots = snapshots.filter(s => s.entityType === 'competitor');
+
+    const gaps: Array<{
+      competitorDomain: string;
+      competitorName: string | null;
+      competitorMentions: number;
+      brandMentions: number;
+      gap: number;
+      platform: string;
+    }> = [];
+
+    for (const comp of competitorSnapshots) {
+      const brandSnap = brandSnapshots.find(b => b.platform === comp.platform);
+      const brandMentions = brandSnap?.mentionsCount || 0;
+      const gap = (comp.mentionsCount || 0) - brandMentions;
+
+      gaps.push({
+        competitorDomain: comp.entityDomain,
+        competitorName: comp.entityName,
+        competitorMentions: comp.mentionsCount || 0,
+        brandMentions,
+        gap,
+        platform: comp.platform,
+      });
+    }
+
+    return gaps.sort((a, b) => b.gap - a.gap);
   }
 }
 

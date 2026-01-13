@@ -5,7 +5,7 @@ import { db } from "./db";
 import { insertProjectSchema, insertKeywordSchema, insertSeoRecommendationSchema, crawlSchedules, keywords, keywordMetrics, rankingsHistory } from "@shared/schema";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { DataForSEOService } from "./services/dataforseo";
+import { DataForSEOService, createDataForSEOService } from "./services/dataforseo";
 import { 
   runDailySEOSnapshot, 
   runKeywordMetricsUpdate, 
@@ -761,6 +761,296 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching AI mentions for keyword:", error);
       res.status(500).json({ error: "Failed to fetch AI mentions for keyword" });
+    }
+  });
+
+  // ============================================
+  // LLM CITATIONS (DataForSEO AI Optimization)
+  // ============================================
+
+  // Get LLM citation summary for dashboard
+  app.get("/api/llm-citations/summary", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const summary = await storage.getLlmCitationSummary(projectId);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching LLM citation summary:", error);
+      res.status(500).json({ error: "Failed to fetch LLM citation summary" });
+    }
+  });
+
+  // Get LLM citation items list
+  app.get("/api/llm-citations/items", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const platform = req.query.platform as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const result = await storage.getLlmCitationItems(projectId, { platform, limit, offset });
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching LLM citation items:", error);
+      res.status(500).json({ error: "Failed to fetch LLM citation items" });
+    }
+  });
+
+  // Get LLM citation top pages
+  app.get("/api/llm-citations/top-pages", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const platform = req.query.platform as string | undefined;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const pages = await storage.getLlmCitationTopPages(projectId, platform);
+      res.json({ pages });
+    } catch (error) {
+      console.error("Error fetching LLM citation top pages:", error);
+      res.status(500).json({ error: "Failed to fetch LLM citation top pages" });
+    }
+  });
+
+  // Get LLM citation competitor gaps
+  app.get("/api/llm-citations/gaps", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const gaps = await storage.getLlmCitationGaps(projectId);
+      res.json({ gaps });
+    } catch (error) {
+      console.error("Error fetching LLM citation gaps:", error);
+      res.status(500).json({ error: "Failed to fetch LLM citation gaps" });
+    }
+  });
+
+  // Get LLM competitors list
+  app.get("/api/llm-citations/competitors", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const competitors = await storage.getLlmCompetitors(projectId);
+      res.json({ competitors });
+    } catch (error) {
+      console.error("Error fetching LLM competitors:", error);
+      res.status(500).json({ error: "Failed to fetch LLM competitors" });
+    }
+  });
+
+  // Add LLM competitor
+  app.post("/api/llm-citations/competitors", async (req, res) => {
+    try {
+      const { projectId, domain, name } = req.body;
+
+      if (!projectId || !domain) {
+        return res.status(400).json({ error: "projectId and domain are required" });
+      }
+
+      const competitor = await storage.createLlmCompetitor({
+        projectId,
+        domain: domain.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, ""),
+        name: name || domain,
+        isActive: true,
+      });
+
+      res.json(competitor);
+    } catch (error) {
+      console.error("Error creating LLM competitor:", error);
+      res.status(500).json({ error: "Failed to create LLM competitor" });
+    }
+  });
+
+  // Delete LLM competitor
+  app.delete("/api/llm-citations/competitors/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Valid competitor ID is required" });
+      }
+
+      await storage.deleteLlmCompetitor(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting LLM competitor:", error);
+      res.status(500).json({ error: "Failed to delete LLM competitor" });
+    }
+  });
+
+  // Get LLM citation runs history
+  app.get("/api/llm-citations/runs", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const runs = await storage.getLlmCitationRuns(projectId, limit);
+      res.json({ runs });
+    } catch (error) {
+      console.error("Error fetching LLM citation runs:", error);
+      res.status(500).json({ error: "Failed to fetch LLM citation runs" });
+    }
+  });
+
+  // Fetch LLM citations from DataForSEO (trigger crawl)
+  app.post("/api/llm-citations/fetch", async (req, res) => {
+    try {
+      const { projectId, platform = "google" } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const dataForSEOService = createDataForSEOService();
+      if (!dataForSEOService) {
+        return res.status(503).json({ error: "DataForSEO service is not configured" });
+      }
+
+      // Create a run record
+      const run = await storage.createLlmCitationRun({
+        projectId,
+        platform,
+        status: "running",
+        startedAt: new Date(),
+      });
+
+      // Fetch data asynchronously
+      (async () => {
+        try {
+          const domain = project.domain.replace(/^https?:\/\//, "").replace(/^www\./, "");
+
+          // Fetch aggregated metrics for brand
+          const brandMetrics = await dataForSEOService.getLlmMentionsAggregated(domain, platform as "google" | "chat_gpt");
+          
+          if (brandMetrics) {
+            // Create brand snapshot
+            const brandSnapshot = await storage.createLlmCitationSnapshot({
+              runId: run.id,
+              projectId,
+              entityType: "brand",
+              entityDomain: domain,
+              entityName: project.name,
+              platform,
+              mentionsCount: brandMetrics.total.mentions,
+              aiSearchVolume: brandMetrics.total.ai_search_volume,
+              impressions: brandMetrics.total.impressions,
+              pagesCount: brandMetrics.topSourceDomains.length,
+            });
+
+            // Fetch individual citations for brand
+            const brandItems = await dataForSEOService.getLlmMentionsSearch(domain, platform as "google" | "chat_gpt", 2840, "en", 100);
+            if (brandItems && brandItems.length > 0) {
+              const itemsToInsert = brandItems.flatMap(item => 
+                item.sources.map((source, idx) => ({
+                  snapshotId: brandSnapshot.id,
+                  projectId,
+                  question: item.question,
+                  answerExcerpt: item.answer?.substring(0, 1000),
+                  citedUrl: source.url,
+                  citedDomain: source.domain,
+                  citedPageTitle: source.title,
+                  sourceName: source.source_name,
+                  snippet: source.snippet,
+                  referencePosition: source.position || idx + 1,
+                  aiSearchVolume: item.aiSearchVolume,
+                  impressions: item.impressions,
+                  platform,
+                }))
+              );
+              await storage.createLlmCitationItems(itemsToInsert);
+            }
+
+            // Fetch top pages for brand
+            const topPages = await dataForSEOService.getLlmMentionsTopPages(domain, platform as "google" | "chat_gpt");
+            if (topPages && topPages.length > 0) {
+              const pagesToInsert = topPages.map(page => ({
+                snapshotId: brandSnapshot.id,
+                projectId,
+                url: page.url,
+                domain: page.domain,
+                pageTitle: page.title,
+                mentionsCount: page.mentions,
+                aiSearchVolume: page.aiSearchVolume,
+                impressions: page.impressions,
+                platform,
+              }));
+              await storage.createLlmCitationTopPages(pagesToInsert);
+            }
+          }
+
+          // Fetch competitor data if we have competitors configured
+          const competitors = await storage.getLlmCompetitors(projectId);
+          if (competitors.length > 0) {
+            for (const comp of competitors) {
+              const compMetrics = await dataForSEOService.getLlmMentionsAggregated(comp.domain, platform as "google" | "chat_gpt");
+              if (compMetrics) {
+                await storage.createLlmCitationSnapshot({
+                  runId: run.id,
+                  projectId,
+                  entityType: "competitor",
+                  entityDomain: comp.domain,
+                  entityName: comp.name,
+                  platform,
+                  mentionsCount: compMetrics.total.mentions,
+                  aiSearchVolume: compMetrics.total.ai_search_volume,
+                  impressions: compMetrics.total.impressions,
+                  pagesCount: compMetrics.topSourceDomains.length,
+                });
+              }
+            }
+          }
+
+          // Mark run as completed
+          await storage.updateLlmCitationRun(run.id, {
+            status: "completed",
+            completedAt: new Date(),
+            totalCost: String(brandMetrics?.cost || 0),
+          });
+
+          console.log(`[LLM Citations] Completed fetch for project ${projectId} on ${platform}`);
+        } catch (error) {
+          console.error(`[LLM Citations] Error during fetch:`, error);
+          await storage.updateLlmCitationRun(run.id, {
+            status: "failed",
+            completedAt: new Date(),
+            errorMessage: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      })();
+
+      res.json({ 
+        message: "LLM citation fetch started",
+        runId: run.id,
+      });
+    } catch (error) {
+      console.error("Error starting LLM citation fetch:", error);
+      res.status(500).json({ error: "Failed to start LLM citation fetch" });
     }
   });
 
