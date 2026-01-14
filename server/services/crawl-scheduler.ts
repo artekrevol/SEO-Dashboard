@@ -944,42 +944,103 @@ export class CrawlSchedulerService {
               totalCitations += actualMentionsCount;
 
               if (uniqueItems.length > 0) {
-                const itemsToInsert = uniqueItems.flatMap(item => 
-                  item.sources.map((source, idx) => ({
-                    snapshotId: brandSnapshot.id,
-                    projectId,
-                    question: item.question,
-                    answerExcerpt: item.answer?.substring(0, 1000),
-                    citedUrl: source.url,
-                    citedDomain: source.domain,
-                    citedPageTitle: source.title,
-                    sourceName: source.source_name,
-                    snippet: source.snippet,
-                    referencePosition: source.position || idx + 1,
-                    aiSearchVolume: item.aiSearchVolume,
-                    impressions: item.impressions,
-                    platform,
-                  }))
-                );
-                await storage.createLlmCitationItems(itemsToInsert);
+                // Filter to only store citations that reference our brand domain
+                // or come from keyword mentions (which contain our brand name in the answer)
+                const domainLower = domain.toLowerCase().replace(/^www\./, '');
+                const brandLower = brandKeyword.toLowerCase();
+                
+                type CitationItem = {
+                  snapshotId: number;
+                  projectId: string;
+                  question: string;
+                  answerExcerpt: string;
+                  citedUrl: string;
+                  citedDomain: string;
+                  citedPageTitle: string;
+                  sourceName: string;
+                  snippet: string;
+                  referencePosition: number;
+                  aiSearchVolume: number;
+                  impressions: number;
+                  platform: "google" | "chat_gpt";
+                };
+                
+                const itemsToInsert: CitationItem[] = uniqueItems.flatMap(item => {
+                  // For domain search results, we only want sources that match our domain
+                  // For keyword search results, we store the question/answer context
+                  const relevantSources = item.sources.filter(source => {
+                    const sourceDomain = (source.domain || '').toLowerCase().replace(/^www\./, '');
+                    return sourceDomain.includes(domainLower) || sourceDomain.includes(brandLower);
+                  });
+                  
+                  // If we have brand-specific sources, store them
+                  if (relevantSources.length > 0) {
+                    return relevantSources.map((source, idx) => ({
+                      snapshotId: brandSnapshot.id,
+                      projectId,
+                      question: item.question,
+                      answerExcerpt: item.answer?.substring(0, 1000) || '',
+                      citedUrl: source.url,
+                      citedDomain: source.domain,
+                      citedPageTitle: source.title,
+                      sourceName: source.source_name,
+                      snippet: source.snippet,
+                      referencePosition: source.position || idx + 1,
+                      aiSearchVolume: item.aiSearchVolume,
+                      impressions: item.impressions,
+                      platform,
+                    }));
+                  }
+                  
+                  // For keyword mentions where brand appears in answer but not as source,
+                  // store the mention context without source details
+                  if (item.answer && item.answer.toLowerCase().includes(brandLower)) {
+                    return [{
+                      snapshotId: brandSnapshot.id,
+                      projectId,
+                      question: item.question,
+                      answerExcerpt: item.answer?.substring(0, 1000) || '',
+                      citedUrl: '', // Empty string instead of null
+                      citedDomain: domain, // Mark as our domain since brand is mentioned
+                      citedPageTitle: `Brand mentioned in AI response`,
+                      sourceName: platform === 'google' ? 'Google AI Overview' : 'ChatGPT',
+                      snippet: item.answer?.substring(0, 500) || '',
+                      referencePosition: 0,
+                      aiSearchVolume: item.aiSearchVolume,
+                      impressions: item.impressions,
+                      platform,
+                    }];
+                  }
+                  
+                  return [];
+                });
+                
+                if (itemsToInsert.length > 0) {
+                  await storage.createLlmCitationItems(itemsToInsert);
+                  console.log(`[CrawlScheduler] Stored ${itemsToInsert.length} brand citations for ${platform}`);
+                }
               }
 
               // Fetch top pages for brand domain
               const topPages = await dataForSEOService.getLlmMentionsTopPages(domain, platform);
               if (topPages && topPages.length > 0) {
-                const pagesToInsert = topPages.map(page => ({
-                  snapshotId: brandSnapshot.id,
-                  projectId,
-                  url: page.url,
-                  domain: page.domain,
-                  pageTitle: page.title,
-                  mentionsCount: page.mentions,
-                  aiSearchVolume: page.aiSearchVolume,
-                  impressions: page.impressions,
-                  platform,
-                }));
-                await storage.createLlmCitationTopPages(pagesToInsert);
-                totalPages += topPages.length;
+                // Filter out pages with null/empty URLs
+                const validPages = topPages.filter(page => page.url && page.url.trim() !== '');
+                if (validPages.length > 0) {
+                  const pagesToInsert = validPages.map(page => ({
+                    snapshotId: brandSnapshot.id,
+                    projectId,
+                    url: page.url,
+                    domain: page.domain || domain,
+                    pageTitle: page.title || '',
+                    mentionsCount: page.mentions,
+                    aiSearchVolume: page.aiSearchVolume,
+                    impressions: page.impressions,
+                    platform,
+                  }));
+                  await storage.createLlmCitationTopPages(pagesToInsert);
+                  totalPages += validPages.length;
+                }
               }
             }
           } catch (error) {
@@ -1002,62 +1063,78 @@ export class CrawlSchedulerService {
             try {
               console.log(`[CrawlScheduler] Fetching LLM mentions for competitor ${comp.domain} on ${platform}`);
               
+              // First fetch citations to get actual count
+              const compItems = await dataForSEOService.getLlmMentionsSearch(comp.domain, platform, 2840, "en", 200);
+              const actualCitationCount = compItems ? compItems.reduce((sum, item) => sum + item.sources.length, 0) : 0;
+              const actualAiVolume = compItems ? compItems.reduce((sum, item) => sum + (item.aiSearchVolume || 0), 0) : 0;
+              
+              // Get aggregated metrics for additional info
               const compMetrics = await dataForSEOService.getLlmMentionsAggregated(comp.domain, platform);
-              if (compMetrics) {
-                // Use the same run we created at the start
-                const compSnapshot = await storage.createLlmCitationSnapshot({
-                  runId: run.id,
-                  projectId,
-                  entityType: "competitor",
-                  entityDomain: comp.domain,
-                  entityName: comp.name,
-                  platform,
-                  mentionsCount: compMetrics.total.mentions,
-                  aiSearchVolume: compMetrics.total.ai_search_volume,
-                  impressions: compMetrics.total.impressions,
-                  pagesCount: compMetrics.topSourceDomains.length,
-                });
+              
+              // Use actual counts if aggregated returns 0
+              const mentionsCount = (compMetrics?.total?.mentions || 0) > 0 
+                ? compMetrics!.total.mentions 
+                : actualCitationCount;
+              const aiSearchVolume = (compMetrics?.total?.ai_search_volume || 0) > 0
+                ? compMetrics!.total.ai_search_volume
+                : actualAiVolume;
+              
+              // Create snapshot with actual data
+              const compSnapshot = await storage.createLlmCitationSnapshot({
+                runId: run.id,
+                projectId,
+                entityType: "competitor",
+                entityDomain: comp.domain,
+                entityName: comp.name,
+                platform,
+                mentionsCount,
+                aiSearchVolume,
+                impressions: compMetrics?.total.impressions || 0,
+                pagesCount: compMetrics?.topSourceDomains.length || 0,
+              });
 
-                // Fetch individual citations for competitor
-                const compItems = await dataForSEOService.getLlmMentionsSearch(comp.domain, platform, 2840, "en", 200);
-                if (compItems && compItems.length > 0) {
-                  const itemsToInsert = compItems.flatMap(item => 
-                    item.sources.map((source, idx) => ({
-                      snapshotId: compSnapshot.id,
-                      projectId,
-                      question: item.question,
-                      answerExcerpt: item.answer?.substring(0, 1000),
-                      citedUrl: source.url,
-                      citedDomain: source.domain,
-                      citedPageTitle: source.title,
-                      sourceName: source.source_name,
-                      snippet: source.snippet,
-                      referencePosition: source.position || idx + 1,
-                      aiSearchVolume: item.aiSearchVolume,
-                      impressions: item.impressions,
-                      platform,
-                    }))
-                  );
-                  await storage.createLlmCitationItems(itemsToInsert);
-                  totalCitations += compItems.reduce((sum, item) => sum + item.sources.length, 0);
-                }
+              // Store the citations we already fetched
+              if (compItems && compItems.length > 0) {
+                const itemsToInsert = compItems.flatMap(item => 
+                  item.sources.map((source, idx) => ({
+                    snapshotId: compSnapshot.id,
+                    projectId,
+                    question: item.question,
+                    answerExcerpt: item.answer?.substring(0, 1000),
+                    citedUrl: source.url,
+                    citedDomain: source.domain,
+                    citedPageTitle: source.title,
+                    sourceName: source.source_name,
+                    snippet: source.snippet,
+                    referencePosition: source.position || idx + 1,
+                    aiSearchVolume: item.aiSearchVolume,
+                    impressions: item.impressions,
+                    platform,
+                  }))
+                );
+                await storage.createLlmCitationItems(itemsToInsert);
+                totalCitations += actualCitationCount;
+              }
 
-                // Fetch top pages for competitor
-                const compTopPages = await dataForSEOService.getLlmMentionsTopPages(comp.domain, platform);
-                if (compTopPages && compTopPages.length > 0) {
-                  const pagesToInsert = compTopPages.map(page => ({
+              // Fetch top pages for competitor
+              const compTopPages = await dataForSEOService.getLlmMentionsTopPages(comp.domain, platform);
+              if (compTopPages && compTopPages.length > 0) {
+                // Filter out pages with null/empty URLs
+                const validCompPages = compTopPages.filter(page => page.url && page.url.trim() !== '');
+                if (validCompPages.length > 0) {
+                  const pagesToInsert = validCompPages.map(page => ({
                     snapshotId: compSnapshot.id,
                     projectId,
                     url: page.url,
-                    domain: page.domain,
-                    pageTitle: page.title,
+                    domain: page.domain || comp.domain,
+                    pageTitle: page.title || '',
                     mentionsCount: page.mentions,
                     aiSearchVolume: page.aiSearchVolume,
                     impressions: page.impressions,
                     platform,
                   }));
                   await storage.createLlmCitationTopPages(pagesToInsert);
-                  totalPages += compTopPages.length;
+                  totalPages += validCompPages.length;
                 }
               }
 

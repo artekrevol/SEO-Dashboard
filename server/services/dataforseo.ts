@@ -2798,9 +2798,8 @@ export class DataForSEOService {
       }>("/ai_optimization/llm_mentions/search/live", "POST", [{
         target: [{ 
           keyword, 
-          search_filter: "include", 
           search_scope: searchScope,
-          match_type: "partial_match" // Find "tekrevol" in "tekrevol.com" etc.
+          match_type: "partial_match"
         }],
         platform,
         location_code: locationCode,
@@ -2876,7 +2875,6 @@ export class DataForSEOService {
       }>("/ai_optimization/llm_mentions/aggregated_metrics/live", "POST", [{
         target: [{ 
           keyword, 
-          search_filter: "include",
           search_scope: ["any"],
           match_type: "partial_match"
         }],
