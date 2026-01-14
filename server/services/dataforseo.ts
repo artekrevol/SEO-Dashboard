@@ -70,20 +70,26 @@ interface LlmMentionItem {
   sources: Array<{
     snippet: string;
     source_name: string;
+    thumbnail?: string;
+    markdown?: string;
     position: number;
     title: string;
     domain: string;
     url: string;
+    publication_date?: string;
   }>;
   searchResults: Array<{
     description: string;
+    breadcrumb?: string;
     position: number;
     title: string;
     domain: string;
     url: string;
+    publication_date?: string;
   }>;
   aiSearchVolume: number;
   impressions: number;
+  searchType?: "domain" | "keyword"; // Track how this mention was found
 }
 
 interface LlmMentionsCrossAggregatedResult {
@@ -2676,17 +2682,22 @@ export class DataForSEOService {
               sources: Array<{
                 snippet: string;
                 source_name: string;
+                thumbnail?: string;
+                markdown?: string;
                 position: number;
                 title: string;
                 domain: string;
                 url: string;
+                publication_date?: string;
               }>;
               search_results: Array<{
                 description: string;
+                breadcrumb?: string;
                 position: number;
                 title: string;
                 domain: string;
                 url: string;
+                publication_date?: string;
               }>;
               ai_search_volume: number;
               impressions: number;
@@ -2699,6 +2710,7 @@ export class DataForSEOService {
         location_code: locationCode,
         language_code: languageCode,
         limit,
+        order_by: ["ai_search_volume,desc"], // Get highest-value mentions first
       }], 120000);
 
       const task = response.tasks?.[0];
@@ -2720,9 +2732,176 @@ export class DataForSEOService {
         searchResults: item.search_results || [],
         aiSearchVolume: item.ai_search_volume || 0,
         impressions: item.impressions || 0,
+        searchType: "domain" as const,
       }));
     } catch (error) {
       console.error(`[DataForSEO] Error searching LLM mentions:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Search for brand keyword mentions in AI responses
+   * This finds mentions where the brand name appears in AI answers,
+   * even if the domain isn't directly cited as a source
+   */
+  async getLlmMentionsByKeyword(
+    keyword: string,
+    platform: "google" | "chat_gpt" = "google",
+    locationCode: number = 2840,
+    languageCode: string = "en",
+    limit: number = 100,
+    searchScope: ("any" | "question" | "answer" | "brand_entities" | "fan_out_queries")[] = ["answer"]
+  ): Promise<LlmMentionItem[] | null> {
+    try {
+      console.log(`[DataForSEO] Searching LLM mentions for keyword "${keyword}" on ${platform}`);
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          cost: number;
+          result: Array<{
+            total_count: number;
+            items_count: number;
+            items: Array<{
+              platform: string;
+              location_code: number;
+              language_code: string;
+              question: string;
+              answer: string;
+              sources: Array<{
+                snippet: string;
+                source_name: string;
+                thumbnail?: string;
+                markdown?: string;
+                position: number;
+                title: string;
+                domain: string;
+                url: string;
+                publication_date?: string;
+              }>;
+              search_results: Array<{
+                description: string;
+                breadcrumb?: string;
+                position: number;
+                title: string;
+                domain: string;
+                url: string;
+                publication_date?: string;
+              }>;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+          }>;
+        }>;
+      }>("/ai_optimization/llm_mentions/search/live", "POST", [{
+        target: [{ 
+          keyword, 
+          search_filter: "include", 
+          search_scope: searchScope,
+          match_type: "partial_match" // Find "tekrevol" in "tekrevol.com" etc.
+        }],
+        platform,
+        location_code: locationCode,
+        language_code: languageCode,
+        limit,
+        order_by: ["ai_search_volume,desc"],
+      }], 120000);
+
+      const task = response.tasks?.[0];
+      if (!task || task.status_code !== 20000) {
+        console.error(`[DataForSEO] LLM Mentions Keyword Search API error:`, task?.status_message);
+        return null;
+      }
+
+      const result = task.result?.[0];
+      if (!result || !result.items) return [];
+
+      return result.items.map(item => ({
+        platform: item.platform,
+        locationCode: item.location_code,
+        languageCode: item.language_code,
+        question: item.question,
+        answer: item.answer,
+        sources: item.sources || [],
+        searchResults: item.search_results || [],
+        aiSearchVolume: item.ai_search_volume || 0,
+        impressions: item.impressions || 0,
+        searchType: "keyword" as const,
+      }));
+    } catch (error) {
+      console.error(`[DataForSEO] Error searching LLM mentions by keyword:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get aggregated metrics for a brand keyword (not just domain)
+   */
+  async getLlmMentionsAggregatedByKeyword(
+    keyword: string,
+    platform: "google" | "chat_gpt" = "google",
+    locationCode: number = 2840,
+    languageCode: string = "en"
+  ): Promise<LlmMentionsAggregatedResult | null> {
+    try {
+      console.log(`[DataForSEO] Fetching LLM aggregated metrics for keyword "${keyword}" on ${platform}`);
+
+      const response = await this.makeRequest<{
+        tasks: Array<{
+          status_code: number;
+          status_message: string;
+          cost: number;
+          result: Array<{
+            total: {
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            };
+            platform: Array<{
+              key: string;
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+            sources_domain: Array<{
+              key: string;
+              mentions: number;
+              ai_search_volume: number;
+              impressions: number;
+            }>;
+          }>;
+        }>;
+      }>("/ai_optimization/llm_mentions/aggregated_metrics/live", "POST", [{
+        target: [{ 
+          keyword, 
+          search_filter: "include",
+          search_scope: ["any"],
+          match_type: "partial_match"
+        }],
+        platform,
+        location_code: locationCode,
+        language_code: languageCode,
+      }], 120000);
+
+      const task = response.tasks?.[0];
+      if (!task || task.status_code !== 20000) {
+        console.error(`[DataForSEO] LLM Mentions Keyword Aggregated API error:`, task?.status_message);
+        return null;
+      }
+
+      const result = task.result?.[0];
+      if (!result) return null;
+
+      return {
+        total: result.total || { mentions: 0, ai_search_volume: 0, impressions: 0 },
+        platforms: result.platform || [],
+        topSourceDomains: result.sources_domain || [],
+        cost: task.cost || 0,
+      };
+    } catch (error) {
+      console.error(`[DataForSEO] Error fetching LLM mentions aggregated by keyword:`, error);
       return null;
     }
   }

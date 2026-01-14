@@ -852,25 +852,82 @@ export class CrawlSchedulerService {
       let totalCitations = 0;
       let totalPages = 0;
 
+      // Extract brand keyword from project name (remove common suffixes)
+      const brandKeyword = project.name.toLowerCase()
+        .replace(/\.(com|org|net|io|co|ai|app)$/i, '')
+        .replace(/[^a-z0-9]/g, '');
+      
+      console.log(`[CrawlScheduler] Will search for domain "${domain}" AND keyword "${brandKeyword}"`);
+
+      // Create a SINGLE run record for all platforms (so summary query gets all data)
+      const run = await storage.createLlmCitationRun({
+        projectId,
+        platform: "all", // Single run for all platforms
+        status: "running",
+        startedAt: new Date(),
+      });
+
       // Process both platforms for the brand
       for (const platform of platforms) {
         try {
           console.log(`[CrawlScheduler] Fetching LLM mentions for ${domain} on ${platform}`);
-          
-          // Create a run record
-          const run = await storage.createLlmCitationRun({
-            projectId,
-            platform,
-            status: "running",
-            startedAt: new Date(),
-          });
 
           try {
-            // Fetch aggregated metrics for brand
-            const brandMetrics = await dataForSEOService.getLlmMentionsAggregated(domain, platform);
+            // 1. Fetch aggregated metrics for brand DOMAIN
+            const domainMetrics = await dataForSEOService.getLlmMentionsAggregated(domain, platform);
             
-            if (brandMetrics) {
-              // Create brand snapshot
+            // 2. Also fetch aggregated metrics by KEYWORD (brand name)
+            // This captures mentions where brand is discussed but domain not cited
+            const keywordMetrics = await dataForSEOService.getLlmMentionsAggregatedByKeyword(brandKeyword, platform);
+            
+            // Combine metrics (take the higher values)
+            const combinedMentions = Math.max(
+              domainMetrics?.total.mentions || 0,
+              keywordMetrics?.total.mentions || 0
+            );
+            const combinedVolume = Math.max(
+              domainMetrics?.total.ai_search_volume || 0,
+              keywordMetrics?.total.ai_search_volume || 0
+            );
+            const combinedImpressions = Math.max(
+              domainMetrics?.total.impressions || 0,
+              keywordMetrics?.total.impressions || 0
+            );
+            
+            console.log(`[CrawlScheduler] ${platform}: Domain mentions: ${domainMetrics?.total.mentions || 0}, Keyword mentions: ${keywordMetrics?.total.mentions || 0}`);
+            
+            // 3. Fetch individual citations for brand DOMAIN (up to 200 per platform)
+            const domainItems = await dataForSEOService.getLlmMentionsSearch(domain, platform, 2840, "en", 200);
+            
+            // 4. Also fetch citations where brand KEYWORD is mentioned in AI answers
+            const keywordItems = await dataForSEOService.getLlmMentionsByKeyword(brandKeyword, platform, 2840, "en", 200);
+            
+            // Combine and deduplicate citations (by question)
+            const seenQuestions = new Set<string>();
+            const allItems = [...(domainItems || []), ...(keywordItems || [])];
+            
+            const uniqueItems = allItems.filter(item => {
+              const key = item.question?.substring(0, 100);
+              if (seenQuestions.has(key)) return false;
+              seenQuestions.add(key);
+              return true;
+            });
+
+            console.log(`[CrawlScheduler] ${platform}: Domain citations: ${domainItems?.length || 0}, Keyword citations: ${keywordItems?.length || 0}, Unique: ${uniqueItems.length}`);
+
+            // Use actual citation count if aggregated metrics are 0
+            // This handles cases where the search endpoint finds data but aggregated doesn't
+            const actualMentionsCount = uniqueItems.length > 0 ? uniqueItems.length : combinedMentions;
+            const actualAiSearchVolume = uniqueItems.length > 0 
+              ? uniqueItems.reduce((sum, item) => sum + (item.aiSearchVolume || 0), 0)
+              : combinedVolume;
+            const actualImpressions = uniqueItems.length > 0
+              ? uniqueItems.reduce((sum, item) => sum + (item.impressions || 0), 0)
+              : combinedImpressions;
+
+            // Always create snapshot if we have any data from either source
+            if (actualMentionsCount > 0 || domainMetrics || keywordMetrics) {
+              // Create brand snapshot with actual data from citations
               const brandSnapshot = await storage.createLlmCitationSnapshot({
                 runId: run.id,
                 projectId,
@@ -878,18 +935,16 @@ export class CrawlSchedulerService {
                 entityDomain: domain,
                 entityName: project.name,
                 platform,
-                mentionsCount: brandMetrics.total.mentions,
-                aiSearchVolume: brandMetrics.total.ai_search_volume,
-                impressions: brandMetrics.total.impressions,
-                pagesCount: brandMetrics.topSourceDomains.length,
+                mentionsCount: actualMentionsCount,
+                aiSearchVolume: actualAiSearchVolume,
+                impressions: actualImpressions,
+                pagesCount: domainMetrics?.topSourceDomains.length || keywordMetrics?.topSourceDomains.length || 0,
               });
 
-              totalCitations += brandMetrics.total.mentions;
+              totalCitations += actualMentionsCount;
 
-              // Fetch individual citations for brand (up to 200 per platform)
-              const brandItems = await dataForSEOService.getLlmMentionsSearch(domain, platform, 2840, "en", 200);
-              if (brandItems && brandItems.length > 0) {
-                const itemsToInsert = brandItems.flatMap(item => 
+              if (uniqueItems.length > 0) {
+                const itemsToInsert = uniqueItems.flatMap(item => 
                   item.sources.map((source, idx) => ({
                     snapshotId: brandSnapshot.id,
                     projectId,
@@ -909,7 +964,7 @@ export class CrawlSchedulerService {
                 await storage.createLlmCitationItems(itemsToInsert);
               }
 
-              // Fetch top pages for brand
+              // Fetch top pages for brand domain
               const topPages = await dataForSEOService.getLlmMentionsTopPages(domain, platform);
               if (topPages && topPages.length > 0) {
                 const pagesToInsert = topPages.map(page => ({
@@ -927,20 +982,8 @@ export class CrawlSchedulerService {
                 totalPages += topPages.length;
               }
             }
-
-            // Mark run as completed
-            await storage.updateLlmCitationRun(run.id, {
-              status: "completed",
-              completedAt: new Date(),
-              totalCost: String(brandMetrics?.cost || 0),
-            });
           } catch (error) {
             console.error(`[CrawlScheduler] Error fetching LLM mentions for ${platform}:`, error);
-            await storage.updateLlmCitationRun(run.id, {
-              status: "failed",
-              completedAt: new Date(),
-              errorMessage: error instanceof Error ? error.message : "Unknown error",
-            });
           }
 
           itemsProcessed++;
@@ -961,63 +1004,60 @@ export class CrawlSchedulerService {
               
               const compMetrics = await dataForSEOService.getLlmMentionsAggregated(comp.domain, platform);
               if (compMetrics) {
-                // Find the most recent run for this platform
-                const runs = await storage.getLlmCitationRuns(projectId, 1);
-                if (runs.length > 0) {
-                  const compSnapshot = await storage.createLlmCitationSnapshot({
-                    runId: runs[0].id,
-                    projectId,
-                    entityType: "competitor",
-                    entityDomain: comp.domain,
-                    entityName: comp.name,
-                    platform,
-                    mentionsCount: compMetrics.total.mentions,
-                    aiSearchVolume: compMetrics.total.ai_search_volume,
-                    impressions: compMetrics.total.impressions,
-                    pagesCount: compMetrics.topSourceDomains.length,
-                  });
+                // Use the same run we created at the start
+                const compSnapshot = await storage.createLlmCitationSnapshot({
+                  runId: run.id,
+                  projectId,
+                  entityType: "competitor",
+                  entityDomain: comp.domain,
+                  entityName: comp.name,
+                  platform,
+                  mentionsCount: compMetrics.total.mentions,
+                  aiSearchVolume: compMetrics.total.ai_search_volume,
+                  impressions: compMetrics.total.impressions,
+                  pagesCount: compMetrics.topSourceDomains.length,
+                });
 
-                  // Fetch individual citations for competitor
-                  const compItems = await dataForSEOService.getLlmMentionsSearch(comp.domain, platform, 2840, "en", 200);
-                  if (compItems && compItems.length > 0) {
-                    const itemsToInsert = compItems.flatMap(item => 
-                      item.sources.map((source, idx) => ({
-                        snapshotId: compSnapshot.id,
-                        projectId,
-                        question: item.question,
-                        answerExcerpt: item.answer?.substring(0, 1000),
-                        citedUrl: source.url,
-                        citedDomain: source.domain,
-                        citedPageTitle: source.title,
-                        sourceName: source.source_name,
-                        snippet: source.snippet,
-                        referencePosition: source.position || idx + 1,
-                        aiSearchVolume: item.aiSearchVolume,
-                        impressions: item.impressions,
-                        platform,
-                      }))
-                    );
-                    await storage.createLlmCitationItems(itemsToInsert);
-                    totalCitations += compItems.reduce((sum, item) => sum + item.sources.length, 0);
-                  }
-
-                  // Fetch top pages for competitor
-                  const compTopPages = await dataForSEOService.getLlmMentionsTopPages(comp.domain, platform);
-                  if (compTopPages && compTopPages.length > 0) {
-                    const pagesToInsert = compTopPages.map(page => ({
+                // Fetch individual citations for competitor
+                const compItems = await dataForSEOService.getLlmMentionsSearch(comp.domain, platform, 2840, "en", 200);
+                if (compItems && compItems.length > 0) {
+                  const itemsToInsert = compItems.flatMap(item => 
+                    item.sources.map((source, idx) => ({
                       snapshotId: compSnapshot.id,
                       projectId,
-                      url: page.url,
-                      domain: page.domain,
-                      pageTitle: page.title,
-                      mentionsCount: page.mentions,
-                      aiSearchVolume: page.aiSearchVolume,
-                      impressions: page.impressions,
+                      question: item.question,
+                      answerExcerpt: item.answer?.substring(0, 1000),
+                      citedUrl: source.url,
+                      citedDomain: source.domain,
+                      citedPageTitle: source.title,
+                      sourceName: source.source_name,
+                      snippet: source.snippet,
+                      referencePosition: source.position || idx + 1,
+                      aiSearchVolume: item.aiSearchVolume,
+                      impressions: item.impressions,
                       platform,
-                    }));
-                    await storage.createLlmCitationTopPages(pagesToInsert);
-                    totalPages += compTopPages.length;
-                  }
+                    }))
+                  );
+                  await storage.createLlmCitationItems(itemsToInsert);
+                  totalCitations += compItems.reduce((sum, item) => sum + item.sources.length, 0);
+                }
+
+                // Fetch top pages for competitor
+                const compTopPages = await dataForSEOService.getLlmMentionsTopPages(comp.domain, platform);
+                if (compTopPages && compTopPages.length > 0) {
+                  const pagesToInsert = compTopPages.map(page => ({
+                    snapshotId: compSnapshot.id,
+                    projectId,
+                    url: page.url,
+                    domain: page.domain,
+                    pageTitle: page.title,
+                    mentionsCount: page.mentions,
+                    aiSearchVolume: page.aiSearchVolume,
+                    impressions: page.impressions,
+                    platform,
+                  }));
+                  await storage.createLlmCitationTopPages(pagesToInsert);
+                  totalPages += compTopPages.length;
                 }
               }
 
@@ -1034,6 +1074,12 @@ export class CrawlSchedulerService {
           }
         }
       }
+
+      // Mark the single run as completed
+      await storage.updateLlmCitationRun(run.id, {
+        status: "completed",
+        completedAt: new Date(),
+      });
 
       const stats = {
         platforms: platforms.length,
