@@ -607,7 +607,7 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
             <CardHeader>
               <CardTitle>Competitor Citation Gaps</CardTitle>
               <CardDescription>
-                Compare your AI visibility against competitors - see who is getting more citations
+                Compare your AI visibility against competitors - positive gaps mean they have more citations than you
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -624,38 +624,82 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                   <p className="text-sm">Add competitors and fetch data to identify opportunities.</p>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Competitor</TableHead>
-                      <TableHead>Platform</TableHead>
-                      <TableHead className="text-right">Their Mentions</TableHead>
-                      <TableHead className="text-right">Your Mentions</TableHead>
-                      <TableHead className="text-right">Gap</TableHead>
-                      <TableHead className="text-right">AI Volume</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {gapsData.gaps.map((gap, idx) => (
-                      <TableRow key={idx} data-testid={`row-gap-${idx}`}>
-                        <TableCell className="font-medium">{gap.competitorName}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {gap.platform === "google" ? "Google AI" : "ChatGPT"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{gap.mentionsCount}</TableCell>
-                        <TableCell className="text-right">{gap.brandMentionsCount}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={gap.gap > 0 ? "destructive" : gap.gap < 0 ? "default" : "secondary"}>
-                            {gap.gap > 0 ? `-${gap.gap}` : gap.gap < 0 ? `+${Math.abs(gap.gap)}` : "0"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">{gap.aiSearchVolume.toLocaleString()}</TableCell>
+                <div className="space-y-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Competitor</TableHead>
+                        <TableHead>Platform</TableHead>
+                        <TableHead className="text-right">Their Citations</TableHead>
+                        <TableHead className="text-right">Your Citations</TableHead>
+                        <TableHead className="text-right">Difference</TableHead>
+                        <TableHead>Visibility Comparison</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {gapsData.gaps.map((gap, idx) => {
+                        const total = gap.mentionsCount + gap.brandMentionsCount;
+                        const yourPercent = total > 0 ? Math.round((gap.brandMentionsCount / total) * 100) : 0;
+                        const theirPercent = total > 0 ? Math.round((gap.mentionsCount / total) * 100) : 0;
+                        const isAhead = gap.gap < 0;
+                        const isBehind = gap.gap > 0;
+                        
+                        return (
+                          <TableRow key={idx} data-testid={`row-gap-${idx}`}>
+                            <TableCell>
+                              <div className="font-medium">{gap.competitorName}</div>
+                              <div className="text-xs text-muted-foreground">{gap.competitorDomain}</div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">
+                                {gap.platform === "google" ? "Google AI" : "ChatGPT"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">{gap.mentionsCount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right font-medium">{gap.brandMentionsCount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">
+                              <Badge variant={isBehind ? "destructive" : isAhead ? "default" : "secondary"}>
+                                {isBehind ? (
+                                  <span className="flex items-center gap-1">
+                                    <TrendingDown className="h-3 w-3" />
+                                    {gap.gap.toLocaleString()} behind
+                                  </span>
+                                ) : isAhead ? (
+                                  <span className="flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" />
+                                    {Math.abs(gap.gap).toLocaleString()} ahead
+                                  </span>
+                                ) : "Even"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 min-w-[150px]">
+                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full ${isAhead ? "bg-green-500" : isBehind ? "bg-red-500" : "bg-muted-foreground"}`}
+                                    style={{ width: `${yourPercent}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-muted-foreground w-12">{yourPercent}%</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  
+                  <div className="flex gap-4 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-green-500" />
+                      <span>Ahead of competitor</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded bg-red-500" />
+                      <span>Behind competitor</span>
+                    </div>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>

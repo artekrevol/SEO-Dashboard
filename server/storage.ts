@@ -4992,11 +4992,59 @@ export class DatabaseStorage implements IStorage {
 
     const snapshotMap = new Map(snapshots.map(s => [s.id, s]));
 
-    const pages = await db.select()
+    // Try to get existing top pages
+    let pages = await db.select()
       .from(llmCitationTopPages)
       .where(inArray(llmCitationTopPages.snapshotId, snapshots.map(s => s.id)))
       .orderBy(desc(llmCitationTopPages.mentionsCount))
       .limit(50);
+
+    // Fallback: If no top pages exist, generate them from citation items
+    if (pages.length === 0) {
+      // Aggregate citation items by URL to create top pages
+      const aggregatedPages = await db
+        .select({
+          snapshotId: llmCitationItems.snapshotId,
+          url: llmCitationItems.citedUrl,
+          domain: llmCitationItems.citedDomain,
+          pageTitle: llmCitationItems.citedPageTitle,
+          mentionsCount: sql<number>`count(*)::int`,
+          aiSearchVolume: sql<number>`COALESCE(SUM(${llmCitationItems.aiSearchVolume}), 0)::int`,
+          impressions: sql<number>`COALESCE(SUM(${llmCitationItems.impressions}), 0)::int`,
+          platform: llmCitationItems.platform,
+        })
+        .from(llmCitationItems)
+        .where(and(
+          inArray(llmCitationItems.snapshotId, snapshots.map(s => s.id)),
+          sql`${llmCitationItems.citedUrl} IS NOT NULL AND ${llmCitationItems.citedUrl} != ''`
+        ))
+        .groupBy(
+          llmCitationItems.snapshotId,
+          llmCitationItems.citedUrl,
+          llmCitationItems.citedDomain,
+          llmCitationItems.citedPageTitle,
+          llmCitationItems.platform
+        )
+        .orderBy(sql`count(*) DESC`)
+        .limit(50);
+
+      // Map to the expected format
+      return aggregatedPages.map((page, idx) => ({
+        id: -(idx + 1), // Negative ID to indicate generated
+        snapshotId: page.snapshotId,
+        projectId,
+        url: page.url || '',
+        domain: page.domain || '',
+        pageTitle: page.pageTitle,
+        mentionsCount: page.mentionsCount,
+        aiSearchVolume: page.aiSearchVolume,
+        impressions: page.impressions,
+        platform: page.platform,
+        createdAt: new Date(),
+        entityType: snapshotMap.get(page.snapshotId)?.entityType || 'brand',
+        entityName: snapshotMap.get(page.snapshotId)?.entityName || null,
+      }));
+    }
 
     return pages.map(page => ({
       ...page,
