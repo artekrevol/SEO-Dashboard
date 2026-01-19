@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Globe,
   Sparkles,
+  X,
 } from "lucide-react";
 import { SiGoogle, SiOpenai } from "react-icons/si";
 
@@ -346,7 +347,14 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
               <SiGoogle className="h-5 w-5 text-blue-500" />
               <CardTitle className="text-base">Google AI Overview</CardTitle>
             </div>
-            <Badge variant="secondary">{summary.platforms.google.mentions} mentions</Badge>
+            <Badge 
+              variant={selectedPlatform === "google" ? "default" : "secondary"}
+              className="cursor-pointer hover-elevate"
+              onClick={() => setSelectedPlatform(selectedPlatform === "google" ? "all" : "google")}
+              data-testid="badge-google-mentions"
+            >
+              {summary.platforms.google.mentions} mentions
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -368,7 +376,14 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
               <SiOpenai className="h-5 w-5" />
               <CardTitle className="text-base">ChatGPT</CardTitle>
             </div>
-            <Badge variant="secondary">{summary.platforms.chatgpt.mentions} mentions</Badge>
+            <Badge 
+              variant={selectedPlatform === "chatgpt" ? "default" : "secondary"}
+              className="cursor-pointer hover-elevate"
+              onClick={() => setSelectedPlatform(selectedPlatform === "chatgpt" ? "all" : "chatgpt")}
+              data-testid="badge-chatgpt-mentions"
+            >
+              {summary.platforms.chatgpt.mentions} mentions
+            </Badge>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -398,11 +413,38 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
 
         <TabsContent value="citations" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Citations</CardTitle>
-              <CardDescription>
-                Questions where your brand was cited in AI responses
-              </CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  Recent Citations
+                  {selectedPlatform !== "all" && (
+                    <Badge 
+                      variant="outline" 
+                      className="ml-2 flex items-center gap-1 cursor-pointer"
+                      onClick={() => setSelectedPlatform("all")}
+                      data-testid="badge-platform-filter"
+                      role="button"
+                      aria-label={`Clear ${selectedPlatform === "google" ? "Google AI" : "ChatGPT"} filter`}
+                    >
+                      {selectedPlatform === "google" ? "Google AI" : "ChatGPT"}
+                      <X className="h-3 w-3 ml-1" />
+                    </Badge>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  Specific questions where your brand pages were cited in AI responses
+                </CardDescription>
+              </div>
+              <Select value={selectedPlatform} onValueChange={(v) => setSelectedPlatform(v as typeof selectedPlatform)}>
+                <SelectTrigger className="w-[150px]" data-testid="select-platform-filter">
+                  <SelectValue placeholder="All platforms" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Platforms</SelectItem>
+                  <SelectItem value="google">Google AI</SelectItem>
+                  <SelectItem value="chatgpt">ChatGPT</SelectItem>
+                </SelectContent>
+              </Select>
             </CardHeader>
             <CardContent>
               {itemsLoading ? (
@@ -443,7 +485,7 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                           )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1 text-primary">
+                          <div className="flex items-center gap-1">
                             <span className="truncate max-w-[200px]">{item.citedPageTitle || item.citedUrl}</span>
                             <ChevronRight className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                           </div>
@@ -536,7 +578,8 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                             href={page.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-primary hover:underline"
+                            className="flex items-center gap-1 hover:underline"
+                            data-testid={`link-page-url-${page.id}`}
                           >
                             <span className="truncate max-w-[250px]">{page.pageTitle || page.url}</span>
                             <ExternalLink className="h-3 w-3 flex-shrink-0" />
@@ -564,7 +607,7 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
             <CardHeader>
               <CardTitle>Competitor Citation Gaps</CardTitle>
               <CardDescription>
-                Topics where competitors are cited but you are not
+                Compare your AI visibility against competitors - see who is getting more citations
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -604,8 +647,8 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                         <TableCell className="text-right">{gap.mentionsCount}</TableCell>
                         <TableCell className="text-right">{gap.brandMentionsCount}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant={gap.gap > 10 ? "destructive" : "secondary"}>
-                            -{gap.gap}
+                          <Badge variant={gap.gap > 0 ? "destructive" : gap.gap < 0 ? "default" : "secondary"}>
+                            {gap.gap > 0 ? `-${gap.gap}` : gap.gap < 0 ? `+${Math.abs(gap.gap)}` : "0"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">{gap.aiSearchVolume.toLocaleString()}</TableCell>
@@ -764,7 +807,7 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                         href={selectedCitation.citedUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-primary hover:underline text-sm break-all"
+                        className="flex items-center gap-1 hover:underline text-sm break-all"
                         data-testid="link-cited-url"
                       >
                         {selectedCitation.citedUrl}

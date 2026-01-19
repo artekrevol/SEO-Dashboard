@@ -4928,13 +4928,22 @@ export class DatabaseStorage implements IStorage {
 
   async getLlmCitationItems(
     projectId: string,
-    options: { platform?: string; limit?: number; offset?: number } = {}
+    options: { platform?: string; limit?: number; offset?: number; brandDomain?: string } = {}
   ): Promise<{ items: LlmCitationItem[]; total: number }> {
-    const { platform, limit = 50, offset = 0 } = options;
+    const { platform, limit = 50, offset = 0, brandDomain } = options;
 
     const conditions = [eq(llmCitationItems.projectId, projectId)];
     if (platform) {
       conditions.push(eq(llmCitationItems.platform, platform));
+    }
+    
+    // Filter to only show citations where brand domain is cited (exact match, normalized)
+    if (brandDomain) {
+      const domainLower = brandDomain.toLowerCase().replace(/^www\./, '');
+      // Match exact domain or www.domain to avoid false positives
+      conditions.push(sql`(
+        LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${domainLower}
+      )`);
     }
 
     const [countResult] = await db.select({ count: sql<number>`count(*)` })
@@ -4944,7 +4953,7 @@ export class DatabaseStorage implements IStorage {
     const items = await db.select()
       .from(llmCitationItems)
       .where(and(...conditions))
-      .orderBy(desc(llmCitationItems.capturedAt))
+      .orderBy(desc(llmCitationItems.aiSearchVolume), desc(llmCitationItems.capturedAt))
       .limit(limit)
       .offset(offset);
 

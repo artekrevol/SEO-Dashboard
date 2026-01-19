@@ -58,6 +58,14 @@ function getDefaultFallingStarsSettings(projectId: string) {
   };
 }
 
+// Normalize platform names between frontend (chatgpt) and database (chat_gpt)
+function normalizePlatform(platform?: string): string | undefined {
+  if (!platform) return undefined;
+  if (platform === "chatgpt") return "chat_gpt";
+  if (platform === "chat_gpt") return "chat_gpt";
+  return platform;
+}
+
 // Normalize legacy crawl types to canonical types
 function normalizeCrawlTypeForSchedule(type?: string): string {
   const typeMap: Record<string, string> = {
@@ -820,7 +828,7 @@ export async function registerRoutes(
   app.get("/api/llm-citations/items", async (req, res) => {
     try {
       const projectId = req.query.projectId as string;
-      const platform = req.query.platform as string | undefined;
+      const platform = normalizePlatform(req.query.platform as string | undefined);
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
 
@@ -828,7 +836,11 @@ export async function registerRoutes(
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      const result = await storage.getLlmCitationItems(projectId, { platform, limit, offset });
+      // Get project to filter by brand domain
+      const project = await storage.getProject(projectId);
+      const brandDomain = project?.domain;
+
+      const result = await storage.getLlmCitationItems(projectId, { platform, limit, offset, brandDomain });
       res.json(result);
     } catch (error) {
       console.error("Error fetching LLM citation items:", error);
@@ -840,7 +852,7 @@ export async function registerRoutes(
   app.get("/api/llm-citations/top-pages", async (req, res) => {
     try {
       const projectId = req.query.projectId as string;
-      const platform = req.query.platform as string | undefined;
+      const platform = normalizePlatform(req.query.platform as string | undefined);
       const entityType = req.query.entityType as string | undefined;
 
       if (!projectId) {
