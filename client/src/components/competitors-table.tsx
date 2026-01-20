@@ -38,7 +38,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2, Bot, Sparkles, MapPin, Trash2 } from "lucide-react";
+import { Search, ExternalLink, TrendingUp, Target, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Minus, Link2, Loader2, Bot, Sparkles, MapPin, Trash2, Quote } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -210,6 +210,17 @@ export function CompetitorsTable({
     queryFn: async () => {
       if (!projectId) return {};
       const res = await fetch(`/api/competitor-backlinks/counts?projectId=${projectId}`);
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: aiCitationCounts = {} } = useQuery<Record<string, { total: number; google: number; chatgpt: number }>>({
+    queryKey: ["/api/competitors/ai-citation-counts", projectId],
+    queryFn: async () => {
+      if (!projectId) return {};
+      const res = await fetch(`/api/competitors/ai-citation-counts?projectId=${projectId}`);
       if (!res.ok) return {};
       return res.json();
     },
@@ -538,13 +549,22 @@ export function CompetitorsTable({
                       <SortIcon field="serpVisibilityTotal" />
                     </div>
                   </TableHead>
+                  <TableHead 
+                    className="text-center"
+                    data-testid="header-ai-citations"
+                  >
+                    <div className="flex items-center justify-center gap-1" title="AI Citations (Google AI Overview, ChatGPT mentions)">
+                      <Quote className="h-3.5 w-3.5" />
+                      AI Citations
+                    </div>
+                  </TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="h-32 text-center">
+                    <TableCell colSpan={11} className="h-32 text-center">
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <Search className="h-8 w-8" />
                         <p>No competitors found</p>
@@ -695,6 +715,23 @@ export function CompetitorsTable({
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center" data-testid={`cell-ai-citations-${index}`}>
+                        {(() => {
+                          const normalizedDomain = item.competitorDomain.toLowerCase().replace(/^www\./, '');
+                          const citations = aiCitationCounts[normalizedDomain];
+                          if (!citations || citations.total === 0) {
+                            return <span className="text-xs text-muted-foreground">-</span>;
+                          }
+                          return (
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="flex items-center gap-0.5" title={`Google AI: ${citations.google}, ChatGPT: ${citations.chatgpt}`}>
+                                <Quote className="h-3.5 w-3.5 text-primary" />
+                                <span className="text-xs font-mono font-semibold">{citations.total}</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
