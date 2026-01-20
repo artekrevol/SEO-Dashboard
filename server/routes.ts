@@ -859,6 +859,29 @@ export async function registerRoutes(
     }
   });
 
+  // Update LLM citation item (status/notes)
+  app.patch("/api/llm-citations/items/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status, notes } = req.body;
+
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid citation id" });
+      }
+
+      const validStatuses = ["new", "opportunity", "addressing", "dismissed"];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status value" });
+      }
+
+      const updated = await storage.updateLlmCitationItem(id, { status, notes });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating LLM citation item:", error);
+      res.status(500).json({ error: "Failed to update LLM citation item" });
+    }
+  });
+
   // Get LLM citation top pages
   app.get("/api/llm-citations/top-pages", async (req, res) => {
     try {

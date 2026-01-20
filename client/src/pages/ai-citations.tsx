@@ -114,9 +114,6 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
   const [newCompetitorDomain, setNewCompetitorDomain] = useState("");
   const [isAddingCompetitor, setIsAddingCompetitor] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<LlmCitationItem | null>(null);
-  const [compCitationSearch, setCompCitationSearch] = useState("");
-  const [selectedCompetitorDomain, setSelectedCompetitorDomain] = useState<string>("all");
-  const [compCitationPlatform, setCompCitationPlatform] = useState<"all" | "google" | "chatgpt">("all");
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery<LlmCitationSummary>({
     queryKey: ["/api/llm-citations/summary", { projectId }],
@@ -163,20 +160,6 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
     queryKey: ["/api/llm-citations/competitors", { projectId }],
     queryFn: async () => {
       const res = await fetch(`/api/llm-citations/competitors?projectId=${projectId}`);
-      return res.json();
-    },
-    enabled: !!projectId,
-  });
-
-  const { data: compCitationsData, isLoading: compCitationsLoading } = useQuery<{ items: LlmCitationItem[]; total: number }>({
-    queryKey: ["/api/llm-citations/items", { projectId, platform: compCitationPlatform, entityType: "competitor", competitorDomain: selectedCompetitorDomain, search: compCitationSearch }],
-    queryFn: async () => {
-      const params = new URLSearchParams({ projectId: projectId!, entityType: "competitor" });
-      if (compCitationPlatform !== "all") params.append("platform", compCitationPlatform);
-      if (selectedCompetitorDomain && selectedCompetitorDomain !== "all") params.append("competitorDomain", selectedCompetitorDomain);
-      if (compCitationSearch) params.append("search", compCitationSearch);
-      params.append("limit", "100");
-      const res = await fetch(`/api/llm-citations/items?${params}`);
       return res.json();
     },
     enabled: !!projectId,
@@ -424,7 +407,6 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
       <Tabs defaultValue="citations" className="space-y-4">
         <TabsList>
           <TabsTrigger value="citations" data-testid="tab-citations">Citations</TabsTrigger>
-          <TabsTrigger value="competitor-citations" data-testid="tab-competitor-citations">Competitor Citations</TabsTrigger>
           <TabsTrigger value="top-pages" data-testid="tab-top-pages">Top Pages</TabsTrigger>
           <TabsTrigger value="gaps" data-testid="tab-gaps">Competitor Gaps</TabsTrigger>
           <TabsTrigger value="competitors" data-testid="tab-competitors">Competitors</TabsTrigger>
@@ -528,148 +510,6 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="competitor-citations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-2">
-                <CardTitle className="flex items-center gap-2">
-                  <Eye className="h-5 w-5" />
-                  Competitor Citations
-                </CardTitle>
-                <CardDescription>
-                  See what questions and topics are generating AI citations for your competitors
-                </CardDescription>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 mt-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search questions or pages..."
-                    value={compCitationSearch}
-                    onChange={(e) => setCompCitationSearch(e.target.value)}
-                    className="pl-9 w-[220px]"
-                    data-testid="input-comp-citation-search"
-                  />
-                </div>
-                <Select value={selectedCompetitorDomain} onValueChange={setSelectedCompetitorDomain}>
-                  <SelectTrigger className="w-[180px]" data-testid="select-competitor-filter">
-                    <SelectValue placeholder="All competitors" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Competitors</SelectItem>
-                    {competitorsData?.competitors?.map((comp) => (
-                      <SelectItem key={comp.id} value={comp.domain}>
-                        {comp.name || comp.domain}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={compCitationPlatform} onValueChange={(v) => setCompCitationPlatform(v as typeof compCitationPlatform)}>
-                  <SelectTrigger className="w-[150px]" data-testid="select-comp-platform-filter">
-                    <SelectValue placeholder="All platforms" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Platforms</SelectItem>
-                    <SelectItem value="google">Google AI</SelectItem>
-                    <SelectItem value="chatgpt">ChatGPT</SelectItem>
-                  </SelectContent>
-                </Select>
-                {(selectedCompetitorDomain !== "all" || compCitationPlatform !== "all" || compCitationSearch) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedCompetitorDomain("all");
-                      setCompCitationPlatform("all");
-                      setCompCitationSearch("");
-                    }}
-                    data-testid="button-clear-comp-filters"
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Clear filters
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {compCitationsLoading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Skeleton key={i} className="h-16 w-full" />
-                  ))}
-                </div>
-              ) : !compCitationsData?.items?.length ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Eye className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No competitor citations found.</p>
-                  <p className="text-sm mt-1">Add competitors in the Competitors tab and sync to fetch their citations.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-sm text-muted-foreground">
-                    Showing {compCitationsData.items.length} of {compCitationsData.total} citations
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Question / Topic</TableHead>
-                        <TableHead>Cited Page</TableHead>
-                        <TableHead>Competitor</TableHead>
-                        <TableHead>Platform</TableHead>
-                        <TableHead className="text-right">Position</TableHead>
-                        <TableHead className="text-right">Volume</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {compCitationsData.items.map((item) => (
-                        <TableRow 
-                          key={item.id} 
-                          data-testid={`row-comp-citation-${item.id}`}
-                          className="cursor-pointer hover-elevate"
-                          onClick={() => setSelectedCitation(item)}
-                        >
-                          <TableCell className="max-w-xs">
-                            <p className="font-medium truncate">{item.question}</p>
-                            {item.snippet && (
-                              <p className="text-xs text-muted-foreground truncate">{item.snippet}</p>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <span className="truncate max-w-[180px]">{item.citedPageTitle || item.citedUrl}</span>
-                              <ChevronRight className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="truncate max-w-[100px]">
-                              {item.citedDomain}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {item.platform === "google" ? (
-                                <><SiGoogle className="h-3 w-3 mr-1" /> Google AI</>
-                              ) : (
-                                <><SiOpenai className="h-3 w-3 mr-1" /> ChatGPT</>
-                              )}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Badge variant="secondary">#{item.referencePosition}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {item.aiSearchVolume?.toLocaleString() || "-"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
               )}
             </CardContent>
           </Card>

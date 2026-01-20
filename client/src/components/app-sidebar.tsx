@@ -19,6 +19,7 @@ import {
   Brain,
   Zap,
   Bot,
+  Eye,
 } from "lucide-react";
 import {
   Sidebar,
@@ -104,6 +105,11 @@ const analyticsItems = [
     title: "AI Citations",
     url: "/ai-citations",
     icon: Bot,
+  },
+  {
+    title: "Competitor Citations",
+    url: "/competitor-citations",
+    icon: Eye,
   },
   {
     title: "Site Audit",

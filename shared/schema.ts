@@ -1720,6 +1720,10 @@ export const llmCitationItems = pgTable("llm_citation_items", {
   locationCode: integer("location_code"),
   languageCode: text("language_code"),
   
+  // User tracking fields
+  citationStatus: text("citation_status").default("new"), // 'new', 'opportunity', 'addressing', 'dismissed'
+  notes: text("notes"), // User notes/annotations
+  
   capturedAt: timestamp("captured_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -1728,6 +1732,7 @@ export const llmCitationItems = pgTable("llm_citation_items", {
   citedDomainIdx: index("llm_citation_items_cited_domain_idx").on(table.citedDomain),
   platformIdx: index("llm_citation_items_platform_idx").on(table.platform),
   capturedAtIdx: index("llm_citation_items_captured_at_idx").on(table.capturedAt),
+  citationStatusIdx: index("llm_citation_items_status_idx").on(table.citationStatus),
 }));
 
 export const llmCitationItemsRelations = relations(llmCitationItems, ({ one }) => ({

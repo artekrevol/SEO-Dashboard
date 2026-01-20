@@ -76,6 +76,15 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
     - **Competitor Gap Analysis**: Identifies topics where competitors are cited but brand is not, highlighting content opportunities
     - **Competitor Management**: Add/remove competitors to track for AI citation comparison
     - **DataForSEO Integration**: Uses LLM Mentions API (AI Optimization module) for aggregated metrics, search results, and top pages data
+- **Competitor Citations (Dedicated Page)**: Standalone page for deep analysis of competitor AI visibility. Features include:
+    - **KPI Dashboard**: Total citations, Google AI/ChatGPT breakdown, competitors tracked, and total AI volume
+    - **Status Tracking**: Tag citations as New, Opportunity, Addressing, or Dismissed with visual status cards
+    - **Advanced Filtering**: Filter by competitor domain, platform, status, and search terms
+    - **Sortable Table**: Sort by question, competitor, platform, position, volume, or status
+    - **Pagination**: Server-side pagination with 50 items per page
+    - **Notes & Annotations**: Add notes to individual citations for tracking and prioritization
+    - **Export Functionality**: Export filtered citations to CSV/XLSX
+    - **Detail Drawer**: View full citation context with status management and notes
 
 ### System Design Choices
 - **Database Schema**: Comprehensive schema including `projects`, `keywords`, `locations`, `rankings_history`, `seo_health_snapshots`, `seo_recommendations`, `crawl_schedules`, `backlinks`, `backlinks_history`, `tech_crawls`, `page_audits`, `page_issues`, `scheduled_reports`, `report_runs`, `gsc_credentials`, `gsc_query_stats`, `gsc_url_inspection`, `cannibalization_conflicts`, `task_execution_logs`, `app_versions`, `serp_layout_snapshots`, `serp_layout_items`, `serp_competitor_presence`, `intent_alerts`, `ai_overview_citations`, `llm_competitors`, `llm_citation_runs`, `llm_citation_snapshots`, `llm_citation_items`, and `llm_citation_top_pages`.

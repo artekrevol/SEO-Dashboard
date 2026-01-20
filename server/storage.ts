@@ -5023,6 +5023,20 @@ export class DatabaseStorage implements IStorage {
     return { items: enrichedItems, total: countResult?.count || 0 };
   }
 
+  async updateLlmCitationItem(id: number, data: { status?: string; notes?: string }): Promise<LlmCitationItem | null> {
+    const updates: Record<string, any> = {};
+    if (data.status !== undefined) updates.citationStatus = data.status;
+    if (data.notes !== undefined) updates.notes = data.notes;
+    
+    if (Object.keys(updates).length === 0) return null;
+    
+    const [updated] = await db.update(llmCitationItems)
+      .set(updates)
+      .where(eq(llmCitationItems.id, id))
+      .returning();
+    return updated || null;
+  }
+
   async createLlmCitationTopPage(data: InsertLlmCitationTopPage): Promise<LlmCitationTopPage> {
     const [page] = await db.insert(llmCitationTopPages).values(data).returning();
     return page;
