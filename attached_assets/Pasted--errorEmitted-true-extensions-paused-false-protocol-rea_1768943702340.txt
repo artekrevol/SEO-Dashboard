@@ -1,0 +1,117 @@
+    _errorEmitted: true,
+    _extensions: {},
+    _paused: false,
+    _protocol: '',
+    _readyState: 3,
+    _receiver: null,
+    _sender: null,
+    _socket: null,
+    _bufferedAmount: 0,
+    _isServer: false,
+    _redirects: 0,
+    _autoPong: true,
+    _url: 'wss://metro.proxy.rlwy.net/v2',
+    _req: null,
+    [Symbol(kCapture)]: false
+  },
+  [Symbol(kType)]: 'error',
+  [Symbol(kError)]: Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: metro.proxy.rlwy.net. is not in the cert's altnames: DNS:*.up.railway.app
+      at new NodeError (node:internal/errors:405:5)
+      at Object.checkServerIdentity (node:tls:337:12)
+      at TLSSocket.onConnectSecure (node:_tls_wrap:1669:27)
+      at TLSSocket.emit (node:events:517:28)
+      at TLSSocket._finishInit (node:_tls_wrap:1070:8)
+      at ssl.onhandshakedone (node:_tls_wrap:856:12) {
+    reason: "Host: metro.proxy.rlwy.net. is not in the cert's altnames: DNS:*.up.railway.app",
+    host: 'metro.proxy.rlwy.net',
+    cert: {
+      subject: [Object: null prototype],
+      issuer: [Object: null prototype],
+      subjectaltname: 'DNS:*.up.railway.app',
+      infoAccess: [Object: null prototype],
+      ca: false,
+      modulus: 'C2406C54EC39557641AC689BACF6B4783E88813F5CDBE9CAA9A3092CACE1ED6BB04B9F00A0B7A5B06DD314DF82E0490C959F509E2642FE6F6E5458768BE45B6B6CEF110ED54175D595A822B51A5AB009EC427603B8C4F46CA8BEE750E92B003800D3DC3C48DA954912EFB3BC6BBB24C2E3617D615B8814C3B81426DAA0D98C06C5542FA573AC204631A3F4FF66ECC5DEAC2DB4B1E705186AB71B8E1E45D70AEEC3C64B75B2F22DFF0B487AE895388DA3E32467F3373942502FDA79F90F16507A7341B59393C3603CAF75AE0E657B2A6D7F4DC53D7F56B344E6C147B89223CB8CDBAC45AAADB9F352EDC9278BF41C0188EF4F53C38EC56FAFA39398518496DF99CE795B2AC1E61E012EF26726907B9810EEE54E3A8D518A9AA2887A2CE00EEAF87D66034BC963B91C6C20A1B29DC550F9FD492A8F850543318DDD4612CEBAAAFFC78285DAEA1E1164A266AD5056C42B58E191A8780698F98FAC6CEF149E9AD6626C5B87D6728BB027A72208DA41FC7F34BEFB79B543C1E7DB970285BA67B01F9E6DBF755E17D956110BA6EACB219C8F07D8801542F591AEAD5F9AEB8A2952975019C2B5B5D0A9E8D7B992AE7CD2521387BF0B145504317904B9F472FF38C9C3AE0B0B57B5846D0554C78EDAF18243E8C88336A8C22BE0BA380BF4F1A28CDC5A64876106AC7933B1928DE82F41E387BD3C51643C9A8034D017A7A63254CED4BBAB',
+      bits: 4096,
+  [Symbol(kMessage)]: "Hostname/IP does not match certificate's altnames: Host: metro.proxy.rlwy.net. is not in the cert's altnames: DNS:*.up.railway.app"
+      exponent: '0x10001',
+}
+      pubkey: <Buffer 30 82 02 22 30 0d 06 09 2a 86 48 86 f7 0d 01 01 01 05 00 03 82 02 0f 00 30 82 02 0a 02 82 02 01 00 c2 40 6c 54 ec 39 55 76 41 ac 68 9b ac f6 b4 78 3e ... 500 more bytes>,
+      valid_from: 'Dec  6 14:06:46 2025 GMT',
+      valid_to: 'Mar  6 14:06:45 2026 GMT',
+      fingerprint: '97:28:DD:A5:1C:1A:1B:C7:2C:04:BA:37:81:AD:A5:AF:4A:9E:8D:BD',
+      fingerprint256: '01:AD:41:A2:87:FA:F6:4B:DA:89:B1:82:17:D1:30:C0:07:4C:2E:C7:6C:80:E9:1F:9A:CD:DE:64:99:37:FD:E8',
+      fingerprint512: '69:90:16:70:8F:82:DE:FE:A4:59:21:6D:C0:B8:0F:3D:0D:F4:96:87:B0:DA:34:BD:2A:C5:87:4A:98:48:88:45:25:A0:15:C5:7B:8F:D1:EC:50:B7:FD:94:B7:6A:4D:93:DC:39:6F:C6:4F:A4:02:CC:0B:96:80:89:7F:C5:9B:B8',
+      ext_key_usage: [Array],
+      serialNumber: '0679E063A32E4377E604B40D28738AF0E4CD',
+      raw: <Buffer 30 82 05 fd 30 82 04 e5 a0 03 02 01 02 02 12 06 79 e0 63 a3 2e 43 77 e6 04 b4 0d 28 73 8a f0 e4 cd 30 0d 06 09 2a 86 48 86 f7 0d 01 01 0b 05 00 30 33 ... 1487 more bytes>,
+      issuerCertificate: [Object]
+    },
+    code: 'ERR_TLS_CERT_ALTNAME_INVALID'
+  },
+    _url: 'wss://metro.proxy.rlwy.net/v2',
+    _receiver: null,
+    _req: null,
+    _sender: null,
+    _socket: null,
+    _closeCode: 1006,
+Error fetching projects: _p {
+    _bufferedAmount: 0,
+  [Symbol(kTarget)]: a {
+    _events: [Object: null prototype] {
+    _closeFrameReceived: false,
+    _isServer: false,
+      error: [Function],
+      message: [Function],
+    _closeFrameSent: false,
+    _redirects: 0,
+      close: [Function],
+    _autoPong: true,
+      open: [Function]
+    _closeMessage: <Buffer >,
+    },
+    _closeTimer: null,
+    _eventsCount: 4,
+    _maxListeners: undefined,
+    _errorEmitted: true,
+    _binaryType: 'arraybuffer',
+    _extensions: {},
+    _paused: false,
+    _protocol: '',
+    _readyState: 3,
+    [Symbol(kCapture)]: false
+  },
+  [Symbol(kType)]: 'error',
+  [Symbol(kError)]: Error [ERR_TLS_CERT_ALTNAME_INVALID]: Hostname/IP does not match certificate's altnames: Host: metro.proxy.rlwy.net. is not in the cert's altnames: DNS:*.up.railway.app
+      at new NodeError (node:internal/errors:405:5)
+      at Object.checkServerIdentity (node:tls:337:12)
+      at TLSSocket.onConnectSecure (node:_tls_wrap:1669:27)
+      at TLSSocket.emit (node:events:517:28)
+      at TLSSocket._finishInit (node:_tls_wrap:1070:8)
+      at ssl.onhandshakedone (node:_tls_wrap:856:12) {
+    reason: "Host: metro.proxy.rlwy.net. is not in the cert's altnames: DNS:*.up.railway.app",
+    host: 'metro.proxy.rlwy.net',
+    cert: {
+      subject: [Object: null prototype],
+      issuer: [Object: null prototype],
+      subjectaltname: 'DNS:*.up.railway.app',
+      infoAccess: [Object: null prototype],
+      ca: false,
+      modulus: 'C2406C54EC39557641AC689BACF6B4783E88813F5CDBE9CAA9A3092CACE1ED6BB04B9F00A0B7A5B06DD314DF82E0490C959F509E2642FE6F6E5458768BE45B6B6CEF110ED54175D595A822B51A5AB009EC427603B8C4F46CA8BEE750E92B003800D3DC3C48DA954912EFB3BC6BBB24C2E3617D615B8814C3B81426DAA0D98C06C5542FA573AC204631A3F4FF66ECC5DEAC2DB4B1E705186AB71B8E1E45D70AEEC3C64B75B2F22DFF0B487AE895388DA3E32467F3373942502FDA79F90F16507A7341B59393C3603CAF75AE0E657B2A6D7F4DC53D7F56B344E6C147B89223CB8CDBAC45AAADB9F352EDC9278BF41C0188EF4F53C38EC56FAFA39398518496DF99CE795B2AC1E61E012EF26726907B9810EEE54E3A8D518A9AA2887A2CE00EEAF87D66034BC963B91C6C20A1B29DC550F9FD492A8F850543318DDD4612CEBAAAFFC78285DAEA1E1164A266AD5056C42B58E191A8780698F98FAC6CEF149E9AD6626C5B87D6728BB027A72208DA41FC7F34BEFB79B543C1E7DB970285BA67B01F9E6DBF755E17D956110BA6EACB219C8F07D8801542F591AEAD5F9AEB8A2952975019C2B5B5D0A9E8D7B992AE7CD2521387BF0B145504317904B9F472FF38C9C3AE0B0B57B5846D0554C78EDAF18243E8C88336A8C22BE0BA380BF4F1A28CDC5A64876106AC7933B1928DE82F41E387BD3C51643C9A8034D017A7A63254CED4BBAB',
+    },
+    code: 'ERR_TLS_CERT_ALTNAME_INVALID'
+      pubkey: <Buffer 30 82 02 22 30 0d 06 09 2a 86 48 86 f7 0d 01 01 01 05 00 03 82 02 0f 00 30 82 02 0a 02 82 02 01 00 c2 40 6c 54 ec 39 55 76 41 ac 68 9b ac f6 b4 78 3e ... 500 more bytes>,
+  },
+      valid_from: 'Dec  6 14:06:46 2025 GMT',
+  [Symbol(kMessage)]: "Hostname/IP does not match certificate's altnames: Host: metro.proxy.rlwy.net. is not in the cert's altnames: DNS:*.up.railway.app"
+      valid_to: 'Mar  6 14:06:45 2026 GMT',
+}
+9:14:27 PM [express] GET /api/projects 500 in 110ms :: {"error":"Failed to fetch projects"}
+      fingerprint: '97:28:DD:A5:1C:1A:1B:C7:2C:04:BA:37:81:AD:A5:AF:4A:9E:8D:BD',
+      fingerprint256: '01:AD:41:A2:87:FA:F6:4B:DA:89:B1:82:17:D1:30:C0:07:4C:2E:C7:6C:80:E9:1F:9A:CD:DE:64:99:37:FD:E8',
+      fingerprint512: '69:90:16:70:8F:82:DE:FE:A4:59:21:6D:C0:B8:0F:3D:0D:F4:96:87:B0:DA:34:BD:2A:C5:87:4A:98:48:88:45:25:A0:15:C5:7B:8F:D1:EC:50:B7:FD:94:B7:6A:4D:93:DC:39:6F:C6:4F:A4:02:CC:0B:96:80:89:7F:C5:9B:B8',
+      bits: 4096,
+      exponent: '0x10001',
+      ext_key_usage: [Array],
+      serialNumber: '0679E063A32E4377E604B40D28738AF0E4CD',
+      raw: <Buffer 30 82 05 fd 30 82 04 e5 a0 03 02 01 02 02 12 06 79 e0 63 a3 2e 43 77 e6 04 b4 0d 28 73 8a f0 e4 cd 30 0d 06 09 2a 86 48 86 f7 0d 01 01 0b 05 00 30 33 ... 1487 more bytes>,
+      issuerCertificate: [Object]
