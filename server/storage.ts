@@ -5027,6 +5027,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get unclassified competitor citations for bulk intent classification
+  // Only returns citations where cited_domain matches an actual competitor domain
   async getUnclassifiedCitations(
     projectId: string,
     limit: number = 50
@@ -5034,24 +5035,25 @@ export class DatabaseStorage implements IStorage {
     const latestRun = await this.getLatestLlmCitationRun(projectId);
     if (!latestRun) return { items: [], total: 0 };
 
-    // Get competitor snapshots
-    const competitorSnapshots = await db.select({ id: llmCitationSnapshots.id })
-      .from(llmCitationSnapshots)
-      .where(and(
-        eq(llmCitationSnapshots.runId, latestRun.id),
-        eq(llmCitationSnapshots.entityType, 'competitor')
-      ));
+    // Get actual competitor domains from llm_competitors table
+    const competitors = await db.select({ domain: llmCompetitors.domain })
+      .from(llmCompetitors)
+      .where(eq(llmCompetitors.projectId, projectId));
+    
+    if (competitors.length === 0) return { items: [], total: 0 };
+    
+    // Build domain matching conditions - normalize domains for comparison
+    const competitorDomains = competitors.map(c => c.domain.toLowerCase().replace(/^www\./, ''));
+    
+    // Use SQL to match cited_domain against competitor domains
+    const domainCondition = sql`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) IN (${sql.join(competitorDomains.map(d => sql`${d}`), sql`, `)})`;
 
-    if (competitorSnapshots.length === 0) return { items: [], total: 0 };
-
-    const snapshotIds = competitorSnapshots.map(s => s.id);
-
-    // Count total unclassified
+    // Count total unclassified competitor citations
     const [countResult] = await db.select({ count: sql<number>`count(*)` })
       .from(llmCitationItems)
       .where(and(
         eq(llmCitationItems.projectId, projectId),
-        inArray(llmCitationItems.snapshotId, snapshotIds),
+        domainCondition,
         sql`${llmCitationItems.intent} IS NULL`,
         sql`${llmCitationItems.question} IS NOT NULL AND ${llmCitationItems.question} != ''`
       ));
@@ -5061,7 +5063,7 @@ export class DatabaseStorage implements IStorage {
       .from(llmCitationItems)
       .where(and(
         eq(llmCitationItems.projectId, projectId),
-        inArray(llmCitationItems.snapshotId, snapshotIds),
+        domainCondition,
         sql`${llmCitationItems.intent} IS NULL`,
         sql`${llmCitationItems.question} IS NOT NULL AND ${llmCitationItems.question} != ''`
       ))
