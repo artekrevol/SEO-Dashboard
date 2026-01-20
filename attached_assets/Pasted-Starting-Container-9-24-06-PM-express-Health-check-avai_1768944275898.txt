@@ -1,0 +1,71 @@
+Starting Container
+9:24:06 PM [express] ✓ Health check available at http://0.0.0.0:8080/health
+9:24:06 PM [express] ✓ Environment: production
+9:24:06 PM [express] Starting background initialization...
+> rest-express@1.0.0 start
+> NODE_ENV=production node dist/index.cjs
+9:24:06 PM [express] Starting HTTP server on port 8080...
+9:24:06 PM [express] ✓ Server is listening on port 8080
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+[seed] Error seeding production database: error: password authentication failed for user "postgres"
+    at /app/node_modules/pg-pool/index.js:45:11
+  table: undefined,
+  column: undefined,
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  dataType: undefined,
+    at async /app/dist/index.cjs:69:153652
+  constraint: undefined,
+    at async B9 (/app/dist/index.cjs:409:282904)
+    at async /app/dist/index.cjs:409:286633 {
+  file: 'auth.c',
+  length: 104,
+  line: '329',
+  severity: 'FATAL',
+  routine: 'auth_failed'
+  code: '28P01',
+}
+9:24:06 PM [express] ✓ Database seeding completed
+  detail: undefined,
+9:24:06 PM [express] Registering routes...
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+[Jobs] Scheduled daily-seo-snapshot to run at 5 PM CST
+[Jobs] Scheduled weekend-heavy-jobs to run Sunday 3 AM CST
+[Jobs] Scheduled page-metrics-sync to run Mon/Wed/Fri at 7 AM CST
+[Jobs] Scheduled daily-rankings-sync to run at 6 AM CST
+[Jobs] Scheduled crawl-schedule-check to run every 15 minutes
+[Jobs] Scheduled daily-impact-tracking to run at 6 PM CST
+[Jobs] Scheduled weekly-data-cleanup to run Sunday at 2 AM CST
+[Jobs] Scheduled jobs started
+[CrawlScheduler] Checking for stale running crawls from before server startup...
+9:24:07 PM [express] ✓ Routes registered
+9:24:07 PM [express] Setting up static file serving...
+9:24:07 PM [express] ✓ Static file serving configured
+9:24:07 PM [express] ✓ Server initialization complete
+[CrawlScheduler] Error recovering stale crawls: error: password authentication failed for user "postgres"
+    at /app/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async /app/dist/index.cjs:69:153652
+    at async i2.getStaleCrawls (/app/dist/index.cjs:69:196424)
+    at async Bg.recoverStaleCrawls (/app/dist/index.cjs:94:2198) {
+  length: 104,
+  severity: 'FATAL',
+  code: '28P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  routine: 'auth_failed'
+}
+  dataType: undefined,
+  constraint: undefined,
+  file: 'auth.c',
+  line: '329',
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
