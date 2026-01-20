@@ -79,6 +79,8 @@ import {
   type InsertLlmCitationItem,
   type LlmCitationTopPage,
   type InsertLlmCitationTopPage,
+  type AiInsightsCache,
+  type InsertAiInsightsCache,
   users,
   projects,
   keywords,
@@ -124,6 +126,7 @@ import {
   llmCitationSnapshots,
   llmCitationItems,
   llmCitationTopPages,
+  aiInsightsCache,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, sql, isNull, or, inArray } from "drizzle-orm";
@@ -5257,6 +5260,39 @@ export class DatabaseStorage implements IStorage {
     }
 
     return gaps.sort((a, b) => b.gap - a.gap);
+  }
+
+  // AI Insights Cache methods
+  async getAiInsightsCache(projectId: string, insightType: string): Promise<AiInsightsCache | null> {
+    const result = await db.select()
+      .from(aiInsightsCache)
+      .where(and(
+        eq(aiInsightsCache.projectId, projectId),
+        eq(aiInsightsCache.insightType, insightType)
+      ))
+      .orderBy(desc(aiInsightsCache.generatedAt))
+      .limit(1);
+
+    return result[0] || null;
+  }
+
+  async upsertAiInsightsCache(data: InsertAiInsightsCache): Promise<AiInsightsCache> {
+    // Delete any existing cache for this project/type
+    await db.delete(aiInsightsCache)
+      .where(and(
+        eq(aiInsightsCache.projectId, data.projectId),
+        eq(aiInsightsCache.insightType, data.insightType)
+      ));
+
+    // Insert new cache entry
+    const [result] = await db.insert(aiInsightsCache)
+      .values({
+        ...data,
+        generatedAt: new Date(),
+      })
+      .returning();
+
+    return result;
   }
 }
 

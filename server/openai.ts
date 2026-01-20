@@ -88,3 +88,165 @@ Return exactly ${batch.length} results in the same order as inputs.`
   
   return results;
 }
+
+// Competitor Citation Pattern Analysis
+export interface CompetitorCitationInsights {
+  summary: string;
+  questionThemes: Array<{
+    theme: string;
+    count: number;
+    examples: string[];
+    intent: string;
+  }>;
+  contentGaps: Array<{
+    topic: string;
+    competitorAdvantage: string;
+    suggestedAction: string;
+    priority: "high" | "medium" | "low";
+  }>;
+  topCompetitorStrategies: Array<{
+    competitor: string;
+    citationCount: number;
+    dominantTopics: string[];
+    contentType: string;
+  }>;
+  recommendations: Array<{
+    action: string;
+    rationale: string;
+    expectedImpact: string;
+  }>;
+  analyzedAt: string;
+}
+
+interface CitationData {
+  question: string;
+  competitor: string;
+  platform: string;
+  citedUrl?: string;
+  citedPageTitle?: string;
+  volume?: number;
+  intent?: string;
+}
+
+export async function analyzeCompetitorCitations(
+  citations: CitationData[],
+  brandDomain: string
+): Promise<CompetitorCitationInsights> {
+  // Prepare summary data for the AI
+  const competitorStats = new Map<string, { count: number; questions: string[] }>();
+  const intentBreakdown = { informational: 0, commercial: 0, transactional: 0, navigational: 0, unknown: 0 };
+  
+  for (const c of citations) {
+    const comp = c.competitor || 'unknown';
+    if (!competitorStats.has(comp)) {
+      competitorStats.set(comp, { count: 0, questions: [] });
+    }
+    const stats = competitorStats.get(comp)!;
+    stats.count++;
+    if (stats.questions.length < 10) {
+      stats.questions.push(c.question || '');
+    }
+    
+    if (c.intent && c.intent in intentBreakdown) {
+      intentBreakdown[c.intent as keyof typeof intentBreakdown]++;
+    } else {
+      intentBreakdown.unknown++;
+    }
+  }
+
+  // Prepare competitor summary
+  const competitorSummary = Array.from(competitorStats.entries())
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 15)
+    .map(([name, data]) => ({
+      competitor: name,
+      citationCount: data.count,
+      sampleQuestions: data.questions.slice(0, 5)
+    }));
+
+  // Sample questions for theme analysis (up to 100)
+  const sampleQuestions = citations
+    .filter(c => c.question)
+    .slice(0, 100)
+    .map(c => ({
+      question: c.question,
+      competitor: c.competitor,
+      intent: c.intent || 'unknown'
+    }));
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5",
+    messages: [
+      {
+        role: "system",
+        content: `You are an SEO strategist analyzing competitor AI citations. Your brand domain is "${brandDomain}".
+
+Analyze the competitor citation data to identify:
+1. Common question themes/topics that trigger AI citations for competitors
+2. Content gaps where competitors are cited but your brand is not
+3. Competitor strategies that seem to work well
+4. Actionable recommendations for improving AI visibility
+
+Be specific and actionable. Focus on practical insights the SEO team can implement.
+
+Respond with JSON matching this structure:
+{
+  "summary": "Executive summary of findings (2-3 sentences)",
+  "questionThemes": [
+    {
+      "theme": "Theme name",
+      "count": estimated_count,
+      "examples": ["example question 1", "example question 2"],
+      "intent": "informational|commercial|transactional|navigational"
+    }
+  ],
+  "contentGaps": [
+    {
+      "topic": "Topic competitors dominate",
+      "competitorAdvantage": "Why they're winning",
+      "suggestedAction": "What to create/improve",
+      "priority": "high|medium|low"
+    }
+  ],
+  "topCompetitorStrategies": [
+    {
+      "competitor": "domain.com",
+      "citationCount": number,
+      "dominantTopics": ["topic1", "topic2"],
+      "contentType": "Type of content they use"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "Specific action to take",
+      "rationale": "Why this will help",
+      "expectedImpact": "Expected result"
+    }
+  ]
+}`
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          totalCitations: citations.length,
+          intentBreakdown,
+          topCompetitors: competitorSummary,
+          sampleQuestions
+        })
+      }
+    ],
+    response_format: { type: "json_object" },
+    max_completion_tokens: 2000,
+  });
+
+  const result = JSON.parse(response.choices[0].message.content || '{}');
+
+  return {
+    summary: result.summary || "Analysis complete.",
+    questionThemes: result.questionThemes || [],
+    contentGaps: result.contentGaps || [],
+    topCompetitorStrategies: result.topCompetitorStrategies || [],
+    recommendations: result.recommendations || [],
+    analyzedAt: new Date().toISOString()
+  };
+}

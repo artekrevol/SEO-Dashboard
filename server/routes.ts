@@ -1008,6 +1008,94 @@ export async function registerRoutes(
     }
   });
 
+  // Get cached AI insights for competitor citations
+  app.get("/api/llm-citations/competitor-insights", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const cached = await storage.getAiInsightsCache(projectId, "competitor_citations");
+      
+      if (cached) {
+        res.json({
+          insights: cached.insights,
+          generatedAt: cached.generatedAt,
+          citationCount: cached.citationCount,
+          cached: true
+        });
+      } else {
+        res.json({ insights: null, cached: false });
+      }
+    } catch (error) {
+      console.error("Error fetching competitor insights:", error);
+      res.status(500).json({ error: "Failed to fetch competitor insights" });
+    }
+  });
+
+  // Generate AI insights for competitor citations
+  app.post("/api/llm-citations/competitor-insights", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      // Get project for brand domain
+      const project = await storage.getProject(projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Fetch all competitor citations (up to 500 for analysis)
+      const { items: citations } = await storage.getLlmCitationItems(projectId, {
+        entityType: 'competitor',
+        limit: 500,
+      });
+
+      if (citations.length === 0) {
+        return res.status(400).json({ error: "No competitor citations found to analyze" });
+      }
+
+      // Prepare citation data for analysis
+      const citationData = citations.map(c => ({
+        question: c.question || '',
+        competitor: c.citedDomain || '',
+        platform: c.platform || '',
+        citedUrl: c.citedUrl || undefined,
+        citedPageTitle: c.citedPageTitle || undefined,
+        volume: c.aiSearchVolume || undefined,
+        intent: c.intent || undefined,
+      }));
+
+      // Generate insights using OpenAI
+      const { analyzeCompetitorCitations } = await import("./openai");
+      const insights = await analyzeCompetitorCitations(citationData, project.domain);
+
+      // Cache the results
+      await storage.upsertAiInsightsCache({
+        projectId,
+        insightType: "competitor_citations",
+        insights,
+        citationCount: citations.length,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      });
+
+      res.json({
+        insights,
+        generatedAt: new Date().toISOString(),
+        citationCount: citations.length,
+        cached: false
+      });
+    } catch (error) {
+      console.error("Error generating competitor insights:", error);
+      res.status(500).json({ error: "Failed to generate competitor insights" });
+    }
+  });
+
   // Get LLM citation top pages
   app.get("/api/llm-citations/top-pages", async (req, res) => {
     try {

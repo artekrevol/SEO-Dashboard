@@ -1786,3 +1786,30 @@ export const insertLlmCitationTopPageSchema = createInsertSchema(llmCitationTopP
 
 export type InsertLlmCitationTopPage = z.infer<typeof insertLlmCitationTopPageSchema>;
 export type LlmCitationTopPage = typeof llmCitationTopPages.$inferSelect;
+
+// AI Insights Cache - Store AI-generated analysis results
+export const aiInsightsCache = pgTable("ai_insights_cache", {
+  id: serial("id").primaryKey(),
+  projectId: varchar("project_id", { length: 36 }).notNull().references(() => projects.id, { onDelete: "cascade" }),
+  
+  insightType: text("insight_type").notNull(), // "competitor_citations", "quick_wins", "falling_stars", etc.
+  insights: jsonb("insights").notNull(), // Structured JSON with analysis results
+  
+  dataHash: text("data_hash"), // Hash of input data to detect when refresh needed
+  citationCount: integer("citation_count").default(0), // Count of citations analyzed
+  
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"), // Optional expiration
+}, (table) => ({
+  projectIdIdx: index("ai_insights_cache_project_id_idx").on(table.projectId),
+  typeIdx: index("ai_insights_cache_type_idx").on(table.insightType),
+  projectTypeIdx: index("ai_insights_cache_project_type_idx").on(table.projectId, table.insightType),
+}));
+
+export const insertAiInsightsCacheSchema = createInsertSchema(aiInsightsCache).omit({
+  id: true,
+  generatedAt: true,
+});
+
+export type InsertAiInsightsCache = z.infer<typeof insertAiInsightsCacheSchema>;
+export type AiInsightsCache = typeof aiInsightsCache.$inferSelect;
