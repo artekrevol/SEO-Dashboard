@@ -5420,6 +5420,21 @@ export class DatabaseStorage implements IStorage {
       total: countResult[0]?.count || 0,
     };
   }
+
+  // Get count of unique pages cited for brand citations
+  async getUniqueCitedPagesCount(projectId: string, entityType: 'brand' | 'competitor' = 'brand'): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(DISTINCT ${llmCitationItems.citedUrl})::int` })
+      .from(llmCitationItems)
+      .innerJoin(llmCitationSnapshots, eq(llmCitationItems.snapshotId, llmCitationSnapshots.id))
+      .innerJoin(llmCitationRuns, eq(llmCitationSnapshots.runId, llmCitationRuns.id))
+      .where(and(
+        eq(llmCitationRuns.projectId, projectId),
+        eq(llmCitationSnapshots.entityType, entityType)
+      ));
+
+    return result[0]?.count || 0;
+  }
 }
 
 export const storage = new DatabaseStorage();

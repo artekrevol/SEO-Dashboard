@@ -946,14 +946,16 @@ export async function registerRoutes(
       const totalMentions = (googleSnapshot?.mentionsCount || 0) + (chatGptSnapshot?.mentionsCount || 0);
       const totalAiSearchVolume = (googleSnapshot?.aiSearchVolume || 0) + (chatGptSnapshot?.aiSearchVolume || 0);
       const totalImpressions = (googleSnapshot?.impressions || 0) + (chatGptSnapshot?.impressions || 0);
-      const totalPagesCount = (googleSnapshot?.pagesCount || 0) + (chatGptSnapshot?.pagesCount || 0);
+      
+      // Calculate actual unique pages from citation items instead of stored snapshot value
+      const actualPagesCount = await storage.getUniqueCitedPagesCount(projectId, 'brand');
 
       const response = {
         brand: {
           totalMentions,
           aiSearchVolume: totalAiSearchVolume,
           impressions: totalImpressions,
-          pagesCount: totalPagesCount,
+          pagesCount: actualPagesCount,
           trend: 0,
         },
         platforms: {
