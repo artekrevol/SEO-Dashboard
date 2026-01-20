@@ -269,7 +269,7 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
       return await apiRequest("POST", "/api/llm-citations/competitor-insights", { projectId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-insights", projectId] });
       toast({ title: "Analysis Complete", description: "AI insights have been generated successfully." });
     },
     onError: () => {
@@ -592,6 +592,18 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
             
             {showInsights && (
               <div className="space-y-6">
+                {/* Empty state when no detailed insights */}
+                {insightsData.insights.contentGaps.length === 0 &&
+                 insightsData.insights.questionThemes.length === 0 &&
+                 insightsData.insights.recommendations.length === 0 &&
+                 insightsData.insights.topCompetitorStrategies.length === 0 && (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="font-medium">No specific patterns identified</p>
+                    <p className="text-sm">The AI analyzed your citations but couldn't identify distinct themes or gaps. Try refreshing after more citations are collected.</p>
+                  </div>
+                )}
+                
                 {/* Content Gaps - High Priority */}
                 {insightsData.insights.contentGaps.length > 0 && (
                   <div>

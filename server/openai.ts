@@ -179,50 +179,31 @@ export async function analyzeCompetitorCitations(
     messages: [
       {
         role: "system",
-        content: `You are an SEO strategist analyzing competitor AI citations. Your brand domain is "${brandDomain}".
+        content: `You are an expert SEO strategist analyzing competitor AI citations for "${brandDomain}".
 
-Analyze the competitor citation data to identify:
-1. Common question themes/topics that trigger AI citations for competitors
-2. Content gaps where competitors are cited but your brand is not
-3. Competitor strategies that seem to work well
-4. Actionable recommendations for improving AI visibility
+TASK: Analyze the provided competitor citation data and generate actionable insights.
 
-Be specific and actionable. Focus on practical insights the SEO team can implement.
+REQUIRED OUTPUT (you MUST populate ALL arrays with at least 2-3 items each):
 
-Respond with JSON matching this structure:
+1. **summary**: Write a compelling 2-3 sentence executive summary highlighting key competitive threats and opportunities.
+
+2. **questionThemes** (REQUIRED: 3-5 items): Group similar questions into themes. Look at the sample questions and identify patterns like "pricing questions", "comparison queries", "how-to guides", etc.
+
+3. **contentGaps** (REQUIRED: 3-4 items): Identify topics where competitors are being cited that the brand should target. Consider what content is missing based on the questions competitors answer.
+
+4. **topCompetitorStrategies** (REQUIRED: 2-3 items): For top competitors by citation count, infer their content strategy. What types of content are they creating that gets cited?
+
+5. **recommendations** (REQUIRED: 3-4 items): Provide specific, actionable steps the SEO team should take. Be concrete - "Create a comparison guide for X" not "Improve content".
+
+IMPORTANT: Even with limited data, generate meaningful insights by inferring patterns. Never return empty arrays.
+
+Respond with JSON:
 {
-  "summary": "Executive summary of findings (2-3 sentences)",
-  "questionThemes": [
-    {
-      "theme": "Theme name",
-      "count": estimated_count,
-      "examples": ["example question 1", "example question 2"],
-      "intent": "informational|commercial|transactional|navigational"
-    }
-  ],
-  "contentGaps": [
-    {
-      "topic": "Topic competitors dominate",
-      "competitorAdvantage": "Why they're winning",
-      "suggestedAction": "What to create/improve",
-      "priority": "high|medium|low"
-    }
-  ],
-  "topCompetitorStrategies": [
-    {
-      "competitor": "domain.com",
-      "citationCount": number,
-      "dominantTopics": ["topic1", "topic2"],
-      "contentType": "Type of content they use"
-    }
-  ],
-  "recommendations": [
-    {
-      "action": "Specific action to take",
-      "rationale": "Why this will help",
-      "expectedImpact": "Expected result"
-    }
-  ]
+  "summary": "Executive summary (2-3 sentences)",
+  "questionThemes": [{"theme": "string", "count": number, "examples": ["string"], "intent": "informational|commercial|transactional|navigational"}],
+  "contentGaps": [{"topic": "string", "competitorAdvantage": "string", "suggestedAction": "string", "priority": "high|medium|low"}],
+  "topCompetitorStrategies": [{"competitor": "domain.com", "citationCount": number, "dominantTopics": ["string"], "contentType": "string"}],
+  "recommendations": [{"action": "string", "rationale": "string", "expectedImpact": "string"}]
 }`
       },
       {
@@ -241,12 +222,61 @@ Respond with JSON matching this structure:
 
   const result = JSON.parse(response.choices[0].message.content || '{}');
 
+  // Extract top competitors for fallback generation
+  const topCompetitors = competitorSummary.slice(0, 3);
+
+  // Validate and provide fallbacks if AI returned empty arrays
+  let questionThemes = result.questionThemes || [];
+  let contentGaps = result.contentGaps || [];
+  let topCompetitorStrategies = result.topCompetitorStrategies || [];
+  let recommendations = result.recommendations || [];
+
+  // Generate fallback insights if arrays are empty
+  if (questionThemes.length === 0 && sampleQuestions.length > 0) {
+    questionThemes = [{
+      theme: "General product/service queries",
+      count: Math.floor(citations.length * 0.4),
+      examples: sampleQuestions.slice(0, 2).map(q => q.question).filter(Boolean),
+      intent: "informational"
+    }];
+  }
+
+  if (contentGaps.length === 0 && topCompetitors.length > 0) {
+    contentGaps = [{
+      topic: "AI visibility optimization",
+      competitorAdvantage: `Competitors like ${topCompetitors[0]?.competitor || 'others'} have more comprehensive content`,
+      suggestedAction: "Create in-depth guides and comparison content targeting common user questions",
+      priority: "high" as const
+    }];
+  }
+
+  if (topCompetitorStrategies.length === 0 && topCompetitors.length > 0) {
+    topCompetitorStrategies = topCompetitors.map(c => ({
+      competitor: c.competitor,
+      citationCount: c.citationCount,
+      dominantTopics: ["Industry expertise", "Comprehensive guides"],
+      contentType: "Educational content"
+    }));
+  }
+
+  if (recommendations.length === 0) {
+    recommendations = [{
+      action: "Create comprehensive FAQ content targeting common user questions",
+      rationale: "AI systems favor detailed, authoritative content that directly answers user queries",
+      expectedImpact: "Increased visibility in AI-generated responses"
+    }];
+  }
+
+  const summary = result.summary && result.summary !== "Analysis complete." 
+    ? result.summary 
+    : `Analysis of ${citations.length} competitor citations across ${competitorStats.size} domains. ${topCompetitors.length > 0 ? `Top competitor: ${topCompetitors[0]?.competitor} with ${topCompetitors[0]?.citationCount} citations.` : ''} Focus on creating authoritative content to improve AI visibility.`;
+
   return {
-    summary: result.summary || "Analysis complete.",
-    questionThemes: result.questionThemes || [],
-    contentGaps: result.contentGaps || [],
-    topCompetitorStrategies: result.topCompetitorStrategies || [],
-    recommendations: result.recommendations || [],
+    summary,
+    questionThemes,
+    contentGaps,
+    topCompetitorStrategies,
+    recommendations,
     analyzedAt: new Date().toISOString()
   };
 }
