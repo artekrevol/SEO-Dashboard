@@ -4989,11 +4989,24 @@ export class DatabaseStorage implements IStorage {
     }
     
     // For competitor citations, filter to only show citations where competitor domain is cited
-    if (entityType === 'competitor' && competitorDomain) {
-      const compDomainLower = competitorDomain.toLowerCase().replace(/^www\./, '');
-      conditions.push(sql`(
-        LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${compDomainLower}
-      )`);
+    if (entityType === 'competitor') {
+      if (competitorDomain) {
+        // Filter by specific competitor domain
+        const compDomainLower = competitorDomain.toLowerCase().replace(/^www\./, '');
+        conditions.push(sql`(
+          LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${compDomainLower}
+        )`);
+      } else {
+        // Filter by ALL competitor domains from llm_competitors table
+        const competitors = await db.select({ domain: llmCompetitors.domain })
+          .from(llmCompetitors)
+          .where(eq(llmCompetitors.projectId, projectId));
+        
+        if (competitors.length > 0) {
+          const competitorDomains = competitors.map(c => c.domain.toLowerCase().replace(/^www\./, ''));
+          conditions.push(sql`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) IN (${sql.join(competitorDomains.map(d => sql`${d}`), sql`, `)})`);
+        }
+      }
     }
     
     // Text search on question or page title
@@ -5096,40 +5109,27 @@ export class DatabaseStorage implements IStorage {
     uniqueCompetitors: number;
     totalVolume: number;
   }> {
-    const latestRun = await this.getLatestLlmCitationRun(projectId);
-    if (!latestRun) {
-      return {
-        total: 0,
-        byPlatform: { google: 0, chatgpt: 0 },
-        byStatus: { new: 0, opportunity: 0, addressing: 0, dismissed: 0 },
-        byIntent: { informational: 0, commercial: 0, transactional: 0, navigational: 0, unclassified: 0 },
-        uniqueCompetitors: 0,
-        totalVolume: 0,
-      };
-    }
+    const emptyResult = {
+      total: 0,
+      byPlatform: { google: 0, chatgpt: 0 },
+      byStatus: { new: 0, opportunity: 0, addressing: 0, dismissed: 0 },
+      byIntent: { informational: 0, commercial: 0, transactional: 0, navigational: 0, unclassified: 0 },
+      uniqueCompetitors: 0,
+      totalVolume: 0,
+    };
 
-    // Get competitor snapshots from latest run
-    const competitorSnapshots = await db.select({ id: llmCitationSnapshots.id })
-      .from(llmCitationSnapshots)
-      .where(and(
-        eq(llmCitationSnapshots.runId, latestRun.id),
-        eq(llmCitationSnapshots.entityType, 'competitor')
-      ));
+    // Get actual competitor domains from llm_competitors table
+    const competitors = await db.select({ domain: llmCompetitors.domain })
+      .from(llmCompetitors)
+      .where(eq(llmCompetitors.projectId, projectId));
+    
+    if (competitors.length === 0) return emptyResult;
+    
+    // Build domain matching condition - normalize domains for comparison
+    const competitorDomains = competitors.map(c => c.domain.toLowerCase().replace(/^www\./, ''));
+    const domainCondition = sql`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) IN (${sql.join(competitorDomains.map(d => sql`${d}`), sql`, `)})`;
 
-    if (competitorSnapshots.length === 0) {
-      return {
-        total: 0,
-        byPlatform: { google: 0, chatgpt: 0 },
-        byStatus: { new: 0, opportunity: 0, addressing: 0, dismissed: 0 },
-        byIntent: { informational: 0, commercial: 0, transactional: 0, navigational: 0, unclassified: 0 },
-        uniqueCompetitors: 0,
-        totalVolume: 0,
-      };
-    }
-
-    const snapshotIds = competitorSnapshots.map(s => s.id);
-
-    // Get aggregate stats using SQL
+    // Get aggregate stats using SQL - only for citations of actual competitor domains
     const [stats] = await db.select({
       total: sql<number>`count(*)`,
       googleCount: sql<number>`count(*) filter (where ${llmCitationItems.platform} = 'google')`,
@@ -5149,7 +5149,7 @@ export class DatabaseStorage implements IStorage {
       .from(llmCitationItems)
       .where(and(
         eq(llmCitationItems.projectId, projectId),
-        inArray(llmCitationItems.snapshotId, snapshotIds)
+        domainCondition
       ));
 
     return {
