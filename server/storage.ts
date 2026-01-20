@@ -5023,10 +5023,11 @@ export class DatabaseStorage implements IStorage {
     return { items: enrichedItems, total: countResult?.count || 0 };
   }
 
-  async updateLlmCitationItem(id: number, data: { status?: string; notes?: string }): Promise<LlmCitationItem | null> {
+  async updateLlmCitationItem(id: number, data: { status?: string; notes?: string; intent?: string }): Promise<LlmCitationItem | null> {
     const updates: Record<string, any> = {};
     if (data.status !== undefined) updates.citationStatus = data.status;
     if (data.notes !== undefined) updates.notes = data.notes;
+    if (data.intent !== undefined) updates.intent = data.intent;
     
     if (Object.keys(updates).length === 0) return null;
     
@@ -5035,6 +5036,94 @@ export class DatabaseStorage implements IStorage {
       .where(eq(llmCitationItems.id, id))
       .returning();
     return updated || null;
+  }
+
+  async getCompetitorCitationsSummary(projectId: string): Promise<{
+    total: number;
+    byPlatform: { google: number; chatgpt: number };
+    byStatus: { new: number; opportunity: number; addressing: number; dismissed: number };
+    byIntent: { informational: number; commercial: number; transactional: number; navigational: number; unclassified: number };
+    uniqueCompetitors: number;
+    totalVolume: number;
+  }> {
+    const latestRun = await this.getLatestLlmCitationRun(projectId);
+    if (!latestRun) {
+      return {
+        total: 0,
+        byPlatform: { google: 0, chatgpt: 0 },
+        byStatus: { new: 0, opportunity: 0, addressing: 0, dismissed: 0 },
+        byIntent: { informational: 0, commercial: 0, transactional: 0, navigational: 0, unclassified: 0 },
+        uniqueCompetitors: 0,
+        totalVolume: 0,
+      };
+    }
+
+    // Get competitor snapshots from latest run
+    const competitorSnapshots = await db.select({ id: llmCitationSnapshots.id })
+      .from(llmCitationSnapshots)
+      .where(and(
+        eq(llmCitationSnapshots.runId, latestRun.id),
+        eq(llmCitationSnapshots.entityType, 'competitor')
+      ));
+
+    if (competitorSnapshots.length === 0) {
+      return {
+        total: 0,
+        byPlatform: { google: 0, chatgpt: 0 },
+        byStatus: { new: 0, opportunity: 0, addressing: 0, dismissed: 0 },
+        byIntent: { informational: 0, commercial: 0, transactional: 0, navigational: 0, unclassified: 0 },
+        uniqueCompetitors: 0,
+        totalVolume: 0,
+      };
+    }
+
+    const snapshotIds = competitorSnapshots.map(s => s.id);
+
+    // Get aggregate stats using SQL
+    const [stats] = await db.select({
+      total: sql<number>`count(*)`,
+      googleCount: sql<number>`count(*) filter (where ${llmCitationItems.platform} = 'google')`,
+      chatgptCount: sql<number>`count(*) filter (where ${llmCitationItems.platform} = 'chat_gpt')`,
+      newCount: sql<number>`count(*) filter (where coalesce(${llmCitationItems.citationStatus}, 'new') = 'new')`,
+      opportunityCount: sql<number>`count(*) filter (where ${llmCitationItems.citationStatus} = 'opportunity')`,
+      addressingCount: sql<number>`count(*) filter (where ${llmCitationItems.citationStatus} = 'addressing')`,
+      dismissedCount: sql<number>`count(*) filter (where ${llmCitationItems.citationStatus} = 'dismissed')`,
+      informationalCount: sql<number>`count(*) filter (where ${llmCitationItems.intent} = 'informational')`,
+      commercialCount: sql<number>`count(*) filter (where ${llmCitationItems.intent} = 'commercial')`,
+      transactionalCount: sql<number>`count(*) filter (where ${llmCitationItems.intent} = 'transactional')`,
+      navigationalCount: sql<number>`count(*) filter (where ${llmCitationItems.intent} = 'navigational')`,
+      unclassifiedCount: sql<number>`count(*) filter (where ${llmCitationItems.intent} is null or ${llmCitationItems.intent} = '')`,
+      uniqueCompetitors: sql<number>`count(distinct ${llmCitationItems.citedDomain})`,
+      totalVolume: sql<number>`coalesce(sum(${llmCitationItems.aiSearchVolume}), 0)`,
+    })
+      .from(llmCitationItems)
+      .where(and(
+        eq(llmCitationItems.projectId, projectId),
+        inArray(llmCitationItems.snapshotId, snapshotIds)
+      ));
+
+    return {
+      total: stats?.total || 0,
+      byPlatform: { 
+        google: stats?.googleCount || 0, 
+        chatgpt: stats?.chatgptCount || 0 
+      },
+      byStatus: { 
+        new: stats?.newCount || 0, 
+        opportunity: stats?.opportunityCount || 0, 
+        addressing: stats?.addressingCount || 0, 
+        dismissed: stats?.dismissedCount || 0 
+      },
+      byIntent: {
+        informational: stats?.informationalCount || 0,
+        commercial: stats?.commercialCount || 0,
+        transactional: stats?.transactionalCount || 0,
+        navigational: stats?.navigationalCount || 0,
+        unclassified: stats?.unclassifiedCount || 0,
+      },
+      uniqueCompetitors: stats?.uniqueCompetitors || 0,
+      totalVolume: stats?.totalVolume || 0,
+    };
   }
 
   async createLlmCitationTopPage(data: InsertLlmCitationTopPage): Promise<LlmCitationTopPage> {

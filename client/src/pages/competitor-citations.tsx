@@ -144,6 +144,24 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     enabled: !!projectId,
   });
 
+  // Fetch summary stats for KPI cards (aggregates across ALL citations, not just current page)
+  const { data: summaryData } = useQuery<{
+    total: number;
+    byPlatform: { google: number; chatgpt: number };
+    byStatus: { new: number; opportunity: number; addressing: number; dismissed: number };
+    byIntent: { informational: number; commercial: number; transactional: number; navigational: number; unclassified: number };
+    uniqueCompetitors: number;
+    totalVolume: number;
+  }>({
+    queryKey: ["/api/llm-citations/competitor-summary", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/llm-citations/competitor-summary?projectId=${projectId}`);
+      if (!res.ok) throw new Error("Failed to fetch summary");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
   const { data: citationsData, isLoading } = useQuery<{ items: CitationItem[]; total: number }>({
     queryKey: [
       "/api/llm-citations/items",
@@ -177,6 +195,7 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-summary"] });
       toast({ title: "Citation updated", description: "Status and notes have been saved." });
     },
     onError: () => {
@@ -222,23 +241,28 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     return result;
   }, [citations, selectedStatus, sortField, sortDirection]);
 
+  // Use summary data from API for KPI cards (correct totals across all pages)
   const stats = useMemo(() => {
-    const total = citations.length;
-    const byPlatform = {
-      google: citations.filter(c => c.platform === "google").length,
-      chatgpt: citations.filter(c => c.platform === "chat_gpt").length,
+    if (summaryData) {
+      return {
+        total: summaryData.total,
+        byPlatform: summaryData.byPlatform,
+        byStatus: summaryData.byStatus,
+        byIntent: summaryData.byIntent,
+        uniqueCompetitors: summaryData.uniqueCompetitors,
+        totalVolume: summaryData.totalVolume,
+      };
+    }
+    // Fallback to empty stats if summary not loaded
+    return {
+      total: 0,
+      byPlatform: { google: 0, chatgpt: 0 },
+      byStatus: { new: 0, opportunity: 0, addressing: 0, dismissed: 0 },
+      byIntent: { informational: 0, commercial: 0, transactional: 0, navigational: 0, unclassified: 0 },
+      uniqueCompetitors: 0,
+      totalVolume: 0,
     };
-    const byStatus = {
-      new: citations.filter(c => !c.citationStatus || c.citationStatus === "new").length,
-      opportunity: citations.filter(c => c.citationStatus === "opportunity").length,
-      addressing: citations.filter(c => c.citationStatus === "addressing").length,
-      dismissed: citations.filter(c => c.citationStatus === "dismissed").length,
-    };
-    const uniqueCompetitors = new Set(citations.map(c => c.citedDomain)).size;
-    const totalVolume = citations.reduce((sum, c) => sum + (c.aiSearchVolume || 0), 0);
-    
-    return { total, byPlatform, byStatus, uniqueCompetitors, totalVolume };
-  }, [citations]);
+  }, [summaryData]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {

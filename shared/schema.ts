@@ -1723,6 +1723,7 @@ export const llmCitationItems = pgTable("llm_citation_items", {
   // User tracking fields
   citationStatus: text("citation_status").default("new"), // 'new', 'opportunity', 'addressing', 'dismissed'
   notes: text("notes"), // User notes/annotations
+  intent: text("intent"), // 'informational', 'commercial', 'transactional', 'navigational' - AI classified
   
   capturedAt: timestamp("captured_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1733,6 +1734,7 @@ export const llmCitationItems = pgTable("llm_citation_items", {
   platformIdx: index("llm_citation_items_platform_idx").on(table.platform),
   capturedAtIdx: index("llm_citation_items_captured_at_idx").on(table.capturedAt),
   citationStatusIdx: index("llm_citation_items_status_idx").on(table.citationStatus),
+  intentIdx: index("llm_citation_items_intent_idx").on(table.intent),
 }));
 
 export const llmCitationItemsRelations = relations(llmCitationItems, ({ one }) => ({

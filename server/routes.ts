@@ -859,11 +859,11 @@ export async function registerRoutes(
     }
   });
 
-  // Update LLM citation item (status/notes)
+  // Update LLM citation item (status/notes/intent)
   app.patch("/api/llm-citations/items/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status, notes } = req.body;
+      const { status, notes, intent } = req.body;
 
       if (isNaN(id)) {
         return res.status(400).json({ error: "Invalid citation id" });
@@ -874,11 +874,33 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Invalid status value" });
       }
 
-      const updated = await storage.updateLlmCitationItem(id, { status, notes });
+      const validIntents = ["informational", "commercial", "transactional", "navigational"];
+      if (intent && !validIntents.includes(intent)) {
+        return res.status(400).json({ error: "Invalid intent value" });
+      }
+
+      const updated = await storage.updateLlmCitationItem(id, { status, notes, intent });
       res.json(updated);
     } catch (error) {
       console.error("Error updating LLM citation item:", error);
       res.status(500).json({ error: "Failed to update LLM citation item" });
+    }
+  });
+
+  // Get competitor citations summary (aggregate stats)
+  app.get("/api/llm-citations/competitor-summary", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const summary = await storage.getCompetitorCitationsSummary(projectId);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error fetching competitor citations summary:", error);
+      res.status(500).json({ error: "Failed to fetch competitor citations summary" });
     }
   });
 
