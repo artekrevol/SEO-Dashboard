@@ -1,0 +1,118 @@
+tarting Container
+> rest-express@1.0.0 start
+> NODE_ENV=production node dist/index.cjs
+9:07:27 PM [express] Starting HTTP server on port 8080...
+9:07:28 PM [express] ✓ Server is listening on port 8080
+9:07:28 PM [express] ✓ Health check available at http://0.0.0.0:8080/health
+9:07:28 PM [express] ✓ Environment: production
+9:07:28 PM [express] Starting background initialization...
+[seed] Error seeding production database: _p {
+    _url: 'wss://postgres.railway.internal/v2',
+  [Symbol(kTarget)]: a {
+    _req: null,
+    _events: [Object: null prototype] {
+      error: [Function],
+      message: [Function],
+      close: [Function],
+      open: [Function]
+    },
+    _eventsCount: 4,
+    _maxListeners: undefined,
+    _binaryType: 'arraybuffer',
+    _closeCode: 1006,
+    _closeFrameReceived: false,
+    _closeFrameSent: false,
+    _closeMessage: <Buffer >,
+    _closeTimer: null,
+    _errorEmitted: true,
+    _extensions: {},
+    _paused: false,
+    _protocol: '',
+    _readyState: 3,
+    _receiver: null,
+    _sender: null,
+    _socket: null,
+    _bufferedAmount: 0,
+    _isServer: false,
+    _redirects: 0,
+    _autoPong: true,
+    syscall: 'connect',
+    [Symbol(kCapture)]: false
+    address: '10.137.8.199',
+  },
+    port: 443
+  },
+  [Symbol(kType)]: 'error',
+  [Symbol(kMessage)]: 'connect ECONNREFUSED 10.137.8.199:443'
+  [Symbol(kError)]: Error: connect ECONNREFUSED 10.137.8.199:443
+}
+      at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1555:16) {
+9:07:28 PM [express] ✓ Database seeding completed
+    errno: -111,
+9:07:28 PM [express] Registering routes...
+    code: 'ECONNREFUSED',
+[Jobs] Scheduled daily-seo-snapshot to run at 5 PM CST
+[Jobs] Scheduled weekend-heavy-jobs to run Sunday 3 AM CST
+[Jobs] Scheduled page-metrics-sync to run Mon/Wed/Fri at 7 AM CST
+[Jobs] Scheduled daily-rankings-sync to run at 6 AM CST
+[Jobs] Scheduled crawl-schedule-check to run every 15 minutes
+[Jobs] Scheduled daily-impact-tracking to run at 6 PM CST
+[Jobs] Scheduled weekly-data-cleanup to run Sunday at 2 AM CST
+[Jobs] Scheduled jobs started
+[CrawlScheduler] Checking for stale running crawls from before server startup...
+9:07:28 PM [express] ✓ Routes registered
+9:07:28 PM [express] Setting up static file serving...
+9:07:28 PM [express] ✓ Static file serving configured
+9:07:28 PM [express] ✓ Server initialization complete
+[CrawlScheduler] Error recovering stale crawls: _p {
+    _url: 'wss://postgres.railway.internal/v2',
+    _closeMessage: <Buffer >,
+  [Symbol(kTarget)]: a {
+    _closeTimer: null,
+    _req: null,
+    _events: [Object: null prototype] {
+    _errorEmitted: true,
+      error: [Function],
+    _extensions: {},
+      message: [Function],
+    _paused: false,
+      close: [Function],
+    _protocol: '',
+      open: [Function]
+    _readyState: 3,
+    _receiver: null,
+    },
+    _sender: null,
+    _eventsCount: 4,
+    _socket: null,
+    _bufferedAmount: 0,
+    _maxListeners: undefined,
+    _isServer: false,
+    _binaryType: 'arraybuffer',
+    _redirects: 0,
+    _closeCode: 1006,
+    _autoPong: true,
+    _closeFrameReceived: false,
+    _closeFrameSent: false,
+    [Symbol(kCapture)]: false
+  },
+  [Symbol(kType)]: 'error',
+  [Symbol(kError)]: Error: connect ECONNREFUSED 10.137.8.199:443
+      at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1555:16) {
+    errno: -111,
+    code: 'ECONNREFUSED',
+    syscall: 'connect',
+    address: '10.137.8.199',
+    port: 443
+  },
+  [Symbol(kMessage)]: 'connect ECONNREFUSED 10.137.8.199:443'
+}
+    _redirects: 0,
+    _receiver: null,
+    _binaryType: 'arraybuffer',
+    _autoPong: true,
+    _url: 'wss://postgres.railway.internal/v2',
+    _req: null,
+    _sender: null,
+    _closeCode: 1006,
+Error fetching projects: _p {
