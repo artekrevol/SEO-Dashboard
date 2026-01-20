@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import {
   Bot,
@@ -348,14 +349,21 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
               <SiGoogle className="h-5 w-5 text-blue-500" />
               <CardTitle className="text-base">Google AI Overview</CardTitle>
             </div>
-            <Badge 
-              variant={selectedPlatform === "google" ? "default" : "secondary"}
-              className="cursor-pointer hover-elevate"
-              onClick={() => setSelectedPlatform(selectedPlatform === "google" ? "all" : "google")}
-              data-testid="badge-google-mentions"
-            >
-              {summary.platforms.google.mentions} mentions
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant={selectedPlatform === "google" ? "default" : "secondary"}
+                  className="cursor-pointer hover-elevate"
+                  onClick={() => setSelectedPlatform(selectedPlatform === "google" ? "all" : "google")}
+                  data-testid="badge-google-mentions"
+                >
+                  {summary.platforms.google.mentions} mentions
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p className="text-xs">Total mentions found by DataForSEO. The citations list shows a sample of specific citation records with full details.</p>
+              </TooltipContent>
+            </Tooltip>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -377,14 +385,21 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
               <SiOpenai className="h-5 w-5" />
               <CardTitle className="text-base">ChatGPT</CardTitle>
             </div>
-            <Badge 
-              variant={selectedPlatform === "chatgpt" ? "default" : "secondary"}
-              className="cursor-pointer hover-elevate"
-              onClick={() => setSelectedPlatform(selectedPlatform === "chatgpt" ? "all" : "chatgpt")}
-              data-testid="badge-chatgpt-mentions"
-            >
-              {summary.platforms.chatgpt.mentions} mentions
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant={selectedPlatform === "chatgpt" ? "default" : "secondary"}
+                  className="cursor-pointer hover-elevate"
+                  onClick={() => setSelectedPlatform(selectedPlatform === "chatgpt" ? "all" : "chatgpt")}
+                  data-testid="badge-chatgpt-mentions"
+                >
+                  {summary.platforms.chatgpt.mentions} mentions
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p className="text-xs">Total mentions found by DataForSEO. The citations list shows a sample of specific citation records with full details.</p>
+              </TooltipContent>
+            </Tooltip>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -511,6 +526,13 @@ export default function AiCitationsPage({ projectId }: AiCitationsPageProps) {
                   </TableBody>
                 </Table>
               )}
+              {itemsData?.items?.length ? (
+                <p className="text-xs text-muted-foreground mt-4 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Showing {itemsData.items.slice(0, 10).length} of {itemsData.items.length} citation records. 
+                  The mentions count reflects total brand mentions in DataForSEO's database; this list shows specific citation examples with full details.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
