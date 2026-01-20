@@ -34,6 +34,90 @@ import {
 import { crawlSchedulerService } from "./services/crawl-scheduler";
 import { classifySearchIntent, classifyBatchIntents } from "./openai";
 
+// Background classification job tracker
+interface ClassificationJob {
+  id: string;
+  projectId: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  initialTotal: number; // Fixed total from job start for accurate progress
+  classified: number;
+  startedAt: Date;
+  completedAt?: Date;
+  error?: string;
+}
+
+const classificationJobs = new Map<string, ClassificationJob>();
+const JOB_CLEANUP_DELAY_MS = 5 * 60 * 1000; // Clean up completed jobs after 5 minutes
+
+// Clean up completed/failed/cancelled jobs after a delay
+function scheduleJobCleanup(jobId: string) {
+  setTimeout(() => {
+    const job = classificationJobs.get(jobId);
+    if (job && job.status !== "running") {
+      classificationJobs.delete(jobId);
+    }
+  }, JOB_CLEANUP_DELAY_MS);
+}
+
+// Background classification processor
+async function runBackgroundClassification(jobId: string, projectId: string) {
+  const job = classificationJobs.get(jobId);
+  if (!job) {
+    console.log(`[BackgroundClassify] Job ${jobId} not found`);
+    return;
+  }
+
+  console.log(`[BackgroundClassify] Starting job ${jobId} for project ${projectId}`);
+
+  try {
+    const BATCH_SIZE = 50;
+    const DELAY_BETWEEN_BATCHES = 500; // ms delay to avoid rate limiting
+    
+    while (job.status === "running") {
+      console.log(`[BackgroundClassify] Job ${jobId}: Fetching unclassified citations...`);
+      const { items: unclassified } = await storage.getUnclassifiedCitations(projectId, BATCH_SIZE);
+      
+      if (unclassified.length === 0) {
+        console.log(`[BackgroundClassify] Job ${jobId}: No more unclassified citations. Completed.`);
+        job.status = "completed";
+        job.completedAt = new Date();
+        scheduleJobCleanup(jobId);
+        break;
+      }
+
+      console.log(`[BackgroundClassify] Job ${jobId}: Got ${unclassified.length} citations to classify`);
+      const questions = unclassified.map(c => c.question!);
+      
+      console.log(`[BackgroundClassify] Job ${jobId}: Calling OpenAI for batch classification...`);
+      const results = await classifyBatchIntents(questions);
+      console.log(`[BackgroundClassify] Job ${jobId}: OpenAI returned ${results.length} results`);
+
+      // Update each citation with its classified intent
+      for (let i = 0; i < unclassified.length; i++) {
+        await storage.updateLlmCitationItem(unclassified[i].id, { intent: results[i].intent });
+      }
+
+      job.classified += unclassified.length;
+      console.log(`[BackgroundClassify] Job ${jobId}: Updated ${unclassified.length} citations. Total classified: ${job.classified}`);
+      
+      // Small delay between batches to avoid overwhelming OpenAI
+      await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+    }
+    
+    // Schedule cleanup for cancelled jobs
+    if (job.status === "cancelled") {
+      console.log(`[BackgroundClassify] Job ${jobId}: Cancelled. Classified ${job.classified} items.`);
+      scheduleJobCleanup(jobId);
+    }
+  } catch (error: any) {
+    job.status = "failed";
+    job.error = error.message || "Unknown error";
+    job.completedAt = new Date();
+    console.error(`[BackgroundClassify] Job ${jobId} failed:`, error);
+    scheduleJobCleanup(jobId);
+  }
+}
+
 function getDefaultQuickWinsSettings(projectId: string) {
   return {
     projectId,
@@ -1007,6 +1091,185 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error classifying all citation intents:", error);
       res.status(500).json({ error: "Failed to classify citation intents" });
+    }
+  });
+
+  // Start background classification job for all unclassified citations
+  app.post("/api/llm-citations/classify-all-background", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      // Check if there's already a running job for this project
+      for (const [id, job] of Array.from(classificationJobs.entries())) {
+        if (job.projectId === projectId && job.status === "running") {
+          return res.json({
+            success: true,
+            jobId: id,
+            message: "Classification job already running",
+            job: {
+              id,
+              status: job.status,
+              classified: job.classified,
+              initialTotal: job.initialTotal,
+              startedAt: job.startedAt
+            }
+          });
+        }
+      }
+
+      // Get initial count of unclassified citations
+      const { total: rawTotal } = await storage.getUnclassifiedCitations(projectId, 1);
+      const total = Number(rawTotal) || 0;
+      
+      if (total === 0) {
+        return res.json({
+          success: true,
+          message: "All citations are already classified",
+          job: null
+        });
+      }
+
+      // Create new job
+      const jobId = `classify-${projectId}-${Date.now()}`;
+      const job: ClassificationJob = {
+        id: jobId,
+        projectId,
+        status: "running",
+        initialTotal: total,
+        classified: 0,
+        startedAt: new Date()
+      };
+      classificationJobs.set(jobId, job);
+
+      // Start background processing (non-blocking)
+      runBackgroundClassification(jobId, projectId);
+
+      res.json({
+        success: true,
+        jobId,
+        message: `Started classifying ${total} citations in the background`,
+        job: {
+          id: jobId,
+          status: job.status,
+          classified: job.classified,
+          initialTotal: job.initialTotal,
+          startedAt: job.startedAt
+        }
+      });
+    } catch (error) {
+      console.error("Error starting background classification:", error);
+      res.status(500).json({ error: "Failed to start background classification" });
+    }
+  });
+
+  // Get background classification job status
+  app.get("/api/llm-citations/classify-job-status", async (req, res) => {
+    try {
+      const jobId = req.query.jobId as string;
+      const projectId = req.query.projectId as string;
+
+      if (jobId) {
+        const job = classificationJobs.get(jobId);
+        if (!job) {
+          return res.status(404).json({ error: "Job not found" });
+        }
+        return res.json({
+          id: job.id,
+          status: job.status,
+          classified: job.classified,
+          initialTotal: job.initialTotal,
+          remaining: Math.max(0, job.initialTotal - job.classified),
+          startedAt: job.startedAt,
+          completedAt: job.completedAt,
+          error: job.error,
+          progress: job.initialTotal > 0 
+            ? Math.round((job.classified / job.initialTotal) * 100) 
+            : 100
+        });
+      }
+
+      if (projectId) {
+        // Find the most recent job for this project
+        let latestJob: ClassificationJob | null = null;
+        for (const job of Array.from(classificationJobs.values())) {
+          if (job.projectId === projectId) {
+            if (!latestJob || job.startedAt > latestJob.startedAt) {
+              latestJob = job;
+            }
+          }
+        }
+
+        if (latestJob) {
+          return res.json({
+            id: latestJob.id,
+            status: latestJob.status,
+            classified: latestJob.classified,
+            initialTotal: latestJob.initialTotal,
+            remaining: Math.max(0, latestJob.initialTotal - latestJob.classified),
+            startedAt: latestJob.startedAt,
+            completedAt: latestJob.completedAt,
+            error: latestJob.error,
+            progress: latestJob.initialTotal > 0 
+              ? Math.round((latestJob.classified / latestJob.initialTotal) * 100) 
+              : 100
+          });
+        }
+
+        return res.json({ job: null });
+      }
+
+      res.status(400).json({ error: "jobId or projectId is required" });
+    } catch (error) {
+      console.error("Error getting classification job status:", error);
+      res.status(500).json({ error: "Failed to get job status" });
+    }
+  });
+
+  // Cancel background classification job
+  app.post("/api/llm-citations/classify-job-cancel", async (req, res) => {
+    try {
+      const { jobId } = req.body;
+
+      if (!jobId) {
+        return res.status(400).json({ error: "jobId is required" });
+      }
+
+      const job = classificationJobs.get(jobId);
+      if (!job) {
+        return res.status(404).json({ error: "Job not found" });
+      }
+
+      if (job.status !== "running") {
+        return res.json({ 
+          success: false, 
+          message: `Job is already ${job.status}`,
+          job: {
+            id: job.id,
+            status: job.status,
+            classified: job.classified
+          }
+        });
+      }
+
+      job.status = "cancelled";
+      job.completedAt = new Date();
+
+      res.json({
+        success: true,
+        message: `Cancelled classification job. ${job.classified} citations were classified.`,
+        job: {
+          id: job.id,
+          status: job.status,
+          classified: job.classified
+        }
+      });
+    } catch (error) {
+      console.error("Error cancelling classification job:", error);
+      res.status(500).json({ error: "Failed to cancel job" });
     }
   });
 

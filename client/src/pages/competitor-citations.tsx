@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -171,6 +171,7 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
   const [editNotes, setEditNotes] = useState("");
   const [page, setPage] = useState(1);
   const [isClassifying, setIsClassifying] = useState(false);
+  const [backgroundJobId, setBackgroundJobId] = useState<string | null>(null);
   const pageSize = 50;
 
   const normalizePlatform = (platform: string) => {
@@ -276,6 +277,113 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
       toast({ title: "Error", description: "Failed to generate AI insights.", variant: "destructive" });
     },
   });
+
+  // Background classification job status polling
+  const { data: jobStatus } = useQuery<{
+    id: string;
+    status: "running" | "completed" | "failed" | "cancelled";
+    classified: number;
+    initialTotal: number;
+    remaining: number;
+    progress: number;
+    error?: string;
+  } | null>({
+    queryKey: ["/api/llm-citations/classify-job-status", projectId, backgroundJobId],
+    queryFn: async () => {
+      if (backgroundJobId) {
+        const res = await fetch(`/api/llm-citations/classify-job-status?jobId=${backgroundJobId}`);
+        if (!res.ok) return null;
+        return res.json();
+      }
+      const res = await fetch(`/api/llm-citations/classify-job-status?projectId=${projectId}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.job === null ? null : data;
+    },
+    enabled: !!projectId,
+    refetchInterval: backgroundJobId ? 2000 : false, // Poll every 2s while job is running
+  });
+
+  // Start background classification mutation
+  const startBackgroundClassificationMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/llm-citations/classify-all-background", { projectId });
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      if (data.jobId) {
+        setBackgroundJobId(data.jobId);
+        toast({ 
+          title: "Background Classification Started", 
+          description: data.message 
+        });
+      } else if (data.job === null) {
+        toast({ 
+          title: "All Citations Classified", 
+          description: "No unclassified citations found." 
+        });
+      }
+    },
+    onError: () => {
+      toast({ 
+        title: "Error", 
+        description: "Failed to start background classification.", 
+        variant: "destructive" 
+      });
+    },
+  });
+
+  // Cancel background job mutation
+  const cancelBackgroundJobMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/llm-citations/classify-job-cancel", { jobId: backgroundJobId });
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      setBackgroundJobId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/classify-job-status"] });
+      toast({ 
+        title: "Classification Cancelled", 
+        description: data.message 
+      });
+    },
+    onError: () => {
+      toast({ 
+        title: "Error", 
+        description: "Failed to cancel classification.", 
+        variant: "destructive" 
+      });
+    },
+  });
+
+  // Handle job completion - use useEffect for side effects
+  useEffect(() => {
+    if (!jobStatus || !backgroundJobId) return;
+    
+    if (jobStatus.status === "completed" || jobStatus.status === "failed") {
+      setBackgroundJobId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/classify-job-status"] });
+      
+      if (jobStatus.status === "completed") {
+        toast({ 
+          title: "Classification Complete", 
+          description: `Successfully classified ${jobStatus.classified.toLocaleString()} citations.` 
+        });
+      } else if (jobStatus.error) {
+        toast({ 
+          title: "Classification Failed", 
+          description: jobStatus.error, 
+          variant: "destructive" 
+        });
+      }
+    }
+  }, [jobStatus, backgroundJobId, projectId, toast]);
+
+  const isBackgroundJobRunning = backgroundJobId && jobStatus?.status === "running";
 
   const [showInsights, setShowInsights] = useState(false);
 
@@ -788,11 +896,45 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
               variant="outline"
               size="sm"
               onClick={handleClassifyCurrentPage}
-              disabled={isClassifying || !projectId}
+              disabled={isClassifying || isBackgroundJobRunning || !projectId}
               data-testid="button-classify-intents"
             >
-              {isClassifying ? "Classifying..." : "Classify Intents"}
+              {isClassifying ? "Classifying..." : "Classify 50"}
             </Button>
+            
+            {isBackgroundJobRunning ? (
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col text-xs">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="h-3 w-3 animate-spin text-primary" />
+                    <span className="font-medium">Classifying All...</span>
+                  </div>
+                  <span className="text-muted-foreground">
+                    {jobStatus?.classified.toLocaleString() || 0} / {jobStatus?.initialTotal.toLocaleString() || 0} ({jobStatus?.progress || 0}%)
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => cancelBackgroundJobMutation.mutate()}
+                  disabled={cancelBackgroundJobMutation.isPending}
+                  data-testid="button-cancel-classify"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => startBackgroundClassificationMutation.mutate()}
+                disabled={startBackgroundClassificationMutation.isPending || isClassifying || !projectId}
+                data-testid="button-classify-all"
+              >
+                <Zap className="h-4 w-4 mr-1" />
+                {startBackgroundClassificationMutation.isPending ? "Starting..." : "Classify All"}
+              </Button>
+            )}
             
             {hasActiveFilters && (
               <Button
