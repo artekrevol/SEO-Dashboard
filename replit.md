@@ -79,7 +79,8 @@ The frontend is built with React + TypeScript, Vite, Tailwind CSS, Radix UI, and
 - **Competitor Citations (Dedicated Page)**: Standalone page for deep analysis of competitor AI visibility. Features include:
     - **KPI Dashboard**: Total citations, Google AI/ChatGPT breakdown, competitors tracked, and total AI volume
     - **Status Tracking**: Tag citations as New, Opportunity, Addressing, or Dismissed with visual status cards
-    - **Advanced Filtering**: Filter by competitor domain, platform, status, and search terms
+    - **Advanced Filtering**: Filter by competitor domain, platform, status, intent, and search terms
+    - **Intent Classification**: AI-powered search intent categorization (informational, commercial, transactional, navigational) using OpenAI GPT-5. Batch classification processes up to 50 citations at once. Color-coded badges: informational (blue), commercial (purple), transactional (green), navigational (orange)
     - **Sortable Table**: Sort by question, competitor, platform, position, volume, or status
     - **Pagination**: Server-side pagination with 50 items per page
     - **Notes & Annotations**: Add notes to individual citations for tracking and prioritization
