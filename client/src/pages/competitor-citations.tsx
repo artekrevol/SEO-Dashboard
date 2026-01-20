@@ -326,25 +326,27 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     
     setIsClassifying(true);
     try {
-      const unclassified = citations.filter(c => !c.intent && c.question);
-      if (unclassified.length === 0) {
-        toast({ title: "No unclassified citations", description: "All citations on this page already have intents." });
-        return;
-      }
-      
-      const citationIds = unclassified.slice(0, 50).map(c => c.id);
-      const response = await apiRequest("POST", "/api/llm-citations/classify-intent", {
+      // Use the bulk classification endpoint that finds unclassified citations directly
+      const response = await apiRequest("POST", "/api/llm-citations/classify-all-intents", {
         projectId,
-        citationIds,
+        batchSize: 50,
       });
       
       const data = await response.json();
-      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-summary"] });
-      toast({ 
-        title: "Intent classification complete", 
-        description: `Classified ${data.classified} citations` 
-      });
+      
+      if (data.classified === 0 && data.remaining === 0) {
+        toast({ 
+          title: "All citations classified", 
+          description: "No unclassified citations found." 
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-summary"] });
+        toast({ 
+          title: "Intent classification complete", 
+          description: data.message || `Classified ${data.classified} citations${data.remaining > 0 ? `. ${data.remaining} more remaining.` : ''}`
+        });
+      }
     } catch (error) {
       toast({ 
         title: "Classification failed", 

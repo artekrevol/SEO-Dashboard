@@ -5026,6 +5026,51 @@ export class DatabaseStorage implements IStorage {
     return { items: enrichedItems, total: countResult?.count || 0 };
   }
 
+  // Get unclassified competitor citations for bulk intent classification
+  async getUnclassifiedCitations(
+    projectId: string,
+    limit: number = 50
+  ): Promise<{ items: LlmCitationItem[]; total: number }> {
+    const latestRun = await this.getLatestLlmCitationRun(projectId);
+    if (!latestRun) return { items: [], total: 0 };
+
+    // Get competitor snapshots
+    const competitorSnapshots = await db.select({ id: llmCitationSnapshots.id })
+      .from(llmCitationSnapshots)
+      .where(and(
+        eq(llmCitationSnapshots.runId, latestRun.id),
+        eq(llmCitationSnapshots.entityType, 'competitor')
+      ));
+
+    if (competitorSnapshots.length === 0) return { items: [], total: 0 };
+
+    const snapshotIds = competitorSnapshots.map(s => s.id);
+
+    // Count total unclassified
+    const [countResult] = await db.select({ count: sql<number>`count(*)` })
+      .from(llmCitationItems)
+      .where(and(
+        eq(llmCitationItems.projectId, projectId),
+        inArray(llmCitationItems.snapshotId, snapshotIds),
+        sql`${llmCitationItems.intent} IS NULL`,
+        sql`${llmCitationItems.question} IS NOT NULL AND ${llmCitationItems.question} != ''`
+      ));
+
+    // Get unclassified items
+    const items = await db.select()
+      .from(llmCitationItems)
+      .where(and(
+        eq(llmCitationItems.projectId, projectId),
+        inArray(llmCitationItems.snapshotId, snapshotIds),
+        sql`${llmCitationItems.intent} IS NULL`,
+        sql`${llmCitationItems.question} IS NOT NULL AND ${llmCitationItems.question} != ''`
+      ))
+      .orderBy(desc(llmCitationItems.aiSearchVolume))
+      .limit(limit);
+
+    return { items, total: countResult?.count || 0 };
+  }
+
   async updateLlmCitationItem(id: number, data: { status?: string; notes?: string; intent?: string }): Promise<LlmCitationItem | null> {
     const updates: Record<string, any> = {};
     if (data.status !== undefined) updates.citationStatus = data.status;

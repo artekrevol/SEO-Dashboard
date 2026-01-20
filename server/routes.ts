@@ -966,24 +966,22 @@ export async function registerRoutes(
   // Classify all unclassified citations for a project
   app.post("/api/llm-citations/classify-all-intents", async (req, res) => {
     try {
-      const { projectId, batchSize = 20 } = req.body;
+      const { projectId, batchSize = 50 } = req.body;
 
       if (!projectId) {
         return res.status(400).json({ error: "projectId is required" });
       }
 
-      // Get unclassified citations
-      const { items, total } = await storage.getLlmCitationItems(projectId, {
-        entityType: 'competitor',
-        limit: Math.min(batchSize, 50),
-      });
-
-      const unclassified = items.filter(c => !c.intent && c.question);
+      // Get unclassified citations using dedicated method that filters by intent IS NULL
+      const { items: unclassified, total } = await storage.getUnclassifiedCitations(
+        projectId, 
+        Math.min(batchSize, 50)
+      );
       
       if (unclassified.length === 0) {
         return res.json({ 
           success: true, 
-          message: "No unclassified citations found in this batch",
+          message: "All citations have been classified",
           classified: 0,
           remaining: 0
         });
@@ -992,15 +990,19 @@ export async function registerRoutes(
       const questions = unclassified.map(c => c.question!);
       const results = await classifyBatchIntents(questions);
 
+      // Update each citation with its classified intent
       for (let i = 0; i < unclassified.length; i++) {
         await storage.updateLlmCitationItem(unclassified[i].id, { intent: results[i].intent });
       }
 
+      const remaining = total - unclassified.length;
       res.json({ 
         success: true, 
         classified: unclassified.length,
-        remaining: total - unclassified.length,
-        message: `Classified ${unclassified.length} citations`
+        remaining,
+        message: remaining > 0 
+          ? `Classified ${unclassified.length} citations. ${remaining} more remaining.`
+          : `Classified ${unclassified.length} citations. All done!`
       });
     } catch (error) {
       console.error("Error classifying all citation intents:", error);
@@ -1050,18 +1052,70 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Project not found" });
       }
 
+      // Get the actual competitors defined for this project
+      const actualCompetitors = await storage.getLlmCompetitors(projectId);
+      const competitorDomains = actualCompetitors.map(c => 
+        c.domain.toLowerCase().replace(/^www\./, '')
+      );
+
+      // List of generic platforms to exclude from analysis
+      const genericPlatforms = [
+        'youtube.com', 'www.youtube.com',
+        'reddit.com', 'www.reddit.com',
+        'google.com', 'www.google.com', 'play.google.com',
+        'wikipedia.org', 'en.wikipedia.org',
+        'twitter.com', 'x.com',
+        'facebook.com', 'www.facebook.com',
+        'linkedin.com', 'www.linkedin.com',
+        'instagram.com', 'www.instagram.com',
+        'tiktok.com', 'www.tiktok.com',
+        'pinterest.com', 'www.pinterest.com',
+        'amazon.com', 'www.amazon.com',
+        'apple.com', 'www.apple.com', 'apps.apple.com',
+        'medium.com',
+        'quora.com', 'www.quora.com',
+        'yelp.com', 'www.yelp.com',
+        'github.com', 'www.github.com',
+        'stackoverflow.com', 'www.stackoverflow.com',
+      ];
+
       // Fetch all competitor citations (up to 500 for analysis)
-      const { items: citations } = await storage.getLlmCitationItems(projectId, {
+      const { items: allCitations } = await storage.getLlmCitationItems(projectId, {
         entityType: 'competitor',
         limit: 500,
       });
 
-      if (citations.length === 0) {
+      if (allCitations.length === 0) {
         return res.status(400).json({ error: "No competitor citations found to analyze" });
       }
 
+      // Filter citations to only include actual competitors (not generic platforms)
+      const filteredCitations = allCitations.filter(c => {
+        const domain = (c.citedDomain || '').toLowerCase().replace(/^www\./, '');
+        // Exclude generic platforms
+        if (genericPlatforms.some(gp => domain === gp.replace(/^www\./, '') || domain.endsWith('.' + gp.replace(/^www\./, '')))) {
+          return false;
+        }
+        // If we have defined competitors, only include those
+        if (competitorDomains.length > 0) {
+          return competitorDomains.some(cd => domain === cd || domain.endsWith('.' + cd));
+        }
+        // Otherwise include all non-generic domains
+        return true;
+      });
+
+      // If no citations left after filtering, use all citations but still exclude generic platforms
+      const citationsToAnalyze = filteredCitations.length > 0 ? filteredCitations : allCitations.filter(c => {
+        const domain = (c.citedDomain || '').toLowerCase().replace(/^www\./, '');
+        return !genericPlatforms.some(gp => domain === gp.replace(/^www\./, '') || domain.endsWith('.' + gp.replace(/^www\./, '')));
+      });
+
+      if (citationsToAnalyze.length === 0) {
+        return res.status(400).json({ error: "No competitor citations found after filtering generic platforms" });
+      }
+
       // Prepare citation data for analysis
-      const citationData = citations.map(c => ({
+      const citationData = citationsToAnalyze.map(c => ({
         question: c.question || '',
         competitor: c.citedDomain || '',
         platform: c.platform || '',
@@ -1080,14 +1134,16 @@ export async function registerRoutes(
         projectId,
         insightType: "competitor_citations",
         insights,
-        citationCount: citations.length,
+        citationCount: citationsToAnalyze.length,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       });
 
       res.json({
         insights,
         generatedAt: new Date().toISOString(),
-        citationCount: citations.length,
+        citationCount: citationsToAnalyze.length,
+        totalCitations: allCitations.length,
+        filteredOut: allCitations.length - citationsToAnalyze.length,
         cached: false
       });
     } catch (error) {
