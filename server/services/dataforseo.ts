@@ -2655,85 +2655,132 @@ export class DataForSEOService {
     }
   }
 
+  /**
+   * Search LLM mentions with pagination support
+   * Fetches all available mentions by using offset pagination
+   * Maximum limit per request is 1000, offset up to 9000
+   */
   async getLlmMentionsSearch(
     domain: string,
     platform: "google" | "chat_gpt" = "google",
     locationCode: number = 2840,
     languageCode: string = "en",
-    limit: number = 100
+    limit: number = 1000, // Increased to API max of 1000
+    fetchAll: boolean = true // New param to fetch all pages
   ): Promise<LlmMentionItem[] | null> {
     try {
-      console.log(`[DataForSEO] Searching LLM mentions for ${domain} on ${platform}`);
+      console.log(`[DataForSEO] Searching LLM mentions for ${domain} on ${platform} (fetchAll: ${fetchAll})`);
 
-      const response = await this.makeRequest<{
-        tasks: Array<{
-          status_code: number;
-          status_message: string;
-          cost: number;
-          result: Array<{
-            total_count: number;
-            items_count: number;
-            items: Array<{
-              platform: string;
-              location_code: number;
-              language_code: string;
-              question: string;
-              answer: string;
-              sources: Array<{
-                snippet: string;
-                source_name: string;
-                thumbnail?: string;
-                markdown?: string;
-                position: number;
-                title: string;
-                domain: string;
-                url: string;
-                publication_date?: string;
+      const allItems: LlmMentionItem[] = [];
+      let offset = 0;
+      let totalCount = 0;
+      let searchAfterToken: string | undefined;
+      const maxLimit = Math.min(limit, 1000); // API max is 1000
+
+      do {
+        const requestPayload: Record<string, unknown> = {
+          target: [{ domain, search_filter: "include", include_subdomains: true }],
+          platform,
+          location_code: locationCode,
+          language_code: languageCode,
+          limit: maxLimit,
+          order_by: ["ai_search_volume,desc"],
+        };
+
+        // Use search_after_token for pagination if available
+        if (searchAfterToken) {
+          requestPayload.search_after_token = searchAfterToken;
+        } else if (offset > 0) {
+          requestPayload.offset = offset;
+        }
+
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            status_code: number;
+            status_message: string;
+            cost: number;
+            result: Array<{
+              total_count: number;
+              items_count: number;
+              search_after_token?: string;
+              items: Array<{
+                platform: string;
+                location_code: number;
+                language_code: string;
+                question: string;
+                answer: string;
+                sources: Array<{
+                  snippet: string;
+                  source_name: string;
+                  thumbnail?: string;
+                  markdown?: string;
+                  position: number;
+                  title: string;
+                  domain: string;
+                  url: string;
+                  publication_date?: string;
+                }>;
+                search_results: Array<{
+                  description: string;
+                  breadcrumb?: string;
+                  position: number;
+                  title: string;
+                  domain: string;
+                  url: string;
+                  publication_date?: string;
+                }>;
+                ai_search_volume: number;
+                impressions: number;
               }>;
-              search_results: Array<{
-                description: string;
-                breadcrumb?: string;
-                position: number;
-                title: string;
-                domain: string;
-                url: string;
-                publication_date?: string;
-              }>;
-              ai_search_volume: number;
-              impressions: number;
             }>;
           }>;
-        }>;
-      }>("/ai_optimization/llm_mentions/search/live", "POST", [{
-        target: [{ domain, search_filter: "include", include_subdomains: true }],
-        platform,
-        location_code: locationCode,
-        language_code: languageCode,
-        limit,
-        order_by: ["ai_search_volume,desc"], // Get highest-value mentions first
-      }], 120000);
+        }>("/ai_optimization/llm_mentions/search/live", "POST", [requestPayload], 120000);
 
-      const task = response.tasks?.[0];
-      if (!task || task.status_code !== 20000) {
-        console.error(`[DataForSEO] LLM Mentions Search API error:`, task?.status_message);
-        return null;
-      }
+        const task = response.tasks?.[0];
+        if (!task || task.status_code !== 20000) {
+          console.error(`[DataForSEO] LLM Mentions Search API error:`, task?.status_message);
+          break;
+        }
 
-      const result = task.result?.[0];
-      if (!result || !result.items) return [];
+        const result = task.result?.[0];
+        if (!result || !result.items || result.items.length === 0) break;
 
-      return result.items.map(item => ({
-        platform: item.platform,
-        locationCode: item.location_code,
-        languageCode: item.language_code,
-        question: item.question,
-        answer: item.answer,
-        sources: item.sources || [],
-        searchResults: item.search_results || [],
-        aiSearchVolume: item.ai_search_volume || 0,
-        impressions: item.impressions || 0,
-        searchType: "domain" as const,
-      }));
+        totalCount = result.total_count || 0;
+        searchAfterToken = result.search_after_token;
+
+        const mappedItems = result.items.map(item => ({
+          platform: item.platform,
+          locationCode: item.location_code,
+          languageCode: item.language_code,
+          question: item.question,
+          answer: item.answer,
+          sources: item.sources || [],
+          searchResults: item.search_results || [],
+          aiSearchVolume: item.ai_search_volume || 0,
+          impressions: item.impressions || 0,
+          searchType: "domain" as const,
+        }));
+
+        allItems.push(...mappedItems);
+        offset += result.items_count;
+
+        console.log(`[DataForSEO] Fetched ${allItems.length}/${totalCount} mentions for ${domain} on ${platform}`);
+
+        // Stop if we don't want all pages or we've got everything
+        if (!fetchAll || allItems.length >= totalCount || result.items.length < maxLimit) {
+          break;
+        }
+
+        // Safety limit to prevent infinite loops (max 10 pages = 10,000 items)
+        if (offset >= 10000) {
+          console.log(`[DataForSEO] Reached pagination limit of 10,000 items`);
+          break;
+        }
+
+      } while (fetchAll);
+
+      console.log(`[DataForSEO] Total ${allItems.length} mentions fetched for ${domain} on ${platform}`);
+      return allItems;
     } catch (error) {
       console.error(`[DataForSEO] Error searching LLM mentions:`, error);
       return null;
@@ -2741,7 +2788,7 @@ export class DataForSEOService {
   }
 
   /**
-   * Search for brand keyword mentions in AI responses
+   * Search for brand keyword mentions in AI responses with pagination
    * This finds mentions where the brand name appears in AI answers,
    * even if the domain isn't directly cited as a source
    */
@@ -2750,85 +2797,124 @@ export class DataForSEOService {
     platform: "google" | "chat_gpt" = "google",
     locationCode: number = 2840,
     languageCode: string = "en",
-    limit: number = 100,
-    searchScope: ("any" | "question" | "answer" | "brand_entities" | "fan_out_queries")[] = ["answer"]
+    limit: number = 1000, // Increased to API max of 1000
+    searchScope: ("any" | "question" | "answer" | "brand_entities" | "fan_out_queries")[] = ["answer"],
+    fetchAll: boolean = true // New param to fetch all pages
   ): Promise<LlmMentionItem[] | null> {
     try {
-      console.log(`[DataForSEO] Searching LLM mentions for keyword "${keyword}" on ${platform}`);
+      console.log(`[DataForSEO] Searching LLM mentions for keyword "${keyword}" on ${platform} (fetchAll: ${fetchAll})`);
 
-      const response = await this.makeRequest<{
-        tasks: Array<{
-          status_code: number;
-          status_message: string;
-          cost: number;
-          result: Array<{
-            total_count: number;
-            items_count: number;
-            items: Array<{
-              platform: string;
-              location_code: number;
-              language_code: string;
-              question: string;
-              answer: string;
-              sources: Array<{
-                snippet: string;
-                source_name: string;
-                thumbnail?: string;
-                markdown?: string;
-                position: number;
-                title: string;
-                domain: string;
-                url: string;
-                publication_date?: string;
+      const allItems: LlmMentionItem[] = [];
+      let offset = 0;
+      let totalCount = 0;
+      let searchAfterToken: string | undefined;
+      const maxLimit = Math.min(limit, 1000);
+
+      do {
+        const requestPayload: Record<string, unknown> = {
+          target: [{ 
+            keyword, 
+            search_scope: searchScope,
+            match_type: "partial_match"
+          }],
+          platform,
+          location_code: locationCode,
+          language_code: languageCode,
+          limit: maxLimit,
+          order_by: ["ai_search_volume,desc"],
+        };
+
+        if (searchAfterToken) {
+          requestPayload.search_after_token = searchAfterToken;
+        } else if (offset > 0) {
+          requestPayload.offset = offset;
+        }
+
+        const response = await this.makeRequest<{
+          tasks: Array<{
+            status_code: number;
+            status_message: string;
+            cost: number;
+            result: Array<{
+              total_count: number;
+              items_count: number;
+              search_after_token?: string;
+              items: Array<{
+                platform: string;
+                location_code: number;
+                language_code: string;
+                question: string;
+                answer: string;
+                sources: Array<{
+                  snippet: string;
+                  source_name: string;
+                  thumbnail?: string;
+                  markdown?: string;
+                  position: number;
+                  title: string;
+                  domain: string;
+                  url: string;
+                  publication_date?: string;
+                }>;
+                search_results: Array<{
+                  description: string;
+                  breadcrumb?: string;
+                  position: number;
+                  title: string;
+                  domain: string;
+                  url: string;
+                  publication_date?: string;
+                }>;
+                ai_search_volume: number;
+                impressions: number;
               }>;
-              search_results: Array<{
-                description: string;
-                breadcrumb?: string;
-                position: number;
-                title: string;
-                domain: string;
-                url: string;
-                publication_date?: string;
-              }>;
-              ai_search_volume: number;
-              impressions: number;
             }>;
           }>;
-        }>;
-      }>("/ai_optimization/llm_mentions/search/live", "POST", [{
-        target: [{ 
-          keyword, 
-          search_scope: searchScope,
-          match_type: "partial_match"
-        }],
-        platform,
-        location_code: locationCode,
-        language_code: languageCode,
-        limit,
-        order_by: ["ai_search_volume,desc"],
-      }], 120000);
+        }>("/ai_optimization/llm_mentions/search/live", "POST", [requestPayload], 120000);
 
-      const task = response.tasks?.[0];
-      if (!task || task.status_code !== 20000) {
-        console.error(`[DataForSEO] LLM Mentions Keyword Search API error:`, task?.status_message);
-        return null;
-      }
+        const task = response.tasks?.[0];
+        if (!task || task.status_code !== 20000) {
+          console.error(`[DataForSEO] LLM Mentions Keyword Search API error:`, task?.status_message);
+          break;
+        }
 
-      const result = task.result?.[0];
-      if (!result || !result.items) return [];
+        const result = task.result?.[0];
+        if (!result || !result.items || result.items.length === 0) break;
 
-      return result.items.map(item => ({
-        platform: item.platform,
-        locationCode: item.location_code,
-        languageCode: item.language_code,
-        question: item.question,
-        answer: item.answer,
-        sources: item.sources || [],
-        searchResults: item.search_results || [],
-        aiSearchVolume: item.ai_search_volume || 0,
-        impressions: item.impressions || 0,
-        searchType: "keyword" as const,
-      }));
+        totalCount = result.total_count || 0;
+        searchAfterToken = result.search_after_token;
+
+        const mappedItems = result.items.map(item => ({
+          platform: item.platform,
+          locationCode: item.location_code,
+          languageCode: item.language_code,
+          question: item.question,
+          answer: item.answer,
+          sources: item.sources || [],
+          searchResults: item.search_results || [],
+          aiSearchVolume: item.ai_search_volume || 0,
+          impressions: item.impressions || 0,
+          searchType: "keyword" as const,
+        }));
+
+        allItems.push(...mappedItems);
+        offset += result.items_count;
+
+        console.log(`[DataForSEO] Fetched ${allItems.length}/${totalCount} keyword mentions for "${keyword}" on ${platform}`);
+
+        if (!fetchAll || allItems.length >= totalCount || result.items.length < maxLimit) {
+          break;
+        }
+
+        if (offset >= 10000) {
+          console.log(`[DataForSEO] Reached pagination limit of 10,000 items`);
+          break;
+        }
+
+      } while (fetchAll);
+
+      console.log(`[DataForSEO] Total ${allItems.length} keyword mentions fetched for "${keyword}" on ${platform}`);
+      return allItems;
     } catch (error) {
       console.error(`[DataForSEO] Error searching LLM mentions by keyword:`, error);
       return null;
