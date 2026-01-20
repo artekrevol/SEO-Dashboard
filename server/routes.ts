@@ -59,7 +59,7 @@ function scheduleJobCleanup(jobId: string) {
   }, JOB_CLEANUP_DELAY_MS);
 }
 
-// Background classification processor
+// Background classification processor with parallel batch processing
 async function runBackgroundClassification(jobId: string, projectId: string) {
   const job = classificationJobs.get(jobId);
   if (!job) {
@@ -71,11 +71,12 @@ async function runBackgroundClassification(jobId: string, projectId: string) {
 
   try {
     const BATCH_SIZE = 50;
-    const DELAY_BETWEEN_BATCHES = 500; // ms delay to avoid rate limiting
+    const PARALLEL_BATCHES = 4; // Run 4 batches simultaneously
+    const DELAY_BETWEEN_ROUNDS = 500; // ms delay between parallel rounds
     
     while (job.status === "running") {
-      console.log(`[BackgroundClassify] Job ${jobId}: Fetching unclassified citations...`);
-      const { items: unclassified } = await storage.getUnclassifiedCitations(projectId, BATCH_SIZE);
+      console.log(`[BackgroundClassify] Job ${jobId}: Fetching ${PARALLEL_BATCHES * BATCH_SIZE} unclassified citations...`);
+      const { items: unclassified } = await storage.getUnclassifiedCitations(projectId, BATCH_SIZE * PARALLEL_BATCHES);
       
       if (unclassified.length === 0) {
         console.log(`[BackgroundClassify] Job ${jobId}: No more unclassified citations. Completed.`);
@@ -86,22 +87,36 @@ async function runBackgroundClassification(jobId: string, projectId: string) {
       }
 
       console.log(`[BackgroundClassify] Job ${jobId}: Got ${unclassified.length} citations to classify`);
-      const questions = unclassified.map(c => c.question!);
       
-      console.log(`[BackgroundClassify] Job ${jobId}: Calling OpenAI for batch classification...`);
-      const results = await classifyBatchIntents(questions);
-      console.log(`[BackgroundClassify] Job ${jobId}: OpenAI returned ${results.length} results`);
-
-      // Update each citation with its classified intent
-      for (let i = 0; i < unclassified.length; i++) {
-        await storage.updateLlmCitationItem(unclassified[i].id, { intent: results[i].intent });
+      // Split into batches for parallel processing
+      const batches: typeof unclassified[] = [];
+      for (let i = 0; i < unclassified.length; i += BATCH_SIZE) {
+        batches.push(unclassified.slice(i, i + BATCH_SIZE));
       }
-
-      job.classified += unclassified.length;
-      console.log(`[BackgroundClassify] Job ${jobId}: Updated ${unclassified.length} citations. Total classified: ${job.classified}`);
       
-      // Small delay between batches to avoid overwhelming OpenAI
-      await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+      console.log(`[BackgroundClassify] Job ${jobId}: Processing ${batches.length} batches in parallel...`);
+      
+      // Process all batches in parallel
+      const batchPromises = batches.map(async (batch, batchIndex) => {
+        const questions = batch.map(c => c.question!);
+        const results = await classifyBatchIntents(questions);
+        
+        // Update each citation with its classified intent
+        for (let i = 0; i < batch.length; i++) {
+          await storage.updateLlmCitationItem(batch[i].id, { intent: results[i].intent });
+        }
+        
+        return batch.length;
+      });
+      
+      const batchResults = await Promise.all(batchPromises);
+      const totalClassified = batchResults.reduce((sum, count) => sum + count, 0);
+      
+      job.classified += totalClassified;
+      console.log(`[BackgroundClassify] Job ${jobId}: Classified ${totalClassified} citations in parallel. Total: ${job.classified}`);
+      
+      // Small delay between rounds to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ROUNDS));
     }
     
     // Schedule cleanup for cancelled jobs
