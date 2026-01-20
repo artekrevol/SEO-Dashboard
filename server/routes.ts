@@ -716,6 +716,56 @@ export async function registerRoutes(
     }
   });
 
+  // Get AI citation counts for all competitors (for displaying in competitor table)
+  app.get("/api/competitors/ai-citation-counts", async (req, res) => {
+    try {
+      const projectId = req.query.projectId as string;
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      const counts = await storage.getCompetitorAiCitationCounts(projectId);
+      const result: Record<string, { total: number; google: number; chatgpt: number }> = {};
+      counts.forEach((value, key) => {
+        result[key] = value;
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching competitor AI citation counts:", error);
+      res.status(500).json({ error: "Failed to fetch competitor AI citation counts" });
+    }
+  });
+
+  // Get AI citations for a specific competitor domain
+  app.get("/api/competitors/:domain/ai-citations", async (req, res) => {
+    try {
+      const { domain } = req.params;
+      const projectId = req.query.projectId as string;
+      const platform = req.query.platform as string | undefined;
+      const intent = req.query.intent as string | undefined;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!domain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+
+      const result = await storage.getCompetitorAiCitations(projectId, domain, {
+        platform,
+        intent,
+        limit,
+        offset,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching competitor AI citations:", error);
+      res.status(500).json({ error: "Failed to fetch competitor AI citations" });
+    }
+  });
+
   app.get("/api/competitors/:domain/serp-keywords", async (req, res) => {
     try {
       const { domain } = req.params;

@@ -5341,6 +5341,84 @@ export class DatabaseStorage implements IStorage {
 
     return result;
   }
+
+  // Get AI citation counts per competitor domain (for interlinking with competitor table)
+  async getCompetitorAiCitationCounts(projectId: string): Promise<Map<string, { total: number; google: number; chatgpt: number }>> {
+    const counts = await db
+      .select({
+        domain: sql<string>`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', ''))`,
+        total: sql<number>`count(*)::int`,
+        google: sql<number>`count(*) filter (where ${llmCitationItems.platform} = 'google')::int`,
+        chatgpt: sql<number>`count(*) filter (where ${llmCitationItems.platform} = 'chat_gpt')::int`,
+      })
+      .from(llmCitationItems)
+      .innerJoin(llmCitationSnapshots, eq(llmCitationItems.snapshotId, llmCitationSnapshots.id))
+      .innerJoin(llmCitationRuns, eq(llmCitationSnapshots.runId, llmCitationRuns.id))
+      .where(eq(llmCitationRuns.projectId, projectId))
+      .groupBy(sql`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', ''))`);
+
+    const map = new Map<string, { total: number; google: number; chatgpt: number }>();
+    for (const row of counts) {
+      if (row.domain) {
+        map.set(row.domain, {
+          total: row.total,
+          google: row.google,
+          chatgpt: row.chatgpt,
+        });
+      }
+    }
+    return map;
+  }
+
+  // Get AI citations for a specific competitor domain
+  async getCompetitorAiCitations(projectId: string, competitorDomain: string, options?: {
+    platform?: string;
+    intent?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{
+    items: LlmCitationItem[];
+    total: number;
+  }> {
+    const normalizedDomain = competitorDomain.toLowerCase().replace(/^www\./, '');
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+
+    const conditions = [
+      eq(llmCitationRuns.projectId, projectId),
+      sql`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${normalizedDomain}`,
+    ];
+
+    if (options?.platform) {
+      conditions.push(eq(llmCitationItems.platform, options.platform));
+    }
+    if (options?.intent) {
+      conditions.push(eq(llmCitationItems.searchIntent, options.intent));
+    }
+
+    const [items, countResult] = await Promise.all([
+      db.select({
+        item: llmCitationItems,
+      })
+        .from(llmCitationItems)
+        .innerJoin(llmCitationSnapshots, eq(llmCitationItems.snapshotId, llmCitationSnapshots.id))
+        .innerJoin(llmCitationRuns, eq(llmCitationSnapshots.runId, llmCitationRuns.id))
+        .where(and(...conditions))
+        .orderBy(desc(llmCitationItems.aiSearchVolume))
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)::int` })
+        .from(llmCitationItems)
+        .innerJoin(llmCitationSnapshots, eq(llmCitationItems.snapshotId, llmCitationSnapshots.id))
+        .innerJoin(llmCitationRuns, eq(llmCitationSnapshots.runId, llmCitationRuns.id))
+        .where(and(...conditions)),
+    ]);
+
+    return {
+      items: items.map(r => r.item),
+      total: countResult[0]?.count || 0,
+    };
+  }
 }
 
 export const storage = new DatabaseStorage();
