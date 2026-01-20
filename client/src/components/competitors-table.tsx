@@ -21,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -233,6 +235,17 @@ export function CompetitorsTable({
       if (!selectedCompetitor || !projectId) return null;
       const res = await fetch(`/api/competitors/${encodeURIComponent(selectedCompetitor)}/keywords?projectId=${projectId}`);
       if (!res.ok) throw new Error("Failed to fetch keyword details");
+      return res.json();
+    },
+    enabled: !!selectedCompetitor && !!projectId,
+  });
+
+  const { data: citationsData, isLoading: loadingCitations } = useQuery<{ items: any[]; total: number }>({
+    queryKey: ["/api/competitors", selectedCompetitor, "ai-citations", projectId],
+    queryFn: async () => {
+      if (!selectedCompetitor || !projectId) return { items: [], total: 0 };
+      const res = await fetch(`/api/competitors/${encodeURIComponent(selectedCompetitor)}/ai-citations?projectId=${projectId}&limit=100`);
+      if (!res.ok) throw new Error("Failed to fetch AI citations");
       return res.json();
     },
     enabled: !!selectedCompetitor && !!projectId,
@@ -765,118 +778,208 @@ export function CompetitorsTable({
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span>Keywords Where</span>
+              <span>Competitor Details:</span>
               <Badge variant="outline" className="text-base font-normal">
                 {selectedCompetitor}
               </Badge>
-              <span>Competes</span>
             </DialogTitle>
           </DialogHeader>
           
-          {keywordDetails?.summary && (
-            <div className="grid grid-cols-4 gap-4 py-4 border-b">
-              <div className="text-center">
-                <div className="text-2xl font-bold">{keywordDetails.summary.total}</div>
-                <div className="text-sm text-muted-foreground">Total Keywords</div>
+          <Tabs defaultValue="keywords" className="flex-1 flex flex-col min-h-0">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="keywords" data-testid="tab-competitor-keywords">
+                <Target className="h-4 w-4 mr-2" />
+                Keywords ({keywordDetails?.summary?.total || 0})
+              </TabsTrigger>
+              <TabsTrigger value="ai-citations" data-testid="tab-competitor-citations">
+                <Quote className="h-4 w-4 mr-2" />
+                AI Citations ({citationsData?.total || 0})
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="keywords" className="flex-1 flex flex-col mt-4 min-h-0">
+              {keywordDetails?.summary && (
+                <div className="grid grid-cols-4 gap-4 py-4 border-b">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{keywordDetails.summary.total}</div>
+                    <div className="text-sm text-muted-foreground">Total Keywords</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-500">{keywordDetails.summary.aboveUs}</div>
+                    <div className="text-sm text-muted-foreground">Above Us</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-emerald-500">{keywordDetails.summary.belowUs}</div>
+                    <div className="text-sm text-muted-foreground">Below Us</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold">{keywordDetails.summary.totalVolume?.toLocaleString()}</div>
+                    <div className="text-sm text-muted-foreground">Total Volume</div>
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 overflow-auto min-h-0">
+                {loadingDetails ? (
+                  <div className="space-y-2 p-4">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-12 animate-pulse rounded bg-muted" />
+                    ))}
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Keyword</TableHead>
+                        <TableHead className="text-center">Volume</TableHead>
+                        <TableHead className="text-center">Their Pos</TableHead>
+                        <TableHead className="text-center">Our Pos</TableHead>
+                        <TableHead className="text-center">Gap</TableHead>
+                        <TableHead>Competitor URL</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(keywordDetails?.keywords || []).map((kw: KeywordDetail) => (
+                        <TableRow key={kw.keywordId} data-testid={`row-keyword-detail-${kw.keywordId}`}>
+                          <TableCell>
+                            <div className="font-medium">{kw.keyword}</div>
+                            {kw.cluster && (
+                              <div className="text-xs text-muted-foreground">{kw.cluster}</div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center font-mono">
+                            {kw.searchVolume.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="secondary" className="font-mono">
+                              {kw.competitorPosition}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge 
+                              variant="secondary" 
+                              className={cn(
+                                "font-mono",
+                                kw.ourPosition === null 
+                                  ? "bg-gray-500/10 text-gray-600 dark:text-gray-400"
+                                  : ""
+                              )}
+                            >
+                              {kw.ourPosition || 'N/R'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className={cn(
+                              "flex items-center justify-center gap-1 font-mono",
+                              kw.gap > 0 ? "text-red-500" : kw.gap < 0 ? "text-emerald-500" : "text-muted-foreground"
+                            )}>
+                              {kw.gap > 0 ? (
+                                <ArrowDown className="h-3 w-3" />
+                              ) : kw.gap < 0 ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <Minus className="h-3 w-3" />
+                              )}
+                              <span>{Math.abs(kw.gap)}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {kw.competitorUrl && (
+                              <a
+                                href={kw.competitorUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary truncate max-w-[200px]"
+                              >
+                                <span className="truncate">{kw.competitorUrl.replace(/^https?:\/\//, '')}</span>
+                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                              </a>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-500">{keywordDetails.summary.aboveUs}</div>
-                <div className="text-sm text-muted-foreground">Above Us</div>
+            </TabsContent>
+            
+            <TabsContent value="ai-citations" className="flex-1 flex flex-col mt-4 min-h-0">
+              <div className="flex-1 overflow-auto min-h-0">
+                {loadingCitations ? (
+                  <div className="space-y-2 p-4">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-12 animate-pulse rounded bg-muted" />
+                    ))}
+                  </div>
+                ) : (citationsData?.items?.length || 0) === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <Quote className="h-12 w-12 mb-4" />
+                    <p>No AI citations found for this competitor</p>
+                    <p className="text-sm mt-1">Citation data is collected via LLM Citation crawls</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[300px]">Question</TableHead>
+                        <TableHead className="text-center">Platform</TableHead>
+                        <TableHead className="text-center">Intent</TableHead>
+                        <TableHead className="text-center">Volume</TableHead>
+                        <TableHead>Cited Page</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(citationsData?.items || []).map((citation: any, idx: number) => (
+                        <TableRow key={citation.id || idx} data-testid={`row-citation-${idx}`}>
+                          <TableCell>
+                            <div className="font-medium text-sm line-clamp-2">{citation.question}</div>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="text-xs">
+                              {citation.platform === 'google' ? 'Google AI' : 'ChatGPT'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {citation.searchIntent ? (
+                              <Badge variant="secondary" className={cn(
+                                "text-xs capitalize",
+                                citation.searchIntent === 'informational' && "bg-blue-500/10 text-blue-600",
+                                citation.searchIntent === 'commercial' && "bg-purple-500/10 text-purple-600",
+                                citation.searchIntent === 'transactional' && "bg-green-500/10 text-green-600",
+                                citation.searchIntent === 'navigational' && "bg-orange-500/10 text-orange-600"
+                              )}>
+                                {citation.searchIntent}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center font-mono text-sm">
+                            {(citation.aiSearchVolume || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {citation.citedUrl ? (
+                              <a
+                                href={citation.citedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary truncate max-w-[200px]"
+                              >
+                                <span className="truncate">{citation.citedUrl.replace(/^https?:\/\//, '')}</span>
+                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-emerald-500">{keywordDetails.summary.belowUs}</div>
-                <div className="text-sm text-muted-foreground">Below Us</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold">{keywordDetails.summary.totalVolume?.toLocaleString()}</div>
-                <div className="text-sm text-muted-foreground">Total Volume</div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex-1 overflow-auto">
-            {loadingDetails ? (
-              <div className="space-y-2 p-4">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="h-12 animate-pulse rounded bg-muted" />
-                ))}
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Keyword</TableHead>
-                    <TableHead className="text-center">Volume</TableHead>
-                    <TableHead className="text-center">Their Pos</TableHead>
-                    <TableHead className="text-center">Our Pos</TableHead>
-                    <TableHead className="text-center">Gap</TableHead>
-                    <TableHead>Competitor URL</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(keywordDetails?.keywords || []).map((kw: KeywordDetail) => (
-                    <TableRow key={kw.keywordId} data-testid={`row-keyword-detail-${kw.keywordId}`}>
-                      <TableCell>
-                        <div className="font-medium">{kw.keyword}</div>
-                        {kw.cluster && (
-                          <div className="text-xs text-muted-foreground">{kw.cluster}</div>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center font-mono">
-                        {kw.searchVolume.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary" className="font-mono">
-                          {kw.competitorPosition}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge 
-                          variant="secondary" 
-                          className={cn(
-                            "font-mono",
-                            kw.ourPosition === null 
-                              ? "bg-gray-500/10 text-gray-600 dark:text-gray-400"
-                              : ""
-                          )}
-                        >
-                          {kw.ourPosition || 'N/R'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className={cn(
-                          "flex items-center justify-center gap-1 font-mono",
-                          kw.gap > 0 ? "text-red-500" : kw.gap < 0 ? "text-emerald-500" : "text-muted-foreground"
-                        )}>
-                          {kw.gap > 0 ? (
-                            <ArrowDown className="h-3 w-3" />
-                          ) : kw.gap < 0 ? (
-                            <ArrowUp className="h-3 w-3" />
-                          ) : (
-                            <Minus className="h-3 w-3" />
-                          )}
-                          <span>{Math.abs(kw.gap)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {kw.competitorUrl && (
-                          <a
-                            href={kw.competitorUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary truncate max-w-[200px]"
-                          >
-                            <span className="truncate">{kw.competitorUrl.replace(/^https?:\/\//, '')}</span>
-                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                          </a>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
