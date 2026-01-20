@@ -4997,10 +4997,10 @@ export class DatabaseStorage implements IStorage {
           LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${compDomainLower}
         )`);
       } else {
-        // Filter by ALL competitor domains from llm_competitors table
-        const competitors = await db.select({ domain: llmCompetitors.domain })
-          .from(llmCompetitors)
-          .where(eq(llmCompetitors.projectId, projectId));
+        // Filter by ALL competitor domains from keyword_competitor_metrics table (SERP competitors)
+        const competitors = await db.selectDistinct({ domain: keywordCompetitorMetrics.competitorDomain })
+          .from(keywordCompetitorMetrics)
+          .where(eq(keywordCompetitorMetrics.projectId, projectId));
         
         if (competitors.length > 0) {
           const competitorDomains = competitors.map(c => c.domain.toLowerCase().replace(/^www\./, ''));
@@ -5040,7 +5040,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get unclassified competitor citations for bulk intent classification
-  // Only returns citations where cited_domain matches an actual competitor domain
+  // Only returns citations where cited_domain matches a competitor from keyword_competitor_metrics
   async getUnclassifiedCitations(
     projectId: string,
     limit: number = 50
@@ -5048,10 +5048,10 @@ export class DatabaseStorage implements IStorage {
     const latestRun = await this.getLatestLlmCitationRun(projectId);
     if (!latestRun) return { items: [], total: 0 };
 
-    // Get actual competitor domains from llm_competitors table
-    const competitors = await db.select({ domain: llmCompetitors.domain })
-      .from(llmCompetitors)
-      .where(eq(llmCompetitors.projectId, projectId));
+    // Get competitor domains from keyword_competitor_metrics (SERP competitors list)
+    const competitors = await db.selectDistinct({ domain: keywordCompetitorMetrics.competitorDomain })
+      .from(keywordCompetitorMetrics)
+      .where(eq(keywordCompetitorMetrics.projectId, projectId));
     
     if (competitors.length === 0) return { items: [], total: 0 };
     
@@ -5118,10 +5118,10 @@ export class DatabaseStorage implements IStorage {
       totalVolume: 0,
     };
 
-    // Get actual competitor domains from llm_competitors table
-    const competitors = await db.select({ domain: llmCompetitors.domain })
-      .from(llmCompetitors)
-      .where(eq(llmCompetitors.projectId, projectId));
+    // Get competitor domains from keyword_competitor_metrics (SERP competitors list)
+    const competitors = await db.selectDistinct({ domain: keywordCompetitorMetrics.competitorDomain })
+      .from(keywordCompetitorMetrics)
+      .where(eq(keywordCompetitorMetrics.projectId, projectId));
     
     if (competitors.length === 0) return emptyResult;
     
@@ -5129,7 +5129,7 @@ export class DatabaseStorage implements IStorage {
     const competitorDomains = competitors.map(c => c.domain.toLowerCase().replace(/^www\./, ''));
     const domainCondition = sql`LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) IN (${sql.join(competitorDomains.map(d => sql`${d}`), sql`, `)})`;
 
-    // Get aggregate stats using SQL - only for citations of actual competitor domains
+    // Get aggregate stats using SQL - only for citations of competitor domains
     const [stats] = await db.select({
       total: sql<number>`count(*)`,
       googleCount: sql<number>`count(*) filter (where ${llmCitationItems.platform} = 'google')`,
