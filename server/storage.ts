@@ -5276,6 +5276,7 @@ export class DatabaseStorage implements IStorage {
     competitorMentions: number;
     brandMentions: number;
     gap: number;
+    aiSearchVolume: number;
     platform: string;
   }>> {
     const snapshots = await this.getLatestLlmCitationSnapshots(projectId);
@@ -5289,6 +5290,7 @@ export class DatabaseStorage implements IStorage {
       competitorMentions: number;
       brandMentions: number;
       gap: number;
+      aiSearchVolume: number;
       platform: string;
     }> = [];
 
@@ -5303,6 +5305,7 @@ export class DatabaseStorage implements IStorage {
         competitorMentions: comp.mentionsCount || 0,
         brandMentions,
         gap,
+        aiSearchVolume: comp.aiSearchVolume || 0,
         platform: comp.platform,
       });
     }

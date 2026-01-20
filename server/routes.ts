@@ -1522,7 +1522,7 @@ export async function registerRoutes(
         mentionsCount: gap.competitorMentions,
         brandMentionsCount: gap.brandMentions,
         gap: gap.gap,
-        aiSearchVolume: 0,
+        aiSearchVolume: gap.aiSearchVolume,
         platform: gap.platform,
       }));
       
