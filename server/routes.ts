@@ -1187,7 +1187,7 @@ export async function registerRoutes(
           completedAt: job.completedAt,
           error: job.error,
           progress: job.initialTotal > 0 
-            ? Math.round((job.classified / job.initialTotal) * 100) 
+            ? Math.round((job.classified / job.initialTotal) * 1000) / 10 
             : 100
         });
       }
@@ -1214,7 +1214,7 @@ export async function registerRoutes(
             completedAt: latestJob.completedAt,
             error: latestJob.error,
             progress: latestJob.initialTotal > 0 
-              ? Math.round((latestJob.classified / latestJob.initialTotal) * 100) 
+              ? Math.round((latestJob.classified / latestJob.initialTotal) * 1000) / 10 
               : 100
           });
         }
