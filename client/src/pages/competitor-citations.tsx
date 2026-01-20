@@ -54,6 +54,11 @@ import {
   MessageSquare,
   Filter,
   ChevronDown,
+  Sparkles,
+  RefreshCw,
+  AlertTriangle,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -91,6 +96,34 @@ interface Competitor {
   id: number;
   name: string | null;
   domain: string;
+}
+
+interface CompetitorInsights {
+  summary: string;
+  questionThemes: Array<{
+    theme: string;
+    count: number;
+    examples: string[];
+    intent: string;
+  }>;
+  contentGaps: Array<{
+    topic: string;
+    competitorAdvantage: string;
+    suggestedAction: string;
+    priority: "high" | "medium" | "low";
+  }>;
+  topCompetitorStrategies: Array<{
+    competitor: string;
+    citationCount: number;
+    dominantTopics: string[];
+    contentType: string;
+  }>;
+  recommendations: Array<{
+    action: string;
+    rationale: string;
+    expectedImpact: string;
+  }>;
+  analyzedAt: string;
 }
 
 const statusConfig = {
@@ -213,6 +246,38 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
       toast({ title: "Error", description: "Failed to update citation.", variant: "destructive" });
     },
   });
+
+  // AI Insights query
+  const { data: insightsData, isLoading: isLoadingInsights } = useQuery<{
+    insights: CompetitorInsights | null;
+    generatedAt: string | null;
+    citationCount: number | null;
+    cached: boolean;
+  }>({
+    queryKey: ["/api/llm-citations/competitor-insights", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/llm-citations/competitor-insights?projectId=${projectId}`);
+      if (!res.ok) throw new Error("Failed to fetch insights");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  // AI Insights generation mutation
+  const generateInsightsMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("POST", "/api/llm-citations/competitor-insights", { projectId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-insights"] });
+      toast({ title: "Analysis Complete", description: "AI insights have been generated successfully." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to generate AI insights.", variant: "destructive" });
+    },
+  });
+
+  const [showInsights, setShowInsights] = useState(false);
 
   const competitors: Competitor[] = competitorsData?.competitors || [];
   const citations: CitationItem[] = citationsData?.items || [];
@@ -472,6 +537,159 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
           </div>
         </Card>
       </div>
+
+      {/* AI Insights Section */}
+      <Card data-testid="card-ai-insights">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap pb-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/20">
+              <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <CardTitle className="text-lg">AI Competitive Analysis</CardTitle>
+              <CardDescription>
+                {insightsData?.insights ? (
+                  <>Analyzed {insightsData.citationCount} citations • Last updated {new Date(insightsData.generatedAt!).toLocaleDateString()}</>
+                ) : (
+                  "Generate AI-powered insights from competitor citations"
+                )}
+              </CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {insightsData?.insights && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowInsights(!showInsights)}
+                data-testid="button-toggle-insights"
+              >
+                {showInsights ? "Hide Details" : "Show Details"}
+              </Button>
+            )}
+            <Button
+              onClick={() => generateInsightsMutation.mutate()}
+              disabled={generateInsightsMutation.isPending || stats.total === 0}
+              data-testid="button-generate-insights"
+            >
+              {generateInsightsMutation.isPending ? (
+                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</>
+              ) : insightsData?.insights ? (
+                <><RefreshCw className="h-4 w-4 mr-2" /> Refresh Analysis</>
+              ) : (
+                <><Sparkles className="h-4 w-4 mr-2" /> Generate Insights</>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        
+        {insightsData?.insights && (
+          <CardContent className="pt-0">
+            {/* Summary always visible */}
+            <div className="p-4 rounded-lg bg-muted/50 mb-4">
+              <p className="text-sm leading-relaxed">{insightsData.insights.summary}</p>
+            </div>
+            
+            {showInsights && (
+              <div className="space-y-6">
+                {/* Content Gaps - High Priority */}
+                {insightsData.insights.contentGaps.length > 0 && (
+                  <div>
+                    <h4 className="flex items-center gap-2 font-semibold mb-3">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      Content Gaps
+                    </h4>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {insightsData.insights.contentGaps.slice(0, 4).map((gap, i) => (
+                        <div key={i} className="p-3 rounded-lg border bg-card">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <span className="font-medium text-sm">{gap.topic}</span>
+                            <Badge 
+                              variant="outline" 
+                              className={cn(
+                                gap.priority === "high" && "border-red-500/50 text-red-600 dark:text-red-400",
+                                gap.priority === "medium" && "border-amber-500/50 text-amber-600 dark:text-amber-400",
+                                gap.priority === "low" && "border-green-500/50 text-green-600 dark:text-green-400"
+                              )}
+                            >
+                              {gap.priority}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-2">{gap.competitorAdvantage}</p>
+                          <p className="text-xs font-medium text-primary">{gap.suggestedAction}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Question Themes */}
+                {insightsData.insights.questionThemes.length > 0 && (
+                  <div>
+                    <h4 className="flex items-center gap-2 font-semibold mb-3">
+                      <TrendingUp className="h-4 w-4 text-blue-500" />
+                      Top Question Themes
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {insightsData.insights.questionThemes.slice(0, 8).map((theme, i) => (
+                        <Badge key={i} variant="secondary" className="py-1.5 px-3">
+                          {theme.theme}
+                          <span className="ml-2 text-xs text-muted-foreground">~{theme.count}</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {insightsData.insights.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="flex items-center gap-2 font-semibold mb-3">
+                      <Zap className="h-4 w-4 text-green-500" />
+                      Recommended Actions
+                    </h4>
+                    <div className="space-y-3">
+                      {insightsData.insights.recommendations.slice(0, 3).map((rec, i) => (
+                        <div key={i} className="p-3 rounded-lg border bg-card">
+                          <p className="font-medium text-sm mb-1">{rec.action}</p>
+                          <p className="text-xs text-muted-foreground">{rec.rationale}</p>
+                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">Expected: {rec.expectedImpact}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top Competitor Strategies */}
+                {insightsData.insights.topCompetitorStrategies.length > 0 && (
+                  <div>
+                    <h4 className="flex items-center gap-2 font-semibold mb-3">
+                      <Target className="h-4 w-4 text-purple-500" />
+                      Competitor Strategies
+                    </h4>
+                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                      {insightsData.insights.topCompetitorStrategies.slice(0, 3).map((comp, i) => (
+                        <div key={i} className="p-3 rounded-lg border bg-card">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge variant="secondary" className="truncate max-w-[150px]">{comp.competitor}</Badge>
+                            <span className="text-xs text-muted-foreground">{comp.citationCount} citations</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-1">Content: {comp.contentType}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {comp.dominantTopics.slice(0, 2).map((topic, j) => (
+                              <Badge key={j} variant="outline" className="text-xs">{topic}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-col gap-4">
