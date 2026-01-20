@@ -831,6 +831,9 @@ export async function registerRoutes(
       const platform = normalizePlatform(req.query.platform as string | undefined);
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
+      const entityType = req.query.entityType as 'brand' | 'competitor' | undefined;
+      const competitorDomain = req.query.competitorDomain as string | undefined;
+      const search = req.query.search as string | undefined;
 
       if (!projectId) {
         return res.status(400).json({ error: "projectId is required" });
@@ -840,7 +843,15 @@ export async function registerRoutes(
       const project = await storage.getProject(projectId);
       const brandDomain = project?.domain;
 
-      const result = await storage.getLlmCitationItems(projectId, { platform, limit, offset, brandDomain });
+      const result = await storage.getLlmCitationItems(projectId, { 
+        platform, 
+        limit, 
+        offset, 
+        brandDomain,
+        entityType: entityType || 'brand', // Default to brand for backward compatibility
+        competitorDomain,
+        search,
+      });
       res.json(result);
     } catch (error) {
       console.error("Error fetching LLM citation items:", error);

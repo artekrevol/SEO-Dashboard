@@ -4928,21 +4928,77 @@ export class DatabaseStorage implements IStorage {
 
   async getLlmCitationItems(
     projectId: string,
-    options: { platform?: string; limit?: number; offset?: number; brandDomain?: string } = {}
-  ): Promise<{ items: LlmCitationItem[]; total: number }> {
-    const { platform, limit = 50, offset = 0, brandDomain } = options;
+    options: { 
+      platform?: string; 
+      limit?: number; 
+      offset?: number; 
+      brandDomain?: string;
+      entityType?: 'brand' | 'competitor';
+      competitorDomain?: string;
+      search?: string;
+    } = {}
+  ): Promise<{ items: (LlmCitationItem & { entityType?: string; entityName?: string | null })[]; total: number }> {
+    const { platform, limit = 50, offset = 0, brandDomain, entityType, competitorDomain, search } = options;
 
-    const conditions = [eq(llmCitationItems.projectId, projectId)];
+    // Get the latest run for this project
+    const latestRun = await this.getLatestLlmCitationRun(projectId, platform);
+    if (!latestRun) return { items: [], total: 0 };
+
+    // Get snapshots based on entity type filter
+    const snapshotConditions = [eq(llmCitationSnapshots.runId, latestRun.id)];
+    if (entityType) {
+      snapshotConditions.push(eq(llmCitationSnapshots.entityType, entityType));
+    }
+    if (competitorDomain) {
+      const compDomainLower = competitorDomain.toLowerCase().replace(/^www\./, '');
+      snapshotConditions.push(sql`LOWER(REPLACE(${llmCitationSnapshots.entityDomain}, 'www.', '')) = ${compDomainLower}`);
+    }
+
+    const snapshots = await db.select({
+      id: llmCitationSnapshots.id,
+      entityType: llmCitationSnapshots.entityType,
+      entityName: llmCitationSnapshots.entityName,
+      entityDomain: llmCitationSnapshots.entityDomain,
+    })
+      .from(llmCitationSnapshots)
+      .where(and(...snapshotConditions));
+
+    if (snapshots.length === 0) return { items: [], total: 0 };
+
+    const snapshotIds = snapshots.map(s => s.id);
+    const snapshotMap = new Map(snapshots.map(s => [s.id, s]));
+
+    const conditions = [
+      eq(llmCitationItems.projectId, projectId),
+      inArray(llmCitationItems.snapshotId, snapshotIds),
+    ];
+    
     if (platform) {
       conditions.push(eq(llmCitationItems.platform, platform));
     }
     
-    // Filter to only show citations where brand domain is cited (exact match, normalized)
-    if (brandDomain) {
+    // For brand citations, filter to only show citations where brand domain is cited
+    if (entityType === 'brand' && brandDomain) {
       const domainLower = brandDomain.toLowerCase().replace(/^www\./, '');
-      // Match exact domain or www.domain to avoid false positives
       conditions.push(sql`(
         LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${domainLower}
+      )`);
+    }
+    
+    // For competitor citations, filter to only show citations where competitor domain is cited
+    if (entityType === 'competitor' && competitorDomain) {
+      const compDomainLower = competitorDomain.toLowerCase().replace(/^www\./, '');
+      conditions.push(sql`(
+        LOWER(REPLACE(${llmCitationItems.citedDomain}, 'www.', '')) = ${compDomainLower}
+      )`);
+    }
+    
+    // Text search on question or page title
+    if (search) {
+      const searchLower = search.toLowerCase();
+      conditions.push(sql`(
+        LOWER(${llmCitationItems.question}) LIKE ${'%' + searchLower + '%'} OR
+        LOWER(${llmCitationItems.citedPageTitle}) LIKE ${'%' + searchLower + '%'}
       )`);
     }
 
@@ -4957,7 +5013,14 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
 
-    return { items, total: countResult?.count || 0 };
+    // Enrich items with entity info
+    const enrichedItems = items.map(item => ({
+      ...item,
+      entityType: snapshotMap.get(item.snapshotId)?.entityType,
+      entityName: snapshotMap.get(item.snapshotId)?.entityName,
+    }));
+
+    return { items: enrichedItems, total: countResult?.count || 0 };
   }
 
   async createLlmCitationTopPage(data: InsertLlmCitationTopPage): Promise<LlmCitationTopPage> {
