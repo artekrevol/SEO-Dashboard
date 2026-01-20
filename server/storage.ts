@@ -4864,12 +4864,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLatestLlmCitationRun(projectId: string, platform?: string): Promise<LlmCitationRun | null> {
+    // Don't filter by platform at run level - runs typically have platform="all"
+    // Platform filtering happens at the snapshot/item level
     const query = db.select()
       .from(llmCitationRuns)
       .where(and(
         eq(llmCitationRuns.projectId, projectId),
-        eq(llmCitationRuns.status, "completed"),
-        platform ? eq(llmCitationRuns.platform, platform) : undefined
+        eq(llmCitationRuns.status, "completed")
       ))
       .orderBy(desc(llmCitationRuns.completedAt))
       .limit(1);
@@ -5393,7 +5394,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(llmCitationItems.platform, options.platform));
     }
     if (options?.intent) {
-      conditions.push(eq(llmCitationItems.searchIntent, options.intent));
+      conditions.push(eq(llmCitationItems.intent, options.intent));
     }
 
     const [items, countResult] = await Promise.all([

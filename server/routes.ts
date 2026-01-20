@@ -158,11 +158,15 @@ function getDefaultFallingStarsSettings(projectId: string) {
   };
 }
 
-// Normalize platform names between frontend (chatgpt) and database (chat_gpt)
+// Normalize platform names between frontend and database
+// Frontend uses: google_ai, chatgpt
+// Database uses: google, chat_gpt
 function normalizePlatform(platform?: string): string | undefined {
   if (!platform) return undefined;
-  if (platform === "chatgpt") return "chat_gpt";
+  if (platform === "google_ai" || platform === "Google AI") return "google";
+  if (platform === "chatgpt" || platform === "ChatGPT") return "chat_gpt";
   if (platform === "chat_gpt") return "chat_gpt";
+  if (platform === "google") return "google";
   return platform;
 }
 
