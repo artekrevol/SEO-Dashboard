@@ -32,6 +32,7 @@ import {
   initializeDefaultPriorityRules
 } from "./services/ingestion";
 import { crawlSchedulerService } from "./services/crawl-scheduler";
+import { classifySearchIntent, classifyBatchIntents } from "./openai";
 
 function getDefaultQuickWinsSettings(projectId: string) {
   return {
@@ -901,6 +902,109 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching competitor citations summary:", error);
       res.status(500).json({ error: "Failed to fetch competitor citations summary" });
+    }
+  });
+
+  // Classify citation intents using OpenAI
+  app.post("/api/llm-citations/classify-intent", async (req, res) => {
+    try {
+      const { citationIds, projectId } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      if (!citationIds || !Array.isArray(citationIds) || citationIds.length === 0) {
+        return res.status(400).json({ error: "citationIds array is required" });
+      }
+
+      if (citationIds.length > 50) {
+        return res.status(400).json({ error: "Maximum 50 citations can be classified at once" });
+      }
+
+      // Get the citations
+      const { items } = await storage.getLlmCitationItems(projectId, {
+        entityType: 'competitor',
+        limit: citationIds.length,
+      });
+
+      const citationsToClassify = items.filter(c => citationIds.includes(c.id));
+      const questions = citationsToClassify
+        .map(c => c.question || "")
+        .filter(q => q.length > 0);
+
+      if (questions.length === 0) {
+        return res.status(400).json({ error: "No valid questions to classify" });
+      }
+
+      // Classify with OpenAI
+      const results = await classifyBatchIntents(questions);
+
+      // Update each citation with its intent
+      const updates: { id: number; intent: string; confidence: number }[] = [];
+      let updateIndex = 0;
+      
+      for (const citation of citationsToClassify) {
+        if (citation.question && citation.question.length > 0) {
+          const result = results[updateIndex++];
+          await storage.updateLlmCitationItem(citation.id, { intent: result.intent });
+          updates.push({ id: citation.id, intent: result.intent, confidence: result.confidence });
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        classified: updates.length,
+        results: updates 
+      });
+    } catch (error) {
+      console.error("Error classifying citation intents:", error);
+      res.status(500).json({ error: "Failed to classify citation intents" });
+    }
+  });
+
+  // Classify all unclassified citations for a project
+  app.post("/api/llm-citations/classify-all-intents", async (req, res) => {
+    try {
+      const { projectId, batchSize = 20 } = req.body;
+
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
+
+      // Get unclassified citations
+      const { items, total } = await storage.getLlmCitationItems(projectId, {
+        entityType: 'competitor',
+        limit: Math.min(batchSize, 50),
+      });
+
+      const unclassified = items.filter(c => !c.intent && c.question);
+      
+      if (unclassified.length === 0) {
+        return res.json({ 
+          success: true, 
+          message: "No unclassified citations found in this batch",
+          classified: 0,
+          remaining: 0
+        });
+      }
+
+      const questions = unclassified.map(c => c.question!);
+      const results = await classifyBatchIntents(questions);
+
+      for (let i = 0; i < unclassified.length; i++) {
+        await storage.updateLlmCitationItem(unclassified[i].id, { intent: results[i].intent });
+      }
+
+      res.json({ 
+        success: true, 
+        classified: unclassified.length,
+        remaining: total - unclassified.length,
+        message: `Classified ${unclassified.length} citations`
+      });
+    } catch (error) {
+      console.error("Error classifying all citation intents:", error);
+      res.status(500).json({ error: "Failed to classify citation intents" });
     }
   });
 

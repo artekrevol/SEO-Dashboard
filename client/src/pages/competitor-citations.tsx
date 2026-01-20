@@ -81,6 +81,7 @@ interface CitationItem {
   platform: string;
   citationStatus: string | null;
   notes: string | null;
+  intent: string | null;
   capturedAt: string;
   entityType?: string;
   entityName?: string;
@@ -99,6 +100,13 @@ const statusConfig = {
   dismissed: { label: "Dismissed", icon: XCircle, color: "bg-red-500/10 text-red-600 dark:text-red-400" },
 };
 
+const intentConfig = {
+  informational: { label: "Informational", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
+  commercial: { label: "Commercial", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400" },
+  transactional: { label: "Transactional", color: "bg-green-500/10 text-green-600 dark:text-green-400" },
+  navigational: { label: "Navigational", color: "bg-orange-500/10 text-orange-600 dark:text-orange-400" },
+};
+
 type SortField = "question" | "competitor" | "platform" | "position" | "volume" | "status";
 type SortDirection = "asc" | "desc";
 
@@ -110,6 +118,7 @@ const citationExportColumns: ExportColumn<CitationItem>[] = [
   { header: "Platform", accessor: "platform" },
   { header: "Position", accessor: "referencePosition" },
   { header: "AI Search Volume", accessor: "aiSearchVolume" },
+  { header: "Intent", accessor: "intent" },
   { header: "Status", accessor: "citationStatus" },
   { header: "Notes", accessor: "notes" },
   { header: "Captured At", accessor: "capturedAt" },
@@ -122,11 +131,13 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
   const [selectedCompetitor, setSelectedCompetitor] = useState("all");
   const [selectedPlatform, setSelectedPlatform] = useState("all");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [selectedIntent, setSelectedIntent] = useState("all");
   const [sortField, setSortField] = useState<SortField>("volume");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [page, setPage] = useState(1);
+  const [isClassifying, setIsClassifying] = useState(false);
   const pageSize = 50;
 
   const normalizePlatform = (platform: string) => {
@@ -213,6 +224,10 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
       result = result.filter(c => (c.citationStatus || "new") === selectedStatus);
     }
 
+    if (selectedIntent !== "all") {
+      result = result.filter(c => c.intent === selectedIntent);
+    }
+
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -239,7 +254,42 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     });
 
     return result;
-  }, [citations, selectedStatus, sortField, sortDirection]);
+  }, [citations, selectedStatus, selectedIntent, sortField, sortDirection]);
+
+  const handleClassifyCurrentPage = async () => {
+    if (!projectId || isClassifying) return;
+    
+    setIsClassifying(true);
+    try {
+      const unclassified = citations.filter(c => !c.intent && c.question);
+      if (unclassified.length === 0) {
+        toast({ title: "No unclassified citations", description: "All citations on this page already have intents." });
+        return;
+      }
+      
+      const citationIds = unclassified.slice(0, 50).map(c => c.id);
+      const response = await apiRequest("POST", "/api/llm-citations/classify-intent", {
+        projectId,
+        citationIds,
+      });
+      
+      const data = await response.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/llm-citations/competitor-summary"] });
+      toast({ 
+        title: "Intent classification complete", 
+        description: `Classified ${data.classified} citations` 
+      });
+    } catch (error) {
+      toast({ 
+        title: "Classification failed", 
+        description: "Failed to classify citation intents", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsClassifying(false);
+    }
+  };
 
   // Use summary data from API for KPI cards (correct totals across all pages)
   const stats = useMemo(() => {
@@ -302,7 +352,7 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     </TableHead>
   );
 
-  const hasActiveFilters = search || selectedCompetitor !== "all" || selectedPlatform !== "all" || selectedStatus !== "all";
+  const hasActiveFilters = search || selectedCompetitor !== "all" || selectedPlatform !== "all" || selectedStatus !== "all" || selectedIntent !== "all";
 
   const totalPages = Math.ceil((citationsData?.total || 0) / pageSize);
 
@@ -311,6 +361,7 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
     setSelectedCompetitor("all");
     setSelectedPlatform("all");
     setSelectedStatus("all");
+    setSelectedIntent("all");
     setPage(1);
   };
 
@@ -488,6 +539,29 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
               </SelectContent>
             </Select>
             
+            <Select value={selectedIntent} onValueChange={(v) => handleFilterChange(setSelectedIntent, v)}>
+              <SelectTrigger className="w-[160px]" data-testid="select-intent">
+                <SelectValue placeholder="All intents" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Intents</SelectItem>
+                <SelectItem value="informational">Informational</SelectItem>
+                <SelectItem value="commercial">Commercial</SelectItem>
+                <SelectItem value="transactional">Transactional</SelectItem>
+                <SelectItem value="navigational">Navigational</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClassifyCurrentPage}
+              disabled={isClassifying || !projectId}
+              data-testid="button-classify-intents"
+            >
+              {isClassifying ? "Classifying..." : "Classify Intents"}
+            </Button>
+            
             {hasActiveFilters && (
               <Button
                 variant="ghost"
@@ -534,6 +608,7 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
                       <SortableHeader field="platform">Platform</SortableHeader>
                       <SortableHeader field="position">Pos</SortableHeader>
                       <SortableHeader field="volume">Volume</SortableHeader>
+                      <TableHead>Intent</TableHead>
                       <SortableHeader field="status">Status</SortableHeader>
                       <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
@@ -584,6 +659,18 @@ export function CompetitorCitationsPage({ projectId }: CompetitorCitationsPagePr
                           </TableCell>
                           <TableCell className="text-right font-medium">
                             {item.aiSearchVolume?.toLocaleString() || "-"}
+                          </TableCell>
+                          <TableCell>
+                            {item.intent ? (
+                              <Badge 
+                                variant="outline"
+                                className={cn(intentConfig[item.intent as keyof typeof intentConfig]?.color)}
+                              >
+                                {intentConfig[item.intent as keyof typeof intentConfig]?.label || item.intent}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <DropdownMenu>
