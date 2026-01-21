@@ -840,8 +840,18 @@ export class CrawlSchedulerService {
       const domain = project.domain.replace(/^https?:\/\//, "").replace(/^www\./, "");
       const platforms = ["google", "chat_gpt"] as const;
       
-      // Update total items: 2 platforms + competitors
-      const competitors = await storage.getLlmCompetitors(projectId);
+      // Get ALL competitors from SERP tracking (not just manually tracked ones)
+      // This ensures we crawl citations for all competitors appearing in search results
+      const allCompetitors = await storage.getAllCompetitorDomains(projectId);
+      
+      // Filter out our own domain from competitors list
+      const competitors = allCompetitors.filter(c => 
+        c.domain.toLowerCase() !== domain.toLowerCase()
+      );
+      
+      console.log(`[CrawlScheduler] Found ${competitors.length} competitors for AI citation crawl (from ${allCompetitors.length} SERP competitors)`);
+      
+      // Update total items: 2 platforms for brand + competitors * 2 platforms each
       const totalItems = platforms.length + competitors.length * platforms.length;
       
       if (crawlResultId) {
