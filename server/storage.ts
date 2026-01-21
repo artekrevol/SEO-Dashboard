@@ -4844,49 +4844,66 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Get all unique competitor domains from SERP tracking (keyword_competitor_metrics)
-   * This returns ALL competitors that appear in search results, not just manually tracked ones
-   * Used for comprehensive AI citation crawls across all competitors
+   * Get top competitor domains for AI citation tracking
+   * Returns competitors that rank above us most frequently (top 50 by pressure/relevance)
+   * This limits the crawl scope to meaningful competitors instead of all 1000+ domains
    */
-  async getAllCompetitorDomains(projectId: string): Promise<{ domain: string; name: string }[]> {
-    const competitors = await db.selectDistinct({ domain: keywordCompetitorMetrics.competitorDomain })
-      .from(keywordCompetitorMetrics)
-      .where(eq(keywordCompetitorMetrics.projectId, projectId));
+  async getAllCompetitorDomains(projectId: string, limit: number = 50): Promise<{ domain: string; name: string }[]> {
+    // Get competitors from competitor_metrics (aggregated data with pressure index)
+    // This table has the most relevant competitors that actually compete with us
+    const competitorData = await db.select({
+      domain: competitorMetrics.competitorDomain,
+      aboveUsKeywords: competitorMetrics.aboveUsKeywords,
+      sharedKeywords: competitorMetrics.sharedKeywords,
+      pressureIndex: competitorMetrics.pressureIndex,
+    })
+      .from(competitorMetrics)
+      .where(eq(competitorMetrics.projectId, projectId))
+      .orderBy(desc(competitorMetrics.pressureIndex), desc(competitorMetrics.aboveUsKeywords));
+    
+    // Get unique domains (competitor_metrics may have duplicates from different dates)
+    const domainMap = new Map<string, { aboveUs: number; shared: number; pressure: number }>();
+    for (const c of competitorData) {
+      const normalizedDomain = c.domain.toLowerCase().replace(/^www\./, '');
+      if (!domainMap.has(normalizedDomain)) {
+        domainMap.set(normalizedDomain, {
+          aboveUs: Number(c.aboveUsKeywords) || 0,
+          shared: Number(c.sharedKeywords) || 0,
+          pressure: Number(c.pressureIndex) || 0,
+        });
+      }
+    }
     
     // Filter out generic/non-competitive domains that shouldn't be tracked for AI citations
     const excludedDomains = new Set([
       'wikipedia.org', 'en.wikipedia.org',
-      'reddit.com', 'www.reddit.com',
-      'youtube.com', 'www.youtube.com',
-      'facebook.com', 'www.facebook.com',
-      'twitter.com', 'x.com',
-      'linkedin.com', 'www.linkedin.com',
-      'instagram.com', 'www.instagram.com',
-      'pinterest.com', 'www.pinterest.com',
-      'tiktok.com', 'www.tiktok.com',
-      'quora.com', 'www.quora.com',
-      'medium.com', 
-      'github.com', 'www.github.com',
-      'stackoverflow.com', 'www.stackoverflow.com',
-      'stackexchange.com',
-      'google.com', 'www.google.com',
-      'amazon.com', 'www.amazon.com',
-      'apple.com', 'www.apple.com',
-      'microsoft.com', 'www.microsoft.com',
-      'yahoo.com', 'www.yahoo.com',
-      'bing.com', 'www.bing.com',
+      'reddit.com', 'youtube.com', 'facebook.com', 'twitter.com', 'x.com',
+      'linkedin.com', 'instagram.com', 'pinterest.com', 'tiktok.com',
+      'quora.com', 'medium.com', 'github.com', 'stackoverflow.com', 'stackexchange.com',
+      'google.com', 'amazon.com', 'apple.com', 'microsoft.com', 'yahoo.com', 'bing.com',
+      'forbes.com', 'nytimes.com', 'cnn.com', 'bbc.com', 'wsj.com',
+      'investopedia.com', 'hubspot.com', 'shopify.com', 'wix.com',
+      'indeed.com', 'glassdoor.com', 'upwork.com', 'fiverr.com',
+      'coursera.org', 'udemy.com', 'edx.org',
+      'yelp.com', 'tripadvisor.com', 'trustpilot.com',
+      'dev.to', 'geeksforgeeks.org', 'w3schools.com',
+      'pcmag.com', 'techradar.com', 'cnet.com', 'tomsguide.com',
+      'nerdwallet.com', 'bankrate.com', 'creditkarma.com',
+      'canva.com', 'figma.com', 'adobe.com', 'spotify.com',
     ]);
     
-    return competitors
-      .filter(c => {
-        const domain = c.domain.toLowerCase().replace(/^www\./, '');
-        return !excludedDomains.has(domain) && !excludedDomains.has('www.' + domain);
-      })
-      .map(c => ({
-        domain: c.domain.replace(/^www\./, ''),
-        name: c.domain.replace(/^www\./, '').split('.')[0].charAt(0).toUpperCase() + 
-              c.domain.replace(/^www\./, '').split('.')[0].slice(1),
+    // Convert to array, filter, sort by importance, and limit
+    const filteredCompetitors = Array.from(domainMap.entries())
+      .filter(([domain]) => !excludedDomains.has(domain))
+      .sort((a, b) => b[1].pressure - a[1].pressure || b[1].aboveUs - a[1].aboveUs)
+      .slice(0, limit)
+      .map(([domain]) => ({
+        domain,
+        name: domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1),
       }));
+    
+    console.log(`[Storage] Returning top ${filteredCompetitors.length} competitors for AI citations (from ${domainMap.size} total)`);
+    return filteredCompetitors;
   }
 
   async createLlmCompetitor(data: InsertLlmCompetitor): Promise<LlmCompetitor> {
