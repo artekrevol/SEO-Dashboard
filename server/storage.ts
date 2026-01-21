@@ -4843,6 +4843,52 @@ export class DatabaseStorage implements IStorage {
       .orderBy(llmCompetitors.name);
   }
 
+  /**
+   * Get all unique competitor domains from SERP tracking (keyword_competitor_metrics)
+   * This returns ALL competitors that appear in search results, not just manually tracked ones
+   * Used for comprehensive AI citation crawls across all competitors
+   */
+  async getAllCompetitorDomains(projectId: string): Promise<{ domain: string; name: string }[]> {
+    const competitors = await db.selectDistinct({ domain: keywordCompetitorMetrics.competitorDomain })
+      .from(keywordCompetitorMetrics)
+      .where(eq(keywordCompetitorMetrics.projectId, projectId));
+    
+    // Filter out generic/non-competitive domains that shouldn't be tracked for AI citations
+    const excludedDomains = new Set([
+      'wikipedia.org', 'en.wikipedia.org',
+      'reddit.com', 'www.reddit.com',
+      'youtube.com', 'www.youtube.com',
+      'facebook.com', 'www.facebook.com',
+      'twitter.com', 'x.com',
+      'linkedin.com', 'www.linkedin.com',
+      'instagram.com', 'www.instagram.com',
+      'pinterest.com', 'www.pinterest.com',
+      'tiktok.com', 'www.tiktok.com',
+      'quora.com', 'www.quora.com',
+      'medium.com', 
+      'github.com', 'www.github.com',
+      'stackoverflow.com', 'www.stackoverflow.com',
+      'stackexchange.com',
+      'google.com', 'www.google.com',
+      'amazon.com', 'www.amazon.com',
+      'apple.com', 'www.apple.com',
+      'microsoft.com', 'www.microsoft.com',
+      'yahoo.com', 'www.yahoo.com',
+      'bing.com', 'www.bing.com',
+    ]);
+    
+    return competitors
+      .filter(c => {
+        const domain = c.domain.toLowerCase().replace(/^www\./, '');
+        return !excludedDomains.has(domain) && !excludedDomains.has('www.' + domain);
+      })
+      .map(c => ({
+        domain: c.domain.replace(/^www\./, ''),
+        name: c.domain.replace(/^www\./, '').split('.')[0].charAt(0).toUpperCase() + 
+              c.domain.replace(/^www\./, '').split('.')[0].slice(1),
+      }));
+  }
+
   async createLlmCompetitor(data: InsertLlmCompetitor): Promise<LlmCompetitor> {
     const [competitor] = await db.insert(llmCompetitors).values(data).returning();
     return competitor;
